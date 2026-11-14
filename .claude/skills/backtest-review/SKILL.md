@@ -1,6 +1,6 @@
 ---
 name: backtest-review
-description: Comprehensive review of a strategy's optimise-stage backtests from its Strategy page URL — is the implementation correct (no look-ahead, accounting that reconciles, fills inside the bar, stops honoured), are position sizing and risk management applied as the rules say, does each trade obey the rules, how faithfully does the code follow the method as its originator and the research describe it, which market regimes it works and fails in (and whether it should hold the index or cash there), is the edge real and where does it come from — then propose robust, prioritised improvements (bugs first) with a test plan and a paper-trading gate. Analysis only — never reads verify runs, edits code or queues jobs.
+description: Comprehensive review of a strategy's optimise-stage backtests from its Strategy page URL — is the implementation correct (no look-ahead, accounting that reconciles, fills inside the bar, stops honoured), are position sizing and risk management applied as the rules say, does each trade obey the rules, how faithfully does the code follow the method as its originator and the research describe it, which market regimes it works and fails in (and whether it should hold the index or cash there), is the edge real and where does it come from, is the result robust or does it rest on a few outlier trades, one stock, one year, big swings over time or luck (outlier removal, yearly and rolling excess, halves, block bootstrap, parameter neighbourhood) — then propose robust, prioritised improvements (bugs first) with a test plan and a paper-trading gate. Analysis only — never reads verify runs, edits code or queues jobs.
 argument-hint: <strategy page URL, e.g. http://localhost:8000/#/strategies/minervini>
 disable-model-invocation: true
 ---
@@ -20,8 +20,8 @@ database read-only (`scripts/swing_screener/marketdata/db.py`). Download nothing
 script to the scratchpad, not the repo.
 
 The review answers, in order of what can invalidate what: **is the code right** (step 3) → **is it the
-method** (step 5) → **is the edge real** (step 4) → **when does it work** (step 6) → **what to change**
-(steps 7–9). A look-ahead bug makes every later number meaningless, so bugs are found first and ranked
+method** (step 6) → **is the edge real** (step 4) → **is it robust** (step 5) → **when does it work**
+(step 7) → **what to change** (steps 8–10). A look-ahead bug makes every later number meaningless, so bugs are found first and ranked
 first.
 
 ## 1. Find the runs to review
@@ -65,7 +65,7 @@ cd scripts && PYTHONPATH=. .venv/bin/python ../.claude/skills/backtest-review/sc
 ```
 
 It prints accounting, fills against the day's bar, stops, sizing and open heat, and a regime split
-(used in step 6). Every flag it raises is a **lead**, not a finding: follow each one into the code and,
+(used in step 7). Every flag it raises is a **lead**, not a finding: follow each one into the code and,
 for trades, the chart, and classify it as a **bug**, an **explained** behaviour (say what explains
 it), or **unresolved**. Then check what the script cannot:
 
@@ -101,7 +101,7 @@ found 62% of US trades there at +0.03R against +0.77R for next-session fills.
   losses cluster at −1R; the tail beyond −1.5R is gaps (count them) or a stop not acted on (a bug).
 - Open heat (total risk on at once), the largest single position, and any concentration the rules
   intend to limit (sector, correlated names).
-- Then against the method and the literature (step 5): how the originator sizes and stops, and what
+- Then against the method and the literature (step 6): how the originator sizes and stops, and what
   is known about fixed-fractional risk, volatility sizing and drawdown control. Hypotheses, not findings.
 
 **Trade-by-trade audit.** Pick a stratified sample per market: the 5 best and 5 worst trades by R, the
@@ -131,16 +131,54 @@ The edge badge already says whether the strategy beat buy-and-hold. Answer what 
   stored prices up to 2021-12-31. Compare the traded signals with the skipped ones. If the skipped ones
   were as good or better, slots, ranking or sizing are costing the edge. (The cache keeps only the
   current version's rows; for an older run say the signals are gone rather than re-scanning.)
-- **Concentration.** How much of the total R the best 5% of trades made, and the best and worst years.
+- **Concentration** is measured in step 5.
 
 State every sample size. If the strategy shows no selection edge and no edge over buy-and-hold, say so
 first. Then decide what that means: for a method with a strong, documented record by its originator
 or in research (Minervini's SEPA, O'Neil, Weinstein, dual momentum…), suspect the implementation
-before the method — close the fidelity gaps of step 5 and the bugs of step 3 first, and recommend
+before the method — close the fidelity gaps of step 6 and the bugs of step 3 first, and recommend
 retiring only once a faithful version has been tested and still fails. For a method without such a
 record, recommend retiring or rethinking it before proposing tweaks.
 
-## 5. The method, from the knowledge base
+## 5. Is the result robust?
+
+An edge that comes from a handful of trades, one stock, one year or one lucky ordering of returns is not
+something to trade. Run the bundled script on each baseline:
+
+```bash
+cd scripts && PYTHONPATH=. .venv/bin/python ../.claude/skills/backtest-review/scripts/robustness.py \
+    --run <id> --host <the URL's host>
+```
+
+It reports, and flags against thresholds fixed in the script before any run:
+
+- **Outliers.** P&L and CAGR left without the best 1, 3, 5, 10 trades and the best 5% and 10%;
+  expectancy trimmed of the best and worst 5%; the share of P&L from the best three stocks.
+- **Over time.** Every year against the benchmark; the share of the whole gain earned in the best year;
+  the first half against the second; rolling one-year and three-year excess (share of windows positive,
+  worst, median); the longest stretch below a previous high and the time spent under water.
+- **Luck.** A stationary block bootstrap of the daily returns, strategy and benchmark resampled
+  together: the 5th–95th percentile of CAGR, excess and max drawdown, and the chance the excess is
+  positive. The 5th-percentile drawdown is the planning figure, not the backtest's own.
+
+Then add what the script can't see:
+
+- **Parameter neighbourhood.** Place the baseline among the variants already run (step 1) that move one
+  parameter: is it on a plateau (neighbours within a point or two) or a peak (neighbours much worse)?
+  A peak means the shipped values were fitted. Name the runs.
+- **Markets.** Does the same rule set work in both markets? A result in one market only needs a reason
+  that isn't "that's where it worked".
+- **Costs.** `cagr_std_cost` / `excess_std_cost` in the summary (and `cost_sensitivity` where the run
+  has it): does the result survive the market's standard cost and doubled slippage?
+
+Read the flags with the method in mind. A trend or breakout system is outlier-driven by design, so for it
+the question is whether the winners are **many and spread** (many stocks, several years) or a handful.
+A rebalancing or rotation book with few instruments makes the stock-concentration flag meaningless (the
+script says so). Give a one-line verdict per market: **robust**, **fragile** (name the flags that
+decide it), or **not enough evidence** (too few trades, years or episodes). A fragile baseline caps how
+high any improvement built on it can rank in step 9.
+
+## 6. The method, from the knowledge base
 
 Step back from this implementation and use what you know about the method itself. Read the strategy's
 rules, its `thesis`, `caveats` and `changelog`, and any spec it cites (e.g.
@@ -154,7 +192,7 @@ rules, its `thesis`, `caveats` and `changelog`, and any spec it cites (e.g.
   - **omitted** — left out;
   - **added** — not in the method;
   - **accidental** — the code does not do what its own docs or the method say. This is a **bug**: it
-    goes to step 8 with the bugs from step 3.
+    goes to step 9 with the bugs from step 3.
   Say whether each deviation plausibly matters. Proxies, deliberate deviations and omissions are
   documented in `caveats`, not "fixed": check that they are.
 - **Literature.** What published research and long practitioner experience say about this class of
@@ -165,13 +203,13 @@ rules, its `thesis`, `caveats` and `changelog`, and any spec it cites (e.g.
   backtest (period, costs, lags, total return vs price, how returns are annualised, universe). A gap
   between the two is explained step by step — author's assumptions → + lags → + costs → + total
   return and cash → + fills → out of the author's period — where runs exist for a step; otherwise
-  name the variant runs that would build that table (step 9). An unexplained gap points back to step 3.
+  name the variant runs that would build that table (step 10). An unexplained gap points back to step 3.
 - **Known choices.** A deviation the `changelog` or `caveats` show was made on purpose and already
   tested is reported as a known choice with that outcome, not re-proposed.
-- Everything from this step except bugs is a **hypothesis to test**, not a finding. It enters step 8
+- Everything from this step except bugs is a **hypothesis to test**, not a finding. It enters step 9
   with the type "from the method" or "from the literature", and the data decides how far it ranks.
 
-## 6. Market regimes: when does it work, and what should it hold otherwise?
+## 7. Market regimes: when does it work, and what should it hold otherwise?
 
 A strategy can earn its edge in one regime and give it back in another. Any strategy looks regime-bound
 in hindsight, so a regime here is a rule to test, not a finding.
@@ -191,21 +229,21 @@ in hindsight, so a regime here is a rule to test, not a finding.
 - **Overlap:** many strategies already gate on the market (`market_rules`, `regime_note`, a market
   filter in `backtest_args`). Say whether a regime rule would only double-count that gate.
 - **The off state** (cash, the index, bonds) follows from the method's thesis, not from trying each.
-- A regime rule that survives this goes to step 8 as type "regime overlay": a gate with a fixed
+- A regime rule that survives this goes to step 9 as type "regime overlay": a gate with a fixed
   threshold, a version bump, optimise first, verify once.
 
-## 7. Diagnose (evidence from the optimise runs only)
+## 8. Diagnose (evidence from the optimise runs only)
 
 For every weak key parameter, find the cause in the data:
 - which gates / setups / exits produce the losers (R by setup code, exit reason, year, regime from
-  step 6, sector, stop width, entry gap, days held);
+  step 7, sector, stop width, entry gap, days held);
 - where the funnel throws away candidates (gates dropping most bars, signals skipped for full
   slots, gaps above the buy range, order expiry);
-- what steps 3, 4 and 6 found about implementation, selection, signals, sizing and regimes.
+- what steps 3, 4, 5 and 7 found about implementation, selection, signals, sizing and regimes.
 
 A pattern seen on fewer than ~30 trades is a hypothesis, not a finding.
 
-## 8. Propose improvements, prioritised
+## 9. Propose improvements, prioritised
 
 Bugs first, in their own table: what is wrong, the evidence (run, trade, code line), which figures it
 contaminates, and the fix. A bug fix is a behaviour change (version bump, re-run) but not a tuning
@@ -219,8 +257,8 @@ ranked list of changes:
 
 - Type is one of: parameter change (an existing constant, as `--const NAME=VALUE`), new rule
   (a gate, setup, exit or sizing change that needs code), mechanics (`backtest_args`, e.g. exit mode),
-  risk management (sizing, stops, heat, concentration), regime overlay (step 6), from the method
-  (closes a fidelity gap from step 5), or from the literature. Evidence for the last two names the
+  risk management (sizing, stops, heat, concentration), regime overlay (step 7), from the method
+  (closes a fidelity gap from step 6), or from the literature. Evidence for the last two names the
   source and what the runs say about it (supports / contradicts / untested here).
 - **Robustness gate.** A change ranks high only if its case does not rest on one spike: say for each
   whether its evidence holds across neighbouring values of the parameter (a plateau, not a peak),
@@ -238,7 +276,7 @@ ranked list of changes:
 - Balance the two sources: do not drop a well-founded method gap just because these runs cannot show
   it yet, and do not promote a textbook idea over a clear contrary result in the data.
 
-## 9. Test plan (do not run it unless asked)
+## 10. Test plan (do not run it unless asked)
 
 - Pass criteria for each proposed variant, written BEFORE any run: which key parameters must
   improve, by how much, which must not get worse beyond what limit, and the robustness checks it must
@@ -265,13 +303,15 @@ the verdict, the bugs, and the top three changes.
 2. Scorecard per market.
 3. Implementation audit: point in time, accounting, sizing and risk, the trade sample — each flag
    classified as bug, explained or unresolved.
-4. Is the edge real: trials and deflated Sharpe, selection vs timing, signal vs portfolio, concentration.
-5. The method: fidelity table with statuses, literature, published figures and the gap, known choices.
-6. Regimes: the split, episodes, the overlay test, and whether the strategy should stand aside.
-7. Diagnosis with evidence from the runs.
-8. Bugs, then the prioritised improvement table per key parameter, with robustness.
-9. Test plan: pass criteria, commands, verify condition, paper-trading gate.
-10. What you could not determine and which data would settle it.
+4. Is the edge real: trials and deflated Sharpe, selection vs timing, signal vs portfolio.
+5. Is it robust: outliers, years and halves, rolling windows, the bootstrap, parameter neighbourhood,
+   markets and costs — the flags table and a verdict per market (robust / fragile / not enough evidence).
+6. The method: fidelity table with statuses, literature, published figures and the gap, known choices.
+7. Regimes: the split, episodes, the overlay test, and whether the strategy should stand aside.
+8. Diagnosis with evidence from the runs.
+9. Bugs, then the prioritised improvement table per key parameter, with robustness.
+10. Test plan: pass criteria, commands, verify condition, paper-trading gate.
+11. What you could not determine and which data would settle it.
 
 Report bad news plainly; if the code has a bug, say so before anything else, and if the strategy has
 no demonstrated edge, say so before proposing tweaks. Do not edit code, queue jobs or commit.
