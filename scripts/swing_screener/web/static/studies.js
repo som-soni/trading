@@ -1383,7 +1383,6 @@ const Studies = (() => {
     setups_parabolic_short: genericSetups("parabolic_short", "learn-strat-kullamagi", { base: ["The run-up", "#2962ff"],
       tight: ["First red day", "#ff9800"] }),
     setups_pead: genericSetups("pead", "learn-strat-pead", { base: ["Results reaction", "#2962ff"], support: ["Close before the results", "#ef5350"] }),
-    setups_etf_swing: genericSetups("etf_swing", "learn-strat-channel-breakout", { base: ["Prior sessions", "#2962ff"], pivot: ["Breakout high", "#ff9800"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },
