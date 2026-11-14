@@ -180,9 +180,16 @@ SR_DOC = {
     "description": "Each month-end hold the {top_n} sectors with the best {lookback_days}-session (about "
                    "six-month) return, equal-weighted.",
     "status": (
-        "v1.3 (2026-11-14) adds a point-in-time liquidity floor, after a review found the India result rested on "
-        "the Consumption ETF in years it barely traded; the 1.3 optimise runs are queued, and every India figure "
-        "below predates the floor (the US sector ETFs all clear it, so the US figures should not move). "
+        "v1.3 LIQUIDITY FLOOR, OPTIMISE STAGE (2013-2021, IN-SAMPLE). A review found the India result rested on "
+        "the Consumption ETF in years it barely traded, so a fund now ranks only once its trailing traded value "
+        "clears a floor, as of each month-end. Expectations written before the runs: US unchanged; India 12-14.5% "
+        "CAGR, excess no better than +0.5, drawdown near or deeper than the benchmark's, so the pass rule fails. "
+        "Both held. India 13.45% CAGR against the benchmark's 13.54% (-0.09; v1.2 was 15.11%, +1.57), drawdown "
+        "-40.1% against -38.3% (v1.2 -31.4%), 29 switches (v1.2 42): it FAILS the pass rule -- the v1.2 edge "
+        "was the illiquid fund. India ranks 3-4 sectors in 2013, 4 in 2014-2019 (4-5 in 2018), 4-6 in 2020 and "
+        "6 in 2021, so a top {top_n} selects from almost nothing before 2020. US identical to v1.2: 11.47% "
+        "against SPY's 14.01% (-2.54), drawdown -30.7% against -34.1%, 98 switches -- every SPDR sector ETF "
+        "clears the floor at every month-end. Every older India figure below predates the floor. "
         "MEASURED, and it lands where the guide said it would. Every figure below is LEGACY: runs from 2010 "
         "and 2020 to date, made before backtests ran in stages, so neither optimise nor verify (v1.1 leaves "
         "equity alone; its exposure and trade statistics are stale). India beats modestly and the US does not, on "
@@ -249,7 +256,7 @@ SR_DOC = {
         "Pharma index from 2011, Consumption 2014, Private Bank 2019, FMCG 2021, Auto 2022, and Energy, Infra "
         "and Metal only in mid-2024. With the {MIN_BARS}-session history rule, an India run from 2010 ranks two "
         "sectors at first, three until 2013 -- so with a top {top_n} it held every rankable sector and selected "
-        "nothing -- four or five until 2021, six to eight until late 2025, and all 11 only after that. A "
+        "nothing -- four or five until 2021 (with the 1.3 liquidity floor: three or four in 2013, four through 2019, four to six in 2020, six in 2021), six to eight until late 2025, and all 11 only after that. A "
         "changing opportunity set, not a fixed one. The US ranks 9 in 2010, 10 from about 2017 and 11 from "
         "late 2019.",
         "**Three India sectors are indices, not funds.** Bank, IT and Pharma are NSE price indices, which cannot "
