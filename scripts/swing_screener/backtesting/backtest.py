@@ -1771,7 +1771,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "kell", "darvas", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "kell", "darvas", "revert", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
         "'ma_low' does not sell on a close below --ma-col: the next session trading under that candle's low sells, "

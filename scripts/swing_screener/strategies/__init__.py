@@ -60,6 +60,7 @@ from .minervini_spec import MinerviniSpecStrategy
 from .momentum_burst import MomentumBurstStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
+from .stock_reversion import StockReversionStrategy
 from .trend_pullback import TrendPullbackStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
@@ -83,6 +84,7 @@ register(StageAnalysisStrategy())
 register(KullamagiStrategy())
 register(MomentumBurstStrategy())
 register(KellCycleStrategy())
+register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion bet
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection
@@ -203,7 +205,7 @@ __all__ = [
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
     "MinerviniSpecStrategy", "StageAnalysisStrategy", "KullamagiStrategy",
-    "MomentumBurstStrategy", "KellCycleStrategy",
+    "MomentumBurstStrategy", "KellCycleStrategy", "StockReversionStrategy",
     "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",

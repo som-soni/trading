@@ -47,6 +47,9 @@ without meta behaves exactly as before:
   order="open"        fill at the next session's open (EN-01), one day only;
                       skipped if that open is above `max_fill` or at or below
                       `min_open` (the tight low)
+  order="limit"       a buy limit at meta["limit"] for the next session only: fills at the
+                      open if it opens at or below the limit, else at the limit if the
+                      session trades down to it; otherwise dropped
   max_fill            skip a fill above this price (buy range, 1.05 × pivot)
   cancel_close_below  cancel a resting buy-stop on a close below this
   max_risk_pct        skip a fill whose risk (fill − stop) / fill exceeds this (SL-03)
@@ -80,6 +83,7 @@ from ..strategies import kell_cycle as _kc
 from ..strategies import supertrend as _st
 from ..strategies import darvas as _dv
 from ..strategies import stage_analysis as _sa
+from ..strategies import stock_reversion as _sr
 from ..core import darvas as darvas_boxes
 
 logger = logging.getLogger(__name__)
@@ -135,7 +139,7 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | kell | minervini
+    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | kell | revert | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     trail_pct: float = 0.04      # for trail_pct: the stop sits this fraction below the highest HIGH since entry
@@ -171,6 +175,14 @@ class ExitPolicy:
     km_trail_sma: int = field(default_factory=lambda: _km.TRAIL_SMA)
     km_trail_ema: bool = field(default_factory=lambda: bool(_km.TRAIL_EMA))   # the trail is an EMA, not an SMA
     km_max_bars: int = field(default_factory=lambda: _km.MAX_HOLD_BARS)
+    # for revert: the stock_reversion strategy's exit (`_manage_revert`), read through factories for the
+    # reason given under `minervini` below. Each session from the fill session on, after the stop: a close
+    # above its `rv_sma`-day simple average sells at that close -- or, when `rv_rsi_exit` is above 0, a
+    # close whose RSI(2) is above it does instead (the average is then not used) -- and the close of
+    # session `rv_max_bars` after the fill session sells whatever is left (TIME). 0 = no time stop.
+    rv_sma: int = field(default_factory=lambda: int(_sr.EXIT_SMA))
+    rv_rsi_exit: float = field(default_factory=lambda: float(_sr.EXIT_RSI) if _sr.EXIT_ON_RSI else 0.0)
+    rv_max_bars: int = field(default_factory=lambda: int(_sr.MAX_HOLD_BARS))
     # for kell: the kell_cycle strategy's management (`_manage_kell`). Each tranche of a position keeps its own
     # stop; on the first exhaustion (EX) session of each leg 1/`kell_ex_divisor` of the shares sells at the close;
     # an EMA break (BK) sells the rest at the close. EX, BK and the leg come from the strategy's own cycle scan
@@ -243,7 +255,7 @@ class ExitPolicy:
     @property
     def managed(self) -> bool:
         """Whether any of the opt-in trade-management rules is on (non-minervini modes)."""
-        return self.mode not in ("minervini", "darvas") and bool(
+        return self.mode not in ("minervini", "darvas", "revert") and bool(
             self.be_r or self.time_stop_bars or self.time_stop_mult or self.partial_at_target)
 
     def label(self) -> str:
@@ -282,6 +294,9 @@ class ExitPolicy:
                         f"{self.km_trail_sma}-max{self.km_max_bars}")
         elif self.mode == "kell":
             bits.append(f"ex{self.kell_ex_divisor}")
+        elif self.mode == "revert":
+            bits.append((f"rsi{self.rv_rsi_exit:g}" if self.rv_rsi_exit else f"sma{self.rv_sma}")
+                        + f"-max{self.rv_max_bars}")
         elif self.mode == "darvas":
             bits.append(f"h{self.dv_lookback}t{self.dv_top_confirm}b{self.dv_bottom_confirm}"
                         + (f"-time{self.dv_time_stop_bars}" if self.dv_time_stop_bars else ""))
@@ -508,6 +523,8 @@ _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
 ST_DIR = "_st_dir"             # the supertrend exit's direction (1 up, -1 down), added the same way
 KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing average (simple or exponential), added the same way
+RV_LINE = "_rv_line"           # the revert exit's short simple average, added the same way
+RV_RSI = "_rv_rsi"             # ... and its RSI(2)
 KELL_EX, KELL_BK, KELL_LEG = "_kell_ex", "_kell_bk", "_kell_leg"   # the kell exit's cycle phases, the same way
 
 
@@ -883,6 +900,14 @@ def simulate(
                 else:
                     triggered.append((sym, order, bar))
                 continue
+            if meta.get("order") == "limit":
+                # a buy limit for the next session only: the session must trade down to it
+                if float(bar["low"]) <= float(meta["limit"]):
+                    triggered.append((sym, order, bar))
+                else:
+                    skip("never traded down to the buy limit", sym, today)
+                    del pending[sym]
+                continue
             if today > order["expires"]:
                 skip(SLOT_WAIT_LAPSE if order.get("slot_capped") else "the resting order expired unfilled",
                      sym, today)
@@ -924,6 +949,9 @@ def simulate(
 
             if meta.get("order") == "open":
                 raw_entry, at = float(bar["open"]), AT_OPEN
+            elif meta.get("order") == "limit":
+                o, lim = float(bar["open"]), float(meta["limit"])
+                raw_entry, at = (o, AT_OPEN) if o <= lim else (lim, INTRADAY)   # a gap under it fills better
             elif meta.get("order") == "close":
                 raw_entry, at = float(bar["close"]), AT_CLOSE
             elif meta.get("confirm_close_above") is not None:
@@ -942,7 +970,7 @@ def simulate(
                 missed_slot += 1
                 missed_slot_at.append((sym, today))
                 order["slot_waits"] = order.get("slot_waits", 0) + 1
-                if meta.get("order") in ("open", "close"):
+                if meta.get("order") in ("open", "close", "limit"):
                     del pending[sym]
                     continue
                 wait = meta.get("slot_wait_bdays", slot_wait_bdays)
@@ -1037,7 +1065,7 @@ def simulate(
                 open_risk = open_risk_at(at, today)
                 if open_risk + risk_per_share * shares > max_open_risk_pct * equity_now:
                     skip("open-risk cap", sym, today)
-                    if meta.get("order") in ("open", "close"):
+                    if meta.get("order") in ("open", "close", "limit"):
                         del pending[sym]
                     continue   # keep resting: risk frees up as stops rise or positions close
             # Scale down to what cash allows rather than declining outright.
@@ -1178,6 +1206,10 @@ def exit_frames(prices: dict[str, pd.DataFrame], policy: ExitPolicy) -> dict[str
                 for s, df in prices.items()}
     if policy.mode == "darvas":
         return {s: df.assign(**darvas_levels(df, policy)) for s, df in prices.items()}
+    if policy.mode == "revert":
+        return {s: df.assign(**{RV_LINE: ind.sma(df["close"].astype(float), policy.rv_sma),
+                                RV_RSI: ind.rsi(df["close"].astype(float), 2)})
+                for s, df in prices.items()}
     if policy.mode == "kell":
         out = {}
         for s, df in prices.items():
@@ -1197,6 +1229,9 @@ def manage_entry_bar(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, p
     if policy.mode == "minervini":
         # the entry bar's close counts for the close-based exits (EX-02, EX-06)
         _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True)
+    elif policy.mode == "revert":
+        # the fill session's close counts: a bounce that closes above the line that very session sells
+        _manage_revert(sym, pos, bar, today, policy, close_out, at=at)
     elif at != AT_CLOSE and float(bar["low"]) <= pos.stop:
         # The fill bar reached the stop. After an open fill the rest of the bar came later, so
         # the stop was hit; after an intraday buy-stop the bar does not say which came first,
@@ -1231,6 +1266,10 @@ def manage_exit(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy
 
     if policy.mode == "darvas":
         _manage_darvas(sym, pos, bar, today, policy, close_out, cfg)
+        return
+
+    if policy.mode == "revert":
+        _manage_revert(sym, pos, bar, today, policy, close_out)
         return
 
     if policy.managed:
@@ -1539,6 +1578,39 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
             pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
     elif policy.mode == "trail_pct":
         _trail_pct(pos, bar, policy)
+
+
+def _manage_revert(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, close_out,
+                   at: int | None = None) -> None:
+    """One session of the stock_reversion strategy's exit, in this order:
+      1. the stop, if the trade has one (a stop of 0 is none): at the stop, or at the open if the stock
+         gapped through it. On the fill session (`at` given) only after a fill at the open, as for every
+         mode;
+      2. the close: above its `rv_sma`-day simple average sells everything at that close (MEAN_REVERTED);
+         with `rv_rsi_exit` above 0, a close whose RSI(2) is above that level does instead;
+      3. the close of session `rv_max_bars` after the fill session sells the rest (TIME).
+    The fill session counts for step 2 but is session 0 for step 3. A close at or under the line on the
+    fill session is simply held."""
+    o, l, c = float(bar["open"]), float(bar["low"]), float(bar["close"])
+    entry_day = at is not None
+    if not entry_day:
+        pos.bars_held += 1
+    if pos.stop > 0 and l <= pos.stop and (not entry_day or at != AT_CLOSE):
+        gapped = not entry_day and o <= pos.stop
+        close_out(sym, pos, min(pos.stop, o) if gapped else pos.stop, "STOP", today,
+                  at=AT_OPEN if gapped else INTRADAY)
+        return
+    if policy.rv_rsi_exit:
+        r = bar.get(RV_RSI, float("nan"))
+        reverted = r == r and float(r) > policy.rv_rsi_exit
+    else:
+        line = bar.get(RV_LINE, float("nan"))
+        reverted = line == line and c > float(line)
+    if reverted:
+        close_out(sym, pos, c, "MEAN_REVERTED", today, at=AT_CLOSE)
+        return
+    if policy.rv_max_bars and pos.bars_held >= policy.rv_max_bars:
+        close_out(sym, pos, c, "TIME", today, at=AT_CLOSE)
 
 
 def _manage_kullamagi(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, close_out, sell) -> None:

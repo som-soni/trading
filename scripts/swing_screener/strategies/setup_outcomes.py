@@ -29,7 +29,7 @@ import pandas as pd
 from ..backtesting import portfolio_sim as ps
 from ..backtesting import tracker
 
-ORDER_KEYS = ("order", "max_fill", "min_open", "confirm_close_above", "fill_min_vol", "cancel_close_below", "max_risk_pct", "expiry_bdays")
+ORDER_KEYS = ("order", "limit", "max_fill", "min_open", "confirm_close_above", "fill_min_vol", "cancel_close_below", "max_risk_pct", "expiry_bdays")
 SHARES = 1000   # a notional size, so the exit ladder's partial sales come out as fractions of the position
 
 
@@ -73,6 +73,14 @@ def _fill(daily: pd.DataFrame, i: int, buy: float, stop: float, target: float, m
         if o[i + 1] <= meta.get("min_open", -math.inf):
             return None, "opened at or below the tight low", None
         return i + 1, float(o[i + 1]), ps.AT_OPEN
+    if kind == "limit":
+        # a buy limit for the next session only, as portfolio_sim fills it
+        if i + 1 >= n:
+            return None, "the order is a limit for the next session", None
+        lim = float(meta["limit"])
+        if l[i + 1] > lim:
+            return None, "never traded down to the buy limit", None
+        return (i + 1, float(o[i + 1]), ps.AT_OPEN) if o[i + 1] <= lim else (i + 1, lim, ps.INTRADAY)
     expires = daily.index[i] + pd.tseries.offsets.BDay(int(meta.get("expiry_bdays") or ps.PENDING_EXPIRY_BDAYS))
     lvl = meta.get("confirm_close_above")
     for j in range(i + 1, n):

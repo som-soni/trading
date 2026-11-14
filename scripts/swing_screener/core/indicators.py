@@ -106,6 +106,13 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     out["ema100"] = ema(out["close"], 100)
     out["rsi14"] = rsi(out["close"], 14)
     out["rsi_ma"] = sma(out["rsi14"], 14)  # DEFINITIONS: 14-period SMA of RSI14
+    # the stock mean reversion strategy's oversold tests (strategies/stock_reversion.py): Connors'
+    # RSI(2), the 20-day standard deviation of closes (the Bollinger band is sma20 - k x this, the
+    # sample deviation as in backtesting/mean_reversion.py) and the count of lower closes in a row
+    out["rsi2"] = rsi(out["close"], 2)
+    out["close_sd20"] = out["close"].rolling(20, min_periods=20).std()
+    down = out["close"].diff() < 0
+    out["down_streak"] = down.groupby((~down).cumsum()).cumsum().astype(float)
     out["atr14"] = atr(out, 14)
     out["atr_pct"] = out["atr14"] / out["close"] * 100
     out["adx14"] = adx(out, 14)

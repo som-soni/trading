@@ -1309,6 +1309,36 @@
     },
     "version": "2.13"
   },
+  "stock_reversion": {
+    "family": "stock_reversion",
+    "fingerprint": "68ef77ca",
+    "params": {
+      "BB_SD": 2,
+      "CATASTROPHE_ATR": 0,
+      "DOWN_CLOSES": 3,
+      "DROP_BARS": 3,
+      "ENTRY_LIMIT_PCT": 0,
+      "EXIT_ON_RSI": 0,
+      "EXIT_RSI": 70,
+      "EXIT_SMA": 5,
+      "MAX_HOLD_BARS": 5,
+      "NOMINAL_TARGET_PCT": 100,
+      "RANK_BY_DROP": 0,
+      "RSI_ENTRY": 10,
+      "SETUP_RULE": 1,
+      "_key": "stock_reversion",
+      "gate_codes": [
+        "G1"
+      ],
+      "min_bars": 220,
+      "setup_codes": [
+        "S1",
+        "S2",
+        "S3"
+      ]
+    },
+    "version": "1.0"
+  },
   "supertrend": {
     "family": "supertrend",
     "fingerprint": "160056a8",
