@@ -389,7 +389,7 @@ def _selection_state(market, cls, today, px, dv, tr, sma200, buffered, hold_rank
         sma200.loc[today] if today in sma200.index else None,
         scores.loc[today] if today in scores.index else None,
         floor_price=cfg.screener.min_price, liq_floor=liq_floor,
-        trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[today],
+        trend_filter=getattr(cls, "trend_filter", True), liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[today],
         floor_row=floor_px.loc[today],
     )
     # A ranking narrowed by more than prices (quality_momentum's point-in-time fundamentals) applies the
@@ -417,7 +417,7 @@ def _selection_state(market, cls, today, px, dv, tr, sma200, buffered, hold_rank
                 px.columns, px.loc[d], dv.loc[d] if d in dv.index else None,
                 sma200.loc[d] if d in sma200.index else None, scores.loc[d],
                 floor_price=cfg.screener.min_price, liq_floor=liq_floor,
-                trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[d],
+                trend_filter=getattr(cls, "trend_filter", True), liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[d],
                 floor_row=floor_px.loc[d],
             )
             if live_filter is not None:
@@ -1115,7 +1115,7 @@ TUNABLES = {"top_n": "top_n", "lookback": "lookback", "skip": "skip", "rebalance
             "cost_bps": "cost_bps", "rank": "rank", "weighting": "weighting",
             "vol_target": "vol_target", "min_turnover": "min_turnover", "vol_window": "vol_window",
             "hold_rank": "hold_rank",
-            "liquidity_top": "liquidity_top"}
+            "liquidity_top": "liquidity_top", "fill": "fill"}
 
 
 def _turnover_tag(value: float, cfg) -> str:
@@ -1139,6 +1139,10 @@ def strategy_defaults(key: str, market: str) -> dict:
     # markets; a strategy that cares declares min_turnover_for() and resolves it per run.
     if hasattr(cls, "min_turnover_for"):
         out["min_turnover"] = cls.min_turnover_for(market)
+    # The 200-day trend test is on unless a strategy says otherwise: value_ranking buys what has fallen,
+    # which the test would remove. The flag is the inverse (--no-trend-filter), so it is mapped here.
+    if hasattr(cls, "trend_filter"):
+        out["no_trend_filter"] = not cls.trend_filter
     # Likewise the market-regime switch: adopted where it was measured to help (regime_for), so the
     # same strategy can switch it on in one market and leave it off in another.
     if hasattr(cls, "regime_for"):

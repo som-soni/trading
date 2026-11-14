@@ -149,6 +149,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.sector_rotation import SectorRotationStrategy
     from ..backtesting.stage4_shorts import Stage4ShortsStrategy
     from ..backtesting.turtle_trend import TurtleTrendStrategy
+    from ..backtesting.value_ranking import ValueRankingStrategy
 
     return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy,
                                 DualMomentumStrategy, SectorRotationStrategy,
@@ -156,7 +157,7 @@ def portfolio_strategies() -> dict:
                                 MaTrendStrategy, CombinationStrategy, QualityMomentumStrategy,
                                 Stage4ShortsStrategy, TurtleTrendStrategy, EtfSwingStrategy,
                                 ParabolicShortStrategy, MasonsonTqqqStrategy,
-                                BoucherStocksStrategy, BoucherBondsGoldStrategy)}
+                                BoucherStocksStrategy, BoucherBondsGoldStrategy, ValueRankingStrategy)}
 
 
 def all_specs() -> dict:

@@ -104,13 +104,14 @@ def _ttm_sales_growth(series: list[dict]) -> float | None:
     return sum(x["rev"] for x in q) / prior - 1 if prior > 0 else None
 
 
-def _latest(periods: dict, d: dt.date) -> tuple[dt.date, dict] | None:
-    """The newest statement period public on `d` and not stale."""
+def _latest(periods: dict, d: dt.date, stale_days: int = QM_STATEMENT_STALE_DAYS) -> tuple[dt.date, dict] | None:
+    """The newest statement period public on `d` and not stale (older than `stale_days`; value_ranking
+    passes its own limit)."""
     known = [e for e in periods if e + dt.timedelta(days=LINES_FILING_LAG_DAYS) <= d]
     if not known:
         return None
     e = max(known)
-    return (e, periods[e]) if (d - e).days <= QM_STATEMENT_STALE_DAYS else None
+    return (e, periods[e]) if (d - e).days <= stale_days else None
 
 
 def measure(rows: list[dict], lines: dict, d: dt.date, financial: bool) -> dict:

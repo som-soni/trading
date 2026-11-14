@@ -53,6 +53,7 @@ STYLES = {
     "breakout": "Breakout from a base",
     "trend": "Trend following",
     "event": "Event / catalyst",
+    "value": "Value (cheap against its fundamentals)",
 }
 
 # The market behaviour a strategy tries to exploit — the standard first cut

@@ -1400,5 +1400,26 @@
       "n_assets": 13
     },
     "version": "1.0"
+  },
+  "value_ranking": {
+    "family": "value_ranking",
+    "fingerprint": "d37ade2e",
+    "params": {
+      "FILING_LAG_DAYS": 60,
+      "LINES_FILING_LAG_DAYS": 90,
+      "STALE_RESULTS_DAYS": 200,
+      "VR_MIN_RATIOS": 3,
+      "VR_MOMENTUM_DROP_PCT": 20,
+      "VR_QUALITY_DROP_PCT": 33,
+      "VR_STATEMENT_STALE_DAYS": 550,
+      "VR_TOP_N": 20,
+      "_key": "value_ranking",
+      "cost_bps": 5.0,
+      "liquidity_top": 1000,
+      "lookback": 252,
+      "skip": 21,
+      "top_n": 20
+    },
+    "version": "1.0"
   }
 }
