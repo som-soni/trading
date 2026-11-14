@@ -12,8 +12,8 @@ threshold is the Minervini strategy's own constant (strategies/minervini_spec.py
 A session meeting all three is "coiled". A "breakout" is a close above the previous session's window high
 on volume >= VOL_MULT x its 50-day average (today included), the session after a coiled one.
 
-`reading` is the one definition. The chart's indicator (`gauge`, /api/contraction) and the coil-breakout
-strategy (strategies/minervini_coil.py) both call it, so what the chart shows is what the backtest traded on.
+`reading` is the one definition. The chart's indicator (`gauge`, /api/contraction) calls it; so did the
+coil-breakout strategy (strategies/minervini_coil.py, retired 2026-11-14 and no longer registered).
 
 These are readings, not the Minervini strategy. They cannot see what makes a base a VCP -- successively
 smaller pullbacks, found from the base's swing points -- which its own detector does (core/vcp_spec.py).

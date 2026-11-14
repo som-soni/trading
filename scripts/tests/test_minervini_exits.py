@@ -223,6 +223,48 @@ def test_guide_20_day_rule_ends_after_its_window():
     assert t.exit_reason == "OPEN", t.exit_reason
 
 
+def test_open_fill_stopped_on_its_own_bar():
+    # 2026-11-14 (review B1): bought at the open 101, the same session's low 94 breaks the 95 stop. The whole bar
+    # came after the fill, so it is stopped that session at the stop (-1R), not sold at the next open.
+    df = _frame([(99, 101, 98, 100.5), (101, 102, 94, 96), (93, 94, 92, 93), (93, 94, 92, 93)])
+    t = _run(df, _signal(df))
+    assert t.entry_date == df.index[1] and t.entry_price == 101
+    assert t.exit_reason == "STOP" and t.exit_date == df.index[1] and t.exit_price == 95, \
+        (t.exit_reason, t.exit_date, t.exit_price)
+
+
+def test_open_fill_above_its_stop_is_held():
+    df = _frame([(99, 101, 98, 100.5), (101, 102, 96, 101.5), (101, 103, 100.5, 102.5), (102, 103, 101, 102)])
+    t = _run(df, _signal(df))
+    assert t.exit_date != df.index[1], (t.exit_reason, t.exit_date)
+
+
+def _buy_stop(df, entry=100.1, stop=95.0):
+    return Signal(date=df.index[0], symbol="X", setup="MV-02", entry=entry, stop=stop, target=200.0,
+                  decision="TRADE ON TRIGGER", quality=1.0,
+                  meta={"order": "stop", "pivot": 100.0, "tight_low": stop / 0.995, "max_fill": 105.0,
+                        "max_risk_pct": 0.10, "base_id": "b1"})
+
+
+def test_intraday_buy_stop_low_under_stop_is_not_known_to_follow_the_fill():
+    # a buy-stop filled during the session (open 99 under the 100.1 trigger); the low 94 may have come before
+    # the buy, and the bar closed back above the stop: not stopped on the fill session
+    df = _frame([(98, 99, 97, 98.5), (99, 102, 94, 101, 3000), (101, 103, 100.5, 102.5), (102, 103, 101, 102)])
+    t = _run(df, _buy_stop(df))
+    assert t.entry_date == df.index[1] and t.entry_price == 100.1, (t.entry_date, t.entry_price)
+    assert t.exit_date != df.index[1], (t.exit_reason, t.exit_date)
+
+
+def test_intraday_buy_stop_that_closes_under_its_stop_is_stopped_that_session():
+    # bought at 100.1 during the session, closed at 94.5 under the 95 stop: the price crossed the stop after
+    # the buy, so it is stopped that session at the stop
+    df = _frame([(98, 99, 97, 98.5), (99, 101, 94, 94.5, 3000), (94, 95, 93, 94), (94, 95, 93, 94)])
+    t = _run(df, _buy_stop(df))
+    assert t.entry_date == df.index[1] and t.entry_price == 100.1, (t.entry_date, t.entry_price)
+    assert t.exit_reason == "STOP" and t.exit_date == df.index[1] and t.exit_price == 95, \
+        (t.exit_reason, t.exit_date, t.exit_price)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

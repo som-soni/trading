@@ -11,12 +11,17 @@ fills at exists.
                            the paper book holds -- and fills it at the next session's open: sell what
                            left, then size each target to its weight of the account valued at that open,
                            as the backtest's `fill=next_open` does (baseline.run's `execute`)
-    signal strategies      each tradeable setup of the strategy's run on a session becomes an entry at
-                           the next session's open, sized by the market's risk per trade on the setup's
-                           stop; the open-position tracker (tracker.py) manages it, and an exit it reports
-                           fills at the stop (a stop reached intraday) or at the next open (a close-based
-                           exit). Partial sales of an exit ladder are not paper-traded: the position exits
-                           whole.
+    signal strategies      each session's live run stores every tradeable setup as the order its backtest
+                           would place (`order` in the run's rows: levels, buy-stop or open order, buy
+                           range, stop cap, expiry -- screening/pipeline.py). Each day the job replays
+                           those orders through the backtest's own simulator (`portfolio_sim.simulate`
+                           with the strategy's `backtest_args`: exits, slots, open-risk cap, progressive
+                           exposure, costs, the market filter's cancels) from the book's start, and writes
+                           the fills that are new to the ledger -- buys, partial sales and exits alike.
+                           Until 2026-11-14 every tradeable row was bought at the next open at a flat 1%
+                           risk with the market's 10 slots, so a buy-stop setup (most of minervini's) was
+                           bought whether or not it triggered, and the record did not test the strategy
+                           that was backtested (Minervini review B3).
 
 Pending decisions wait in `paper_orders` until the session they fill on is stored. The paper book's
 ledger rows carry source `paper`; the account form and Kite never touch a paper book.
@@ -31,7 +36,7 @@ from datetime import date
 import pandas as pd
 
 from ..config import MARKETS
-from ..marketdata import db
+from ..marketdata import corporate_actions, db
 from . import ledger
 
 PAPER_SUFFIX = "@paper"
@@ -282,8 +287,8 @@ def fill_rebalance(book: str, market: str, strategy: str, weights: dict, day: pd
 
 def step(book: str, market: str, today: date | None = None) -> dict:
     """One day of a paper book: fill what is pending at the sessions now stored, then record what the
-    strategy decides on the latest close. Idempotent: a decision is stored once per close, a fill once."""
-    from . import tracker
+    strategy decides on the latest close. Idempotent: a decision is stored once per close, a fill once.
+    A signal strategy's book replays its live orders instead (`_step_signal`)."""
     init_schema()
     strategy = strategy_of(book, market)
     kind = kind_of(strategy)
@@ -291,6 +296,9 @@ def step(book: str, market: str, today: date | None = None) -> dict:
     latest = sess[-1]
     px_cache: dict = {}
     done = {"filled": 0, "skipped": 0, "decided": 0}
+
+    if kind == "signal":
+        return _step_signal(book, market, strategy, sess, done)
 
     # ---- 1. fills: each pending order at the first session after its decision, once that is stored
     for o in _pending(book, market):
@@ -307,130 +315,159 @@ def step(book: str, market: str, today: date | None = None) -> dict:
             _close_order(o["id"], "filled", day.date())
             done["filled"] += 1
             continue
-        acct = ledger.holdings_of(book, market)
-        if o["kind"] == "exit":
-            n = acct["positions"].get(o["symbol"], 0)
-            p = _price_on(market, o["symbol"], day, "open", px_cache)
-            if n and p:
-                ledger.record(book, market, [{"side": "SELL", "symbol": o["symbol"], "shares": n, "price": p,
-                                              "costs": round(n * p * _cost_bps(strategy, market, o["symbol"]) / 10_000, 4),
-                                              "trade_date": day.date().isoformat(), "note": f"paper: {o['setup']} at the open"}],
-                              source="paper")
-            _close_order(o["id"], "filled" if n else "skipped", day.date())
-            done["filled" if n else "skipped"] += 1
-            continue
-        # entry: the next open, sized on the setup's stop by the market's risk per trade
-        cfg = MARKETS[market]
-        p = _price_on(market, o["symbol"], day, "open", px_cache)
-        why = None
-        if not p:
-            why = "no open stored"
-        elif o["stop"] is None or p <= o["stop"]:
-            why = "opened at or below the stop"
-        elif o["target"] and p >= o["target"]:
-            why = "opened past the target"
-        elif o["symbol"] in acct["positions"]:
-            why = "already held"
-        elif len(acct["positions"]) >= cfg.max_open_positions:
-            why = "all position slots full"
-        sh = 0
-        if why is None:
-            marks = {s: _price_on(market, s, day, "open", px_cache) or 0.0 for s in acct["positions"]}
-            equity = acct["cash"] + sum(n * marks[s] for s, n in acct["positions"].items())
-            bps = _cost_bps(strategy, market, o["symbol"])
-            sh = int(equity * cfg.risk_pct // (p - o["stop"]))
-            sh = min(sh, int(equity * cfg.max_position_pct // p), int(acct["cash"] // (p * (1 + bps / 10_000))))
-            if sh < 1:
-                why = "not enough cash"
-        if why:
-            _close_order(o["id"], "skipped", day.date(), why)
-            done["skipped"] += 1
-            continue
-        ledger.record(book, market, [{"side": "BUY", "symbol": o["symbol"], "shares": sh, "price": p,
-                                      "costs": round(sh * p * bps / 10_000, 4), "trade_date": day.date().isoformat(),
-                                      "initial_stop": o["stop"], "target": o["target"], "setup": o["setup"],
-                                      "entry_rule": o["entry_rule"], "meta": o["meta"],
-                                      "note": f"paper: {o['setup'] or 'setup'} of {o['signal_date']} at the open"}],
-                      source="paper")
-        _close_order(o["id"], "filled", day.date())
-        done["filled"] += 1
-
     # ---- 2. decisions on the latest close
-    pending_syms = {(o["kind"], o["symbol"]) for o in _pending(book, market)}
-    if kind != "signal":
-        with db.get_connection().cursor() as cur:
-            cur.execute("SELECT max(as_of) FROM book_rebalances WHERE book=%s AND market=%s", (book, market))
-            last = cur.fetchone()[0]
-        # the strategy trades on the last session of each month: the next weekday is in a new month
-        month_end = (latest + pd.offsets.BDay(1)).month != latest.month
-        # a month-end the job missed (or a holiday on the month's last weekday) is decided late, on the
-        # first close after it, rather than skipped for a month
-        missed = last is not None and (pd.Timestamp(last).to_period("M") < latest.to_period("M") - 1
-                                       or (pd.Timestamp(last).to_period("M") == latest.to_period("M") - 1
-                                           and pd.Timestamp(last) + pd.offsets.BDay(1) < latest.replace(day=1)))
-        if last is None or (month_end and last < latest.date()) or missed:
-            held = ledger.holdings_of(book, market)["positions"]
-            # decide on the calendar's latest session: stock prices for a session are often stored before
-            # the index series the calendar reads, and a selection dated a session ahead never matched
-            # `latest`, so the decision was dropped every day (vol-scaled and quality momentum sat in cash
-            # from 2026-11-09)
-            from ..marketdata import asof
-            with asof.boundary(latest, "paper decision"):
-                as_of, spec_id, weights = _targets(strategy, market, held)
-            if as_of == latest.date().isoformat():
-                tg = [{"symbol": s, "weight_pct": round(w * 100, 4)} for s, w in sorted(weights.items())]
-                rid = ledger.save_rebalance(book, market, as_of, spec_id, tg, [], note="paper")
-                _order(book, market, "rebalance", as_of, rebalance_id=rid, note="fills at the next open")
-                done["decided"] += 1
-        return done
-
-    # signal strategy: the tracker's exits, then the latest run's tradeable setups
-    tracker.refresh(market, books=[book])
-    for st in tracker.statuses(market):
-        if st["book"] != book or st["status"] not in ("stopped", "exit_next_open"):
-            continue
-        sym, n = st["symbol"], ledger.holdings_of(book, market)["positions"].get(st["symbol"], 0)
-        if not n or ("exit", sym) in pending_syms:
-            continue
-        if st["status"] == "stopped" and st["exit_date"] and st["exit_price"]:
-            ledger.record(book, market, [{"side": "SELL", "symbol": sym, "shares": n, "price": st["exit_price"],
-                                          "costs": round(n * st["exit_price"] * _cost_bps(strategy, market, sym) / 10_000, 4),
-                                          "trade_date": st["exit_date"], "note": f"paper: {st['reason']} at the stop"}],
-                          source="paper")
-            continue
-        _order(book, market, "exit", st["exit_date"] or st["as_of"], symbol=sym, setup=st["reason"],
-               note="sells at the next open")
-        done["decided"] += 1
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT max(run_id) FROM universe_history WHERE market=%s AND strategy=%s", (market, strategy))
-        run = cur.fetchone()[0]
-        if not run:
-            return done
-        cur.execute("SELECT symbol, full_row FROM universe_history WHERE market=%s AND strategy=%s AND run_id=%s",
-                    (market, strategy, run))
-        rows = cur.fetchall()
-        cur.execute("SELECT count(*) FROM paper_orders WHERE book=%s AND market=%s AND meta->>'run'=%s",
-                    (book, market, run))
-        seen = cur.fetchone()[0]
-    run_day = pd.Timestamp(run[:10])
-    signal_day = sess[sess <= run_day][-1] if (sess <= run_day).any() else None
-    started = _started(book, market)
-    if seen or signal_day is None or (started and signal_day.date() < started):
-        return done
-    held = ledger.holdings_of(book, market)["positions"]
-    for sym, fr in rows:
-        if fr.get("tradeable") is not True or sym in held or ("entry", sym) in pending_syms:
-            continue
-        stop, entry, tr = fr.get("stop"), fr.get("entry"), fr.get("target_r")
-        if not stop:
-            continue
-        target = float(entry) + float(tr) * (float(entry) - float(stop)) if entry and tr and float(entry) > float(stop) else None
-        meta = {"run": run, **{v: fr[k] for k, v in (("box_top", "box_top"), ("box_bottom", "box_bottom"),
-                                                     ("pivot", "pivot"), ("box_top_date", "setup_start")) if fr.get(k)}}
-        _order(book, market, "entry", signal_day.date(), symbol=sym, stop=float(stop), target=target,
-               setup=fr.get("decision"), entry_rule=fr.get("strategy_setup"), meta=meta, note="buys at the next open")
-        done["decided"] += 1
+        cur.execute("SELECT max(as_of) FROM book_rebalances WHERE book=%s AND market=%s", (book, market))
+        last = cur.fetchone()[0]
+    # the strategy trades on the last session of each month: the next weekday is in a new month
+    month_end = (latest + pd.offsets.BDay(1)).month != latest.month
+    # a month-end the job missed (or a holiday on the month's last weekday) is decided late, on the
+    # first close after it, rather than skipped for a month
+    missed = last is not None and (pd.Timestamp(last).to_period("M") < latest.to_period("M") - 1
+                                   or (pd.Timestamp(last).to_period("M") == latest.to_period("M") - 1
+                                       and pd.Timestamp(last) + pd.offsets.BDay(1) < latest.replace(day=1)))
+    if last is None or (month_end and last < latest.date()) or missed:
+        held = ledger.holdings_of(book, market)["positions"]
+        # decide on the calendar's latest session: stock prices for a session are often stored before
+        # the index series the calendar reads, and a selection dated a session ahead never matched
+        # `latest`, so the decision was dropped every day (vol-scaled and quality momentum sat in cash
+        # from 2026-11-09)
+        from ..marketdata import asof
+        with asof.boundary(latest, "paper decision"):
+            as_of, spec_id, weights = _targets(strategy, market, held)
+        if as_of == latest.date().isoformat():
+            tg = [{"symbol": s, "weight_pct": round(w * 100, 4)} for s, w in sorted(weights.items())]
+            rid = ledger.save_rebalance(book, market, as_of, spec_id, tg, [], note="paper")
+            _order(book, market, "rebalance", as_of, rebalance_id=rid, note="fills at the next open")
+            done["decided"] += 1
     return done
+
+
+def _live_signals(market: str, strategy: str, sess: pd.DatetimeIndex, started) -> list:
+    """The orders the strategy's live runs placed since the book started, as backtest Signals: each session's
+    latest run, its rows the live screen called tradeable (or demoted only for the live list's per-sector cap,
+    which no backtest applies), each with the order the backtest would place (`order`, screening/pipeline.py).
+    A row without `order` (a run before 2026-11-14) cannot be replayed and is left out."""
+    from .portfolio_sim import Signal
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT run_id, symbol, full_row FROM universe_history WHERE market=%s AND strategy=%s "
+                    "AND run_id >= %s ORDER BY run_id", (market, strategy, started.isoformat()))
+        rows = cur.fetchall()
+    by_day: dict = {}
+    for run, sym, fr in rows:
+        run_day = pd.Timestamp(run[:10])
+        before = sess[sess <= run_day]
+        if not len(before) or before[-1].date() < started:
+            continue
+        by_day.setdefault(before[-1], {}).setdefault(run, []).append((sym, fr))
+    out = []
+    for day, runs in sorted(by_day.items()):
+        for sym, fr in runs[max(runs)]:           # the session's latest run
+            o = fr.get("order")
+            if not o or not (fr.get("tradeable") is True or fr.get("decision") == "WATCH - SECTOR LIMIT"):
+                continue
+            meta = dict(o.get("meta") or {})
+            if o.get("rs") is not None:
+                meta["rs"] = int(o["rs"])        # as filter_min_rs stamps it, for the RS ranking
+            out.append(Signal(date=day, symbol=sym, setup=o["setup"], entry=float(o["entry"]), stop=float(o["stop"]),
+                              target=float(o["target"]) if o.get("target") is not None else float("nan"),
+                              decision=o.get("decision") or fr.get("decision"), quality=float(o.get("quality") or 0),
+                              meta=meta))
+    return out
+
+
+def replay(book: str, market: str, strategy: str, sess: pd.DatetimeIndex | None = None):
+    """The paper book's trading as the strategy's backtest would have done it: its live orders since the book
+    started, through `portfolio_sim.simulate` with the strategy's own settings (backtest.sim_settings_for) and
+    the book's capital, on stored bars to the latest session. None when there is nothing to replay."""
+    import dataclasses
+    from ..core import indicators as ind
+    from ..marketdata import cache, corporate_actions
+    from ..strategies.variants import market_rules
+    from . import spec as spec_mod
+    from .backtest import rerank_signals, sim_settings_for
+    from .portfolio_sim import simulate
+    sess = sessions(market) if sess is None else sess
+    started = _started(book, market)
+    if started is None or not len(sess):
+        return None
+    signals = _live_signals(market, strategy, sess, started)
+    if not signals:
+        return None
+    cap = _capital(book, market)
+    with market_rules(strategy, market):
+        st = sim_settings_for(strategy, market)
+        cfg = dataclasses.replace(st["cfg"], account_size=float(cap or st["cfg"].account_size))
+        prices = {}
+        for sym in sorted({s.symbol for s in signals}):
+            raw = cache.load_cached(market, sym)
+            if raw is not None and not raw.empty:
+                prices[sym] = ind.enrich_daily(raw, corporate_actions.credits_for(market, sym, raw))   # as the backtest
+        signals = [s for s in signals if s.symbol in prices]
+        if not signals:
+            return None
+        if st["spec_costs"]:
+            signals = spec_mod.annotate_costs(signals, prices, market)
+        if st["rank_by"] == "rs":
+            signals = spec_mod.rank_rs_then_tightness(signals)
+        elif st["rank_by"] != "setup":
+            signals = rerank_signals(signals, prices, st["rank_by"])
+        start = sess[sess >= pd.Timestamp(started)][0]
+        credits = corporate_actions.Credits.for_market(market, list(prices))
+        return simulate(signals, prices, cfg, start, end=sess[-1], credits=credits, **st["simulate"])
+
+
+def _step_signal(book: str, market: str, strategy: str, sess: pd.DatetimeIndex, done: dict) -> dict:
+    """A signal strategy's paper day: replay its live orders (`replay`) and write the fills the ledger does not
+    have yet. The replay is deterministic on stored data, so each day repeats the earlier fills and adds the
+    new session's; a recorded fill the replay no longer makes (a revised bar, a re-run screen) is reported as
+    `diverged`, never rewritten -- the ledger is a record."""
+    from collections import Counter
+    from . import tracker
+    for o in _pending(book, market):         # the old next-open entries: superseded by the replay
+        if o["kind"] in ("entry", "exit"):
+            _close_order(o["id"], "skipped", None, "superseded: signal books replay the backtest's order rules")
+    res = replay(book, market, strategy, sess)
+    done.update(diverged=0)
+    if res is None:
+        return done
+    have = Counter((r["trade_date"], r["symbol"], r["side"], round(float(r["shares"]), 6))
+                   for r in ledger.trades(book, market) if r["source"] == "paper" and r["side"] in ("BUY", "SELL"))
+    first = {}                               # (symbol, entry date) -> the trade, for a buy's levels
+    for t in res.trades:
+        first[(t.symbol, pd.Timestamp(t.entry_date).date().isoformat())] = t
+    rows, seen = [], Counter()
+    for day, sym, side, n, px, costs, _at in res.fills:
+        d = pd.Timestamp(day).date().isoformat()
+        key = (d, sym, side, round(float(n), 6))
+        seen[key] += 1
+        if seen[key] <= have.get(key, 0):
+            continue                          # already in the ledger
+        row = {"side": side, "symbol": sym, "shares": int(n), "price": round(float(px), 6),
+               "costs": round(float(costs), 4), "trade_date": d}
+        t = first.get((sym, d)) if side == "BUY" else None
+        if t is not None:
+            row.update(initial_stop=float(t.initial_stop), setup=t.setup, entry_rule=t.setup,
+                       target=float(t.target) if t.target == t.target else None,
+                       meta={k: v for k, v in t.meta.items() if not str(k).startswith("_")
+                             and isinstance(v, (str, int, float, bool, type(None)))},
+                       note=f"paper: {t.setup} of {pd.Timestamp(t.signal_date).date() if t.signal_date is not None else '?'}")
+        else:
+            row["note"] = f"paper: {side.lower()}"
+        rows.append(row)
+    done["diverged"] = sum(max(0, n - seen.get(k, 0)) for k, n in have.items())
+    if rows:
+        ledger.record(book, market, rows, source="paper")
+        done["filled"] += len(rows)
+    tracker.refresh(market, books=[book])     # the open positions' status, for the Trade desk
+    return done
+
+
+def _capital(book: str, market: str):
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT capital FROM books WHERE book=%s AND market=%s", (book, market))
+        r = cur.fetchone()
+    return r[0] if r else None
 
 
 def _started(book: str, market: str):

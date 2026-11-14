@@ -16,7 +16,7 @@ simulator, each using only data up to the signal's own date:
 """
 
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -27,9 +27,53 @@ from ..marketdata import asof, cache, db
 
 logger = logging.getLogger(__name__)
 
-# U-01 / U-02: the tradable universe the RS rating ranks across
-MIN_PRICE = {"india": 50.0, "us": 10.0}
-MIN_VALUE_50D = {"india": 1e8, "us": 5e6}          # ₹10 crore / $5 million average daily traded value
+# U-01 / U-02: the tradable universe the RS rating ranks across.
+@dataclass(frozen=True)
+class RsUniverse:
+    """Who the RS rating (TT-08) ranks: a stock trading at `min_price_*` or more on the day (the price it
+    traded at, not its split-adjusted close) with a 50-day average traded value at the floor. Any strategy page
+    may quote these as `{RS_UNIVERSE.min_price_inr}` (`Strategy.render_doc`). They are in no strategy's
+    fingerprint, so changing one is a version bump by hand for every strategy that gates on the rating
+    (minervini, kell_cycle and rs_leaders in 2026-11).
+
+    The value floor scales with the market (`scale_value`, since 2026-11-14; Minervini review B6), as
+    minervini_spec's turnover floor has since its 1.45: `value_bp_*` basis points of the day's market turnover
+    (`market_turnover`), set so it equals the fixed `min_value_*` in late 2026 (₹1.05 lakh crore and $631
+    billion a day) -- about ₹0.9 crore in 2013 instead of ₹10 crore. Before the turnover series starts its
+    first day is used; with none stored, the fixed floor. The fixed floor left 59-64% of India's Trend
+    Template bars of 2013-16 unrated, so 44% of minervini's accepted India signals were dropped as "outside the
+    rated universe" by a floor the scan's own (scaled) liquidity test had already passed. 0 = the fixed floor."""
+    min_price_inr: float = 50.0
+    min_price_usd: float = 10.0
+    min_value_inr_cr: float = 10.0        # ₹ crore a day: the fixed floor, and the scaled one's late-2026 value
+    min_value_usd_m: float = 5.0          # $ million a day: as India
+    scale_value: int = 1
+    value_bp_inr: float = 0.95            # ≈ ₹10 crore of a ₹1.05 lakh crore day
+    value_bp_usd: float = 0.079           # ≈ $5 million of a $631 billion day
+
+    def min_price(self, market: str) -> float:
+        return self.min_price_inr if market == "india" else self.min_price_usd
+
+    def fixed_value(self, market: str) -> float:
+        return self.min_value_inr_cr * 1e7 if market == "india" else self.min_value_usd_m * 1e6
+
+    def value_floor(self, market: str, dates: "pd.DatetimeIndex") -> "pd.Series":
+        """The traded-value floor on each of `dates`."""
+        fixed = pd.Series(self.fixed_value(market), index=dates, dtype=float)
+        if not self.scale_value or not len(dates):
+            return fixed
+        try:
+            t = market_turnover(market)
+        except Exception:                      # noqa: BLE001 -- no breadth table yet: the fixed floor
+            return fixed
+        if t.empty:
+            return fixed
+        on = t.reindex(t.index.union(dates)).ffill().bfill().reindex(dates)
+        bp = self.value_bp_inr if market == "india" else self.value_bp_usd
+        return bp / 1e4 * on.astype(float)
+
+
+RS_UNIVERSE = RsUniverse()
 MIN_HISTORY = 260                                    # U-03
 
 # C-01 / C-02, per side, in basis points of notional
@@ -124,6 +168,7 @@ def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
     traded = close.copy()
     k = split_factor_after(market, close.index, close.columns)
     traded[k.columns] = close[k.columns] * k
+    floors = RS_UNIVERSE.value_floor(market, close.index)
     out = {}
     for d in dates:
         if d not in close.index:
@@ -142,7 +187,8 @@ def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
         # one definition of the score, in core.indicators; this ranks it across the market
         raw_rs = ind.rs_score(close).iloc[i]
         age_ok = (first_s <= d_use - pd.Timedelta(days=int(MIN_HISTORY * 1.4))) | (have.iloc[i] >= MIN_HISTORY)
-        ok = (px >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & age_ok & raw_rs.notna()
+        liquid = (px >= RS_UNIVERSE.min_price(market)) & (v50.iloc[i] >= floors[d_use])
+        ok = liquid & age_ok & raw_rs.notna()
         v = raw_rs[ok]
         if len(v) < 20:
             continue
@@ -150,7 +196,7 @@ def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
         out[d] = (1 + 98 * (pct - 1 / len(v)) / (1 - 1 / len(v))).round()
         if young_min_bars:
             h = have.iloc[i]
-            young = ((px >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & ~age_ok
+            young = (liquid & ~age_ok
                      & (h >= young_min_bars) & c.notna())
             extra = {}
             for sym in young[young].index:
@@ -734,10 +780,16 @@ def _breakout_bases(market: str, strategy_key: str) -> dict:
 def base_numbers(signals: list, prices: dict, market: str, strategy_key: str) -> list:
     """Base number per signal: 1 + the other bases of this stock that produced a setup (traded or
     not) before the signal and since the trend last broke (TT-01 … TT-04 failing BASE_RESET_DAYS
-    sessions in a row)."""
-    breakouts = _breakout_bases(market, strategy_key)
+    sessions in a row). A signal whose strategy already numbered its base (meta["base_no"]: minervini
+    1.68+, the count its MAX_BASE_COUNT rule enforced) keeps that number, so the trades table shows the
+    count the rule used."""
+    breakouts = None
     out = list(signals)
     for k, s in enumerate(signals):
+        if "base_no" in s.meta:          # the strategy's own count (None: a setup with no base, a power play)
+            continue
+        if breakouts is None:
+            breakouts = _breakout_bases(market, strategy_key)
         bid = s.meta.get("base_id")
         df = prices.get(s.symbol)
         if bid is None or df is None:

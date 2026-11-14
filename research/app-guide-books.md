@@ -139,7 +139,7 @@ the market's configured account by default). A paper book is named `<strategy>@p
 | Momentum, volatility-scaled momentum | The month's last close, from what the paper book holds | The next open: sell what left, then each target at its weight of the account valued at that open, whole shares |
 | Dual momentum | The month's last close: the pick | The next session's level of the pick's series — the asset its backtest prices, not a fund |
 | The combination | The month's last close, both sleeves | As above, each sleeve at its own cost |
-| Signal strategies | Each run's tradeable setups | The next open, sized on the setup's stop at the market's risk per trade, up to the market's position limit. Exits follow the tracker: at the stop, or the next open |
+| Signal strategies | Each run's tradeable setups, stored with the order the backtest would place (the run's `order` field) | Through the backtest's own simulator (`paper.replay`, `portfolio_sim.simulate` with the strategy's `backtest_args`): a buy-stop waits for its trigger until it expires, an open order buys the next open, sizing, slots, the open-risk cap, the market filter's cancels and every exit -- partial sales included -- as in a backtest. Since 2026-11-14; until then every tradeable setup was bought at the next open at the market's flat risk |
 
 Every fill pays the strategy's own cost per side. A decision waits under *Waiting for the next open* until that
 session is stored, so a late job run fills at the right price, not at the day it ran. A month-end the job
@@ -148,8 +148,10 @@ missed is decided on the first close after it.
 A book's page shows its value each session against the benchmark rebased to the same capital, the deepest
 fall, holdings and every trade.
 
-What a paper fill is not: a stock that gaps or trades thinly fills worse in reality, and a Minervini partial
-sale is not paper-traded (the position exits whole). Read a paper book as the rules' forward record, not as
+What a paper fill is not: a stock that gaps or trades thinly fills worse in reality. A signal book's ledger is
+the replay's fills, written once each; a fill the replay no longer makes (a revised bar, a re-run screen) is
+counted as `diverged` in the job's result, never rewritten. Runs stored before 2026-11-14 carry no `order` and
+are not replayed. Read a paper book as the rules' forward record, not as
 the result you would have had.
 
 ## 5. What is stored where

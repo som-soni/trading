@@ -64,6 +64,12 @@ DOC = {
         "month-end."
     ),
     "status": (
+        "OPTIMISE v1.7 (in-sample, 2013-01-01 to 2021-12-31, run 2026-11-14): INDIA 20.69% CAGR, +5.98 excess "
+        "over its blended benchmark, max drawdown -28.3%, 832 trades. The same code without the turnover fix "
+        "read 21.58%: its momentum sleeve had bought AURUM on a stale turnover floor on 2020-12-31 (momentum_vol_scaled "
+        "1.10). US not re-run: its momentum sleeve's US optimise result is unchanged by the fix, and the dual "
+        "sleeve reads no turnover. Every v1.6 figure below whose window includes December 2020 carries that "
+        "purchase; the verify window (2022 on) does not. "
         "FROM 2018-06-01 (full stage, v1.6, 2026-11-11 -- context, not a verdict; the years from 2022 are the "
         "verify window, and the start matches the quality-momentum runs): INDIA 22.89% CAGR, -27.3% max "
         "drawdown against its blended benchmark's 12.64% and -44.7% (+10.25 excess), volatility 17.9%, 836 "

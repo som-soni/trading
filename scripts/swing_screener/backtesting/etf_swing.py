@@ -153,7 +153,14 @@ DOC = {
                    "{ENTRY_DAYS}-day high, the strongest {RANK_DAYS}-day performers first, {MAX_POSITIONS} slots of "
                    "{ALLOC_PCT}% each, out on a close below the {TRAIL_EMA}-day EMA.",
     "status": (
-        "IN-SAMPLE ONLY, INDIA ONLY -- NO EDGE AS BUILT. v1.0, optimise stage (2013-2021, in-sample), India: "
+        "RETIRED 2026-11-14 -- NO EDGE IN EITHER MARKET (owner's decision on the review "
+        "research/review-etf_swing-2026-11-14.md, tracker #71). Kept as a measured negative result; not run "
+        "live, no verify run spent. Optimise stage (2013-2021, in-sample), v1.0: US 2.31% CAGR against SPY's 14.01% "
+        "(-11.70 points), max drawdown -30.1%, 517 trades; its 5,104 breakout signals did worse than a random liquid "
+        "ETF-day at 5, 20 and 60 sessions, and a plain top-5 monthly rotation of the same ETFs made 12.4%. India 0.76% "
+        "CAGR with about 11% of capital ever invested (about three ETFs eligible a day): too idle to judge. The "
+        "review found no bug in the trading logic.\n\n"
+        "Before retirement -- IN-SAMPLE ONLY, INDIA ONLY -- NO EDGE AS BUILT. v1.0, optimise stage (2013-2021, in-sample), India: "
         "0.76% CAGR against its benchmark's 13.54%, excess -12.78 points a year (-13.34 at the standard India "
         "cost), max drawdown -9.3% against -38.3%, Sharpe 0.27 against 0.86, 74 trades, win rate 31.5%. The "
         "book was mostly idle cash, which earns nothing here: the ₹5 crore liquidity floor leaves about three "
@@ -221,6 +228,7 @@ class EtfSwingStrategy(PortfolioStrategy):
                                        "close below the 21-day EMA."),)
     name = DOC["name"]
     description = DOC["description"]
+    retired = "2026-11-14"
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = tuple(DOC["how_it_works"])

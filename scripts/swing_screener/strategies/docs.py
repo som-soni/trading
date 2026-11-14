@@ -197,25 +197,48 @@ def screen_doc(key: str) -> dict:
             "source": _source_info(type(sc)) | {"file": "scripts/swing_screener/screens/__init__.py"}}
 
 
+def _portfolio_param(cls, source: str) -> dict:
+    """A portfolio strategy's param_docs source -> its value per market. As `_resolve_param`, plus a class
+    attribute that is off by default (`hold_rank = None`), which the doc namespace leaves out because it
+    is not a number. A source naming nothing raises: check() renders every page, so it fails there."""
+    try:
+        return _resolve_param(cls, source)
+    except KeyError:
+        if not hasattr(cls, source):
+            raise KeyError(f"param_docs names '{source}', which is neither a constant nor an attribute") from None
+        v = getattr(cls, source)
+        return {m: ("off" if v is None else v) for m in MARKETS}
+
+
 def baseline_doc(key: str) -> dict:
     """Any registered PortfolioStrategy's page.
 
     Takes the key rather than closing over one class: these differ only in which tunables they
     declare, so one renderer serves all of them and adding a strategy stays a registry entry.
     """
+    import sys
+
     from . import portfolio_strategies
-    from ..backtesting import baseline
 
     _MB = portfolio_strategies()[key]
     d = _MB.doc
     r = _MB.render_doc
-    params = []
-    for a in baseline.build_parser()._actions:
-        if not a.option_strings or a.dest in ("help", "market", "start"):
-            continue
-        default = "off" if a.const is True and a.default is False else ("none" if a.default is None else a.default)
-        params.append({"label": a.option_strings[-1], "source": "CLI", "meaning": (a.help or "").replace("%%", "%"),
-                       "values": {m: _fmt(default) for m in MARKETS}})
+    # Each strategy's OWN tunables, from its own param_docs, resolved like a screener's. This used to
+    # list momentum_baseline's command-line options (baseline.build_parser) on every portfolio page, so
+    # sector_rotation read "top-n 10, lookback 252, 5bps" while it ran top 3, 126 sessions, 10bps.
+    params = [{"label": label, "source": src, "meaning": r(meaning),
+               "values": {m: _fmt(v) for m, v in _portfolio_param(_MB, src).items()}}
+              for label, src, meaning in _MB.param_docs]
+    # The markets its runner backtests: a single-market runner names its one market as a module-level
+    # MARKET (and restricts --market to it); every other runner takes any market in config.
+    runner_mod = sys.modules[_MB.__module__]
+    own = getattr(runner_mod, "MARKET", None)
+    markets = [own] if own in MARKETS else list(MARKETS)
+
+    def per_market(label: str, stage: str) -> dict:
+        return {(label if len(markets) == 1 else f"{label}, {MARKETS[m].name}"):
+                f"python -m jobs enqueue backtest --market {m} --strategies {key} --stage {stage}" for m in markets}
+
     return {
         "key": d["key"], "kind": "benchmark", "name": d["name"], "description": r(d["description"]), "status": r(d["status"]),
         "selection": _MB.selection, "selection_label": SELECTION[_MB.selection],
@@ -243,12 +266,13 @@ def baseline_doc(key: str) -> dict:
         "params": params, "decisions": [], "regime_note": "",
         # the strategy IS its tunables now, so the command names it instead of re-listing them
         "commands": {
-            "Backtest in-sample (optimise)": f"python -m jobs enqueue backtest --market india --strategies {key} --stage optimise",
-            "Verify out-of-sample (once per version)": f"python -m jobs enqueue backtest --market india --strategies {key} --stage verify",
+            **per_market("Backtest in-sample (optimise)", "optimise"),
+            **per_market("Verify out-of-sample (once per version)", "verify"),
             # a strategy's own comparison and variant runs (doc["commands"]), shown beside the two above
             **d.get("commands", {}),
         },
-        "source": _source_info(baseline),
+        "markets": markets,
+        "source": _source_info(_MB),
     }
 
 
@@ -391,6 +415,12 @@ def check() -> list[str]:
             if cls.horizon not in HORIZONS:
                 problems.append(f"{sk}: horizon {cls.horizon!r} is not one of {sorted(HORIZONS)} — every strategy "
                                 "declares its holding period (strategies/base.py HORIZONS)")
+            if not cls.param_docs:
+                problems.append(f"{sk}: `param_docs` is empty, so its page lists no parameters")
+            try:   # render the page: a param_docs row naming nothing, or a broken placeholder, fails here
+                baseline_doc(sk)
+            except Exception as exc:  # noqa: BLE001
+                problems.append(f"{sk}: its page cannot be rendered ({exc!r})")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"portfolio strategies: cannot load docs ({exc})")
     return problems

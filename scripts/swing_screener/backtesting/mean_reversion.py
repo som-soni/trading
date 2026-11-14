@@ -303,7 +303,17 @@ MR_DOC = {
                    "{RSI_ENTRY} while it is above its {TREND_SMA}-day average; sell on the first close "
                    "above the {EXIT_SMA}-day average, or after {MAX_HOLD} sessions.",
     "status": (
-        "ALL THREE MEASURES, OPTIMISE STAGE (2013-2021, in-sample), 1.2, measured 2026-11-12: none beats the "
+        "RETIRED 2026-11-14 -- NO STANDALONE EDGE AND NO DIVERSIFICATION (owner's decision on the review "
+        "research/review-mean_reversion-2026-11-14.md). Kept as a measured negative result; not run live, no verify "
+        "run spent. Optimise stage (2013-2021, in-sample), 1.2: the signal times entries better than a random entry "
+        "on the same fund (+0.18% a trade US, +0.22% India), but the book is invested about 10% of the time and "
+        "trails the index held at its own exposure by 1.12 (US) and 1.47 (India) points a year; deflated Sharpe "
+        "0.23-0.31. It holds index funds long, so on the days it is invested it moves with the momentum book "
+        "(correlation +0.59 US / +0.62 India), and adding it to an equal-weight book does what a cash sleeve does. "
+        "Two reporting bugs, left unfixed with the retirement: the trade table leaves the entry fee out of each "
+        "trade's P&L (true average trade +0.07% US / +0.11% India, not +0.17% / +0.21%), and exits on a close below "
+        "the 200-day are labelled MEAN_REVERTED. The equity curve and CAGR are right.\n\n"
+        "Before retirement -- ALL THREE MEASURES, OPTIMISE STAGE (2013-2021, in-sample), 1.2, measured 2026-11-12: none beats the "
         "index held at its own exposure, in either market, run either way -- the shelf's version (every index "
         "series, 2 x 25%, time stop, 200-day exit) or as published (one index alone, fully invested, no time "
         "stop, no 200-day exit). Gap to the index at the same exposure, US / India: RSI(2) shelf -1.12 / -1.47, "
@@ -502,6 +512,7 @@ class MeanReversionStrategy(PortfolioStrategy):
                   "paisa (22,488.65 -> 23,263.90)."),)
     name = MR_DOC["name"]
     description = MR_DOC["description"]
+    retired = "2026-11-14"
     status = MR_DOC["status"]
     thesis = MR_DOC["thesis"]
     how_it_works = tuple(MR_DOC["how_it_works"])

@@ -65,6 +65,10 @@ INDIA_CONFIG = MarketConfig(
     # those sectors, which matters for backtesting but not for a daily regime
     # read. Thinly traded ETFs were rejected in favour of liquid ones
     # (INFRABEES has 3,950 bars but only ~Rs 0.8cr/day, too noisy to use).
+    # The traded values below are TODAY's. A backtest must not read them as
+    # history: sector_rotation ranks a fund only when its traded value as of
+    # each date clears a floor (LIQ_WINDOW, MAX_POSITION_DAYS) -- Consumption
+    # traded about Rs 13k-96k a day in 2014-2019.
     sector_index_map={
         "Bank": "^NSEBANK",            # index, 4,013 bars
         "IT": "^CNXIT",                # index, 4,013 bars
@@ -106,7 +110,3 @@ INDIA_CONFIG = MarketConfig(
     slippage_bps=10.0,
     tick_size=0.05,
 )
-
-# Market-cap floor (INR crore), applied in addition to ScreenerThresholds
-# since it doesn't fit the US-shaped dataclass cleanly.
-INDIA_MIN_MARKET_CAP_CR = 5_000

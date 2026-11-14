@@ -584,9 +584,10 @@ RESULTS_FIRST_PER_QUARTER = 1
 RESULTS_BLACKOUT_STRICT = 0
 
 # The guide's liquidity floor. Turnover is the 50-day average volume x the close, which is
-# split-invariant, so it applies in backtests too. The price floor is LIVE ONLY: a backtest
-# reads split-adjusted history, where a winner's early price is divided by every later split
-# (the reason 1.2 dropped the market's own price floor from backtests).
+# split-invariant, so it applies in backtests too. There is no price floor of the strategy's own: the
+# RS rating (TT-08) rates only stocks at backtesting/spec.RS_UNIVERSE's price on the price they traded at that day, so a
+# backtest signal below it is dropped as unrated, and since 1.68 the live screen applies that same floor
+# to today's price (until then it used its own ₹100 / $15, review B2).
 MIN_TURNOVER_INR_CR = 10           # ₹ crore a day
 MIN_TURNOVER_USD_M = 20            # $ million a day
 # 1.45: the floor scales with the market. A fixed ₹10 crore is a 2026 number: in 2010 the whole Indian market traded
@@ -599,8 +600,6 @@ MIN_TURNOVER_USD_M = 20            # $ million a day
 SCALE_TURNOVER_FLOOR = 1
 TURNOVER_FLOOR_BP_INR = 1.0
 TURNOVER_FLOOR_BP_USD = 0.32
-LIVE_MIN_PRICE_INR = 100
-LIVE_MIN_PRICE_USD = 15
 
 # The guide's fundamentals, as the backtest's `--fundamentals guide` level (off by default:
 # stored results cover India only from late 2020). Quarterly EPS growth on the year-ago
@@ -647,7 +646,11 @@ def _min_turnover(cfg: MarketConfig, date=None) -> float:
 
 
 def _live_min_price(cfg: MarketConfig) -> float:
-    return LIVE_MIN_PRICE_INR if cfg.currency_code == "INR" else LIVE_MIN_PRICE_USD
+    """The RS rating's price floor (backtesting/spec.RS_UNIVERSE), the one a backtest signal clears. Imported
+    here, not at the top: the scan must not import backtesting/spec (tests.test_signal_exempt), and the RS
+    universe is outside this strategy's fingerprint -- a change to it is a version bump by hand."""
+    from ..backtesting.spec import RS_UNIVERSE
+    return RS_UNIVERSE.min_price("india" if cfg.currency_code == "INR" else "us")
 
 
 # Keyed on identity, and the entry KEEPS the config it was built from. Nothing else holds a
@@ -1244,12 +1247,30 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.67"
+    version = "1.68"
+    # 1.68 changes the fill session's stop test, the RS rating's universe, the trades' base number and the live
+    # screen -- all after the scan or live only -- so 1.64's cached rows still stand.
     # 1.67 adds the US rules (market_consts): exits and the market gate's index test, read after the scan except
     # MKT_INDEX_TEST, which is in the US signal id itself, so the shared scan's rows stand. 1.65 and 1.66 add switches, all off: with them off evaluate() detects exactly what 1.64 did, so 1.64's
     # cached rows stand. A variant turning on one evaluate() reads (RECLAIM_ON, FLAT_PIVOT_HIGHEST) rescans.
     signal_version = "1.64"
     changelog = (
+        ("1.68", "2026-11-14",
+         "Bug fixes from the 2026-11-14 reviews of this strategy and minervini_coil; no rule was tuned. (1) EX-01 on the "
+         "fill session (simulator, --exit-mode minervini): a buy at the open whose session then reached the stop is "
+         "stopped that session at the stop; a buy-stop filled during the session is stopped there only when the "
+         "session closed at or under the stop (the order of its low and the fill is otherwise unknown); a buy at the "
+         "close is first tested the next session. Until now the fill session was never tested, so PVH (US, 10 Sep 2013) "
+         "lost -2.47R where its stop gave -1.0R. (2) The RS rating's traded-value floor scales with the market, as the "
+         "scan's own turnover floor has since 1.45 (backtesting/spec.RS_UNIVERSE): the fixed Rs 10 crore left 59-64% of "
+         "India's 2013-16 Trend Template bars unrated, and 44% of accepted India signals were dropped as 'outside the "
+         "rated universe'. (3) The trades' base_no is the count MAX_BASE_COUNT enforced (it was a different count: 19 "
+         "India and 30 US trades read 4-10). (4) Live screen = backtest: no Rs 5,000 crore market-cap floor in India "
+         "(no backtest can apply one), the live price floor is the RS rating's (Rs 50 / $10 on the traded price, was "
+         "Rs 100 / $15; LIVE_MIN_PRICE_INR / _USD removed), and the base count reads the full stored history (it read "
+         "about 926 days and passed late bases). (5) The paper book replays the live orders through this simulator "
+         "(buy-stops, expiry, sizing, slots, exits) instead of buying every tradeable row at the next open. "
+         "signal_version stays 1.64: evaluate() is unchanged. Results move."),
         ("1.67", "2026-11-12",
          "The US runs its own rules (market_consts['us'], candidate D's lean exits on 1.64's entries, 'D prime'): no "
          "part-sales (PARTIAL_R=0, STRENGTH_EXT_PCT=0), no time stop, no light-volume exit, no breakeven stop, and the "
@@ -1996,8 +2017,8 @@ class MinerviniSpecStrategy(Strategy):
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
         "MKT_SMA_RISING_DAYS", "MKT_HIGHS_LOWS_DAYS", "MKT_HIGHS_LOWS_RATIO", "MKT_SEGMENT_MOM_DAYS", "MKT_SEGMENT_MOM_MIN_PCT", "MKT_INDEX_TEST", "MKT_PILOT", "MKT_FTD_LOW_DAYS",
         "MKT_FTD_MIN_DAY", "MKT_FTD_MIN_GAIN_PCT", "MKT_PILOT_BREADTH_DAYS", "MKT_FILTER", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
-        # which bars are scanned (prefilter_row) and the live price floor -- not what a scan records
-        "MIN_TURNOVER_INR_CR", "MIN_TURNOVER_USD_M", "LIVE_MIN_PRICE_INR", "LIVE_MIN_PRICE_USD",
+        # which bars are scanned (prefilter_row) -- not what a scan records
+        "MIN_TURNOVER_INR_CR", "MIN_TURNOVER_USD_M",
         # the --fundamentals filter, applied to signals after the scan
         "FUND_EPS_GROWTH_MIN_PCT", "FUND_SALES_GROWTH_MIN_PCT", "FUND_MARGIN_SLACK_PP",
     )
@@ -2043,8 +2064,10 @@ class MinerviniSpecStrategy(Strategy):
         "code departs from that spec is listed once, under Known caveats.",
     )
     caveats = (
-        "**The US runs its own rules** (1.67, `market_consts`): no part-sales, no time stop, no light-volume or "
-        "breakeven exit, and the market gate on the small-cap segment's trend alone. The rules on this page are the "
+        "**The US runs its own rules** (1.67, `market_consts`): no part-sale at a fixed R or into strength, no time "
+        "stop, no light-volume or breakeven exit, and the market gate on the small-cap segment's trend alone. A climax "
+        "run (EX-05) still sells a part, as in the measured candidate (CLIMAX_IS_PARTIAL = {CLIMAX_IS_PARTIAL}; 39 of "
+        "its 342 trades): until 1.68 this page said \"no part-sales\". The rules on this page are the "
         "shared ones, which India runs; the exit rows they switch off do not apply to US runs, the daily US screen "
         "or US verify runs. The chart's illustrated levels (the +2R partial line) always show the shared rules.",
         "**Dead sessions are left out** (1.42, SKIP_DEAD_BARS). A stored session with no volume and no range "
@@ -2582,7 +2605,13 @@ class MinerviniSpecStrategy(Strategy):
         "moment the low touches it. If the stock opens below the stop — after bad news overnight — "
         "it sells at that open, so a gap can cost more than 1R.\n\n"
         "If the stop and a profit level are both touched in one session, the stop is assumed to come "
-        "first.",
+        "first.\n\n"
+        "On the session it was bought (since 1.68): bought at the open, the rest of the session came after the "
+        "buy, so a low at the stop sells at the stop that session. Bought by a buy-stop during the session, "
+        "the bar cannot say whether its low came before or after the buy, so the stop is tested only when the "
+        "session closed at or under it (the price must then have crossed it after the buy); otherwise from the "
+        "next session. Bought at the close (S2's confirmed fill), it is tested from the next session. Until "
+        "1.68 the stop was never tested on the buying session.",
         "It only ever moves up (EX-03). Once the trade's high has reached +{BREAKEVEN_R}R, the stop "
         "is raised to the price paid plus the round trip's costs, from the next session on. A "
         "reversal can then no longer turn the trade into a loss, short of a gap through the stop. "
@@ -2715,10 +2744,14 @@ class MinerviniSpecStrategy(Strategy):
         "{TURNOVER_FLOOR_BP_USD} (US) of the whole market's daily turnover (50-day average of volume × close). "
         "The floor grows with the market: set to ₹{MIN_TURNOVER_INR_CR} crore and ${MIN_TURNOVER_USD_M} million "
         "a day in late 2026, it was about ₹1 crore in 2010 and $3.8 million in 2013, when the whole market "
-        "traded a fraction of today's turnover (since 1.45; a fixed floor shut out most early leaders). The live screen "
-        "also wants a price of at least ₹{LIVE_MIN_PRICE_INR} or ${LIVE_MIN_PRICE_USD}.\n\n"
-        "The price floor applies to the live screen only: a backtest reads split-adjusted prices, "
-        "where a winner's early price is divided by every later split.",
+        "traded a fraction of today's turnover (since 1.45; a fixed floor shut out most early leaders).\n\n"
+        "Too cheap or too thin to be rated. The RS rating ranks only stocks trading at ₹{RS_UNIVERSE.min_price_inr} "
+        "or ${RS_UNIVERSE.min_price_usd} or more that day (the price actually traded, not the split-adjusted one) "
+        "and trading {RS_UNIVERSE.value_bp_inr} basis points (India) or {RS_UNIVERSE.value_bp_usd} (US) of the "
+        "market's daily turnover -- ₹{RS_UNIVERSE.min_value_inr_cr} crore and ${RS_UNIVERSE.min_value_usd_m} million "
+        "in late 2026, scaled with the market like the floor above (since 1.68; a fixed floor left most of India's "
+        "2013-16 Trend Template stocks unrated). The backtest drops an unrated signal; the live screen applies the "
+        "same price floor to today's price (since 1.68; it used to ask ₹100 / $15).",
         "There is no room. With {MAX_POSITIONS} positions open, or the open-risk limit used up, a "
         "new signal is passed over; a waiting buy-stop keeps waiting for room until it expires.",
     )
@@ -2920,8 +2953,6 @@ class MinerviniSpecStrategy(Strategy):
         ("Turnover floor, US", "TURNOVER_FLOOR_BP_USD", "Basis points of the US daily market turnover a stock must trade."),
         ("Fixed floor, India", "MIN_TURNOVER_INR_CR", "₹ crore a day: the floor with SCALE_TURNOVER_FLOOR = 0, or no market turnover stored; the scaled floor's late-2026 value."),
         ("Fixed floor, US", "MIN_TURNOVER_USD_M", "$ million a day: as the India row."),
-        ("Price floor, India (live)", "LIVE_MIN_PRICE_INR", "₹; the live screen only."),
-        ("Price floor, US (live)", "LIVE_MIN_PRICE_USD", "$; the live screen only."),
         ("Market filter", "MKT_GUIDE", "1 = the guide's test, 0 = MKT-01 (1.7)."),
         ("Index average", "MKT_INDEX_SMA", "Days in the benchmark's average the close must be above."),
         ("Index average rising over", "MKT_SMA_RISING_DAYS", "Sessions over which that average must have risen (0 = off)."),
@@ -2971,7 +3002,8 @@ class MinerviniSpecStrategy(Strategy):
                       "BREAKEVEN_R": 0, "MKT_INDEX_TEST": 0},
             "why": ("The same entries lose money in the US under the shared exits (optimise 2013-2021, in-sample: "
                     "-0.13% CAGR, max drawdown -35.8%) and make 10.83% a year with a -18.9% drawdown when winners are "
-                    "held whole -- no part-sales, no time stop, no light-volume or breakeven exit -- and the market "
+                    "held longer -- no part-sale at a fixed R or into strength (a climax still sells a part), no "
+                    "time stop, no light-volume or breakeven exit -- and the market "
                     "gate reads only the small-cap segment's trend. The US exit candidate was picked from many "
                     "variants on those years, so the margin is optimistic; it is judged by its own verify run."),
         },
@@ -3025,6 +3057,11 @@ class MinerviniSpecStrategy(Strategy):
                 continue
             m.iloc[i] = young_template_row(ycfg, row, float(lo.iloc[i]), float(hi.iloc[i]))[0]
         return m
+
+    def needs_full_history(self) -> bool:
+        """The base count (G-gate on MAX_BASE_COUNT, `base_number`) walks the whole Stage 2 advance, which can
+        begin years before the live screen's window: the live run reads full history, as the backtest does."""
+        return True
 
     def rs_young_min_bars(self) -> int:
         """Sessions after which the RS rating rates a young listing on its history so far."""
@@ -3492,7 +3529,13 @@ class MinerviniSpecStrategy(Strategy):
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
                 "re_entry_after_extra": ("LIGHT_VOLUME_BREAKOUT",) if REENTRY_AFTER_LIGHT_VOLUME else (),
                 "min_structural_r": MIN_STRUCTURAL_R if MEASURED_MOVE_RR else None,
-                "tightness": e.get("tightness_pct")}
+                "tightness": e.get("tightness_pct"),
+                # 1.68 (review B5): the base count build_plans enforced (MAX_BASE_COUNT) for this setup's base, as
+                # the trade's base_no. spec.base_numbers keeps it; it used to count setup-producing bases instead,
+                # a different number (19 India / 30 US trades read 4-10 while the rule allows at most 3).
+                "base_no": (None if plan.setup == MV05 else e.get("flat_base_number") if plan.setup in (FLAT, FLAT_COIL)
+                            else e.get("shake_base_number") if plan.setup == SHAKE
+                            else e.get("reclaim_base_number") if plan.setup == RECLAIM else e.get("base_number"))}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
         elif plan.setup in (FLAT_COIL, RECLAIM):

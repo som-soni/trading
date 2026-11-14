@@ -412,7 +412,8 @@ def screening_table(source: str, market: str, strategy: str, run: str, id: int |
         if not rows:
             raise HTTPException(404)
         records = [r[0] for r in rows]
-        cols = list(records[0].keys())
+        # `order` is the backtest-shaped order the paper book reads (screening/pipeline.py), not a column
+        cols = [c for c in records[0].keys() if c != "order"]
         return _with_peer_cols(market, _with_name_col(market, cols, [[r.get(c) for c in cols] for r in records]))
     t = q("SELECT columns, rows FROM report_tables WHERE run_id=%s AND name='candidates'", (id,))
     if not t:

@@ -96,11 +96,13 @@ class RsLeadersStrategy(Strategy):
 
     selection = "time_series"
     family = "rs_leaders"
-    version = "1.5"
-    # 1.3 changes only the RS filter applied to the collected signals, never the scan, so the cached
+    version = "1.6"
+    # 1.3 and 1.6 change only the RS filter applied to the collected signals, never the scan, so the cached
     # signal rows of 1.2 still describe this version's scan (CLAUDE.md, signal_version).
     signal_version = "1.2"
     changelog = (
+        ("1.6", "2026-11-14",
+         "Backtest mechanics, no rule changed: the RS rating `--min-rs` gates on ranks a universe whose traded-value floor now scales with the market (backtesting/spec.RS_UNIVERSE; the Minervini review's B6). The fixed floor (Rs 10 crore / $5 million a day) left most early-year Indian stocks unrated, so their signals were dropped as 'outside the rated universe'. signal_version stays 1.2: the scan is unchanged. Results move."),
         ("1.5", "2026-11-14",
          "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.4 US optimise run 14 positions were under 0.5% of equity, holding 11.3% of slot-days. Orders buy the next open and are dropped when no slot is free, so the late-fill problem does not arise. signal_version stays 1.2: the scan is unchanged. Results move."),
         ("1.4", "2026-10-31",

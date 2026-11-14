@@ -1,5 +1,10 @@
 """Paper books: the forward record's arithmetic and the rebalance fill.
 
+A signal strategy's paper book replays its live orders through the backtest's simulator (`paper.replay`,
+`paper._step_signal`): checked on synthetic bars that a buy-stop which never triggers is never bought (until
+2026-11-14 every tradeable row was bought at the next open), that one which triggers fills at its trigger, and
+that a second day writes only the new fills.
+
 `paper.equity_curve` is the forward record's equity line -- the ledger's cash and shares at each session's
 end, at that session's closes -- and `paper.fill_rebalance` is how a paper book trades a month's targets at
 the next open: sell what left the book, then size each target to its weight of the account valued at that
@@ -95,10 +100,70 @@ def test_ma_trend_selection() -> None:
           len(states - {0.0, 1.0}) > 0, str(states))
 
 
+def test_signal_book_replays_the_backtest_orders() -> None:
+    print("a signal book trades its strategy's own orders")
+    import dataclasses
+    from swing_screener.backtesting import backtest, portfolio_sim, tracker
+    from swing_screener.backtesting.portfolio_sim import ExitPolicy, Signal
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import cache, corporate_actions
+    idx = pd.bdate_range("2026-11-02", periods=8)
+
+    def frame(rows):
+        df = pd.DataFrame(rows, columns=["open", "high", "low", "close"], index=idx[:len(rows)], dtype=float)
+        df["volume"] = 1e6
+        return df
+    bars = {  # A: a buy-stop at 101 the price never reaches; B: one it crosses on the second session
+        "A": frame([(98, 99, 97, 98.5)] * 8),
+        "B": frame([(98, 99, 97, 98.5), (99, 102, 98.5, 101.5)] + [(101.5, 103, 101, 102.5)] * 6),
+    }
+    meta = {"order": "stop", "pivot": 101.0, "tight_low": 95.0, "max_fill": 106.0, "max_risk_pct": 0.10,
+            "base_id": "b"}
+    sigs = [Signal(date=idx[0], symbol=s, setup="S8", entry=101.0, stop=95.0, target=float("nan"),
+                   decision="TRADE ON TRIGGER", quality=1.0, meta=dict(meta)) for s in ("A", "B")]
+    cfg = dataclasses.replace(MARKETS["india"], slippage_bps=0.0, commission_per_order=0.0)
+    store: list = []
+    upto = {"n": 5}
+    orig = (paper._started, paper._capital, paper._live_signals, paper._pending, cache.load_cached,
+            backtest.sim_settings_for, corporate_actions.Credits.for_market, ledger.trades, ledger.record,
+            tracker.refresh)
+    try:
+        paper._started = lambda b, m: idx[0].date()
+        paper._capital = lambda b, m: 1_000_000.0
+        paper._live_signals = lambda m, st, sess, started: list(sigs)
+        paper._pending = lambda b, m: []
+        cache.load_cached = lambda m, s: bars[s].iloc[:upto["n"]]
+        backtest.sim_settings_for = lambda st, m: {"cfg": cfg, "rank_by": "setup", "spec_costs": False,
+                                                   "simulate": {"exit_policy": ExitPolicy(mode="minervini", use_target=False)}}
+        corporate_actions.Credits.for_market = classmethod(lambda cls, m, syms=None: None)
+        ledger.trades = lambda b, m: [dict(r, source="paper") for r in store]
+        ledger.record = lambda b, m, rows, source="manual": store.extend(rows) or []
+        tracker.refresh = lambda m, books=None: {}
+        d1 = paper._step_signal("x@paper", "india", "minervini", idx[:5], {"filled": 0, "skipped": 0, "decided": 0})
+        buys = [r for r in store if r["side"] == "BUY"]
+        check("the untriggered buy-stop is never bought", not any(r["symbol"] == "A" for r in buys), str(buys))
+        check("the triggered one fills at its trigger, on the session it triggered",
+              [(r["symbol"], r["trade_date"], r["price"]) for r in buys] == [("B", idx[1].date().isoformat(), 101.0)],
+              str(buys))
+        check("the buy carries its stop for the tracker", buys and buys[0].get("initial_stop") == 95.0, str(buys))
+        n1 = len(store)
+        upto["n"] = 8
+        d2 = paper._step_signal("x@paper", "india", "minervini", idx, {"filled": 0, "skipped": 0, "decided": 0})
+        check("a later day writes only new fills, never the old ones again",
+              len([r for r in store if r["side"] == "BUY"]) == 1 and d2["diverged"] == 0 and len(store) >= n1,
+              f"{store} {d1} {d2}")
+    finally:
+        (paper._started, paper._capital, paper._live_signals, paper._pending, cache.load_cached,
+         backtest.sim_settings_for, corporate_actions.Credits.for_market, ledger.trades, ledger.record,
+         tracker.refresh) = orig
+    _ = portfolio_sim  # imported for the patch targets' modules to be loaded
+
+
 def main() -> int:
     test_equity_curve()
     test_fill_rebalance()
     test_ma_trend_selection()
+    test_signal_book_replays_the_backtest_orders()
     print(f"\n{'FAILED: ' + ', '.join(FAILS) if FAILS else 'paper books add up'}")
     return 1 if FAILS else 0
 

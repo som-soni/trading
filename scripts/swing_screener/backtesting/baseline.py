@@ -944,9 +944,19 @@ DOC = {
     "name": "Momentum baseline",
     "description": "Rank liquid stocks by their 12-month return ending one month ago, hold the top {top_n} "
                    "equal-weighted, rebalance at every month-end; the benchmark every strategy must beat.",
-    "status": "Reference portfolio, not a screener strategy. Beats the index in India; not in the US -- LEGACY: "
-              "full-window runs made before backtests ran in stages, neither optimise nor verify "
-              "(see research/momentum-trend-research.md).",
+    "status": "Reference portfolio and the control every momentum strategy is compared with, not a screener "
+              "strategy. OPTIMISE v1.5 (in-sample, 2013-01-01 to 2021-12-31, run 2026-11-14): INDIA 16.66% CAGR, "
+              "+3.13 excess over the Nifty 500, max drawdown -54.4% (the index -38.3%), 416 trades. v1.4 read "
+              "18.62% and +5.09 over the same years; the 1.96 points were one purchase the turnover floor should "
+              "have refused: AURUM on 2020-12-31, ex a 98.8% special dividend, bought on a locked upper circuit "
+              "for 64% of that day's traded value (changelog 1.5). At the market's standard cost instead of "
+              "{cost_bps}bps a side, the 2026-11-14 review put the remaining excess at about zero. "
+              "US, same stage and version: 4.27% CAGR against SPY's 14.01%, -9.74 excess, max drawdown -75.4% "
+              "against -34.1%, 448 trades -- unchanged by the fix, and no edge. "
+              "VERIFY v1.4, INDIA (2022 on, not re-run under v1.5): excess +9.50, but max drawdown -45.1% against "
+              "the index's -18.8%. The criterion, written before the run, asked for both a positive excess and a "
+              "drawdown no deeper than the index's, so it is recorded as FAILED. Older full-window figures are "
+              "legacy (research/momentum-trend-research.md).",
     "thesis": "Stocks that have outperformed over the past year tend to keep outperforming for the next few months "
               "-- cross-sectional momentum, documented by Jegadeesh and Titman (1993) and in many markets since. "
               "If that holds, simply owning the strongest names should beat the index after costs. This is the "
@@ -1338,6 +1348,14 @@ VS_DOC = {
     "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
                    "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
+        "OPTIMISE v1.10 (in-sample, 2013-01-01 to 2021-12-31, run 2026-11-14): INDIA 24.07% CAGR, +8.64 excess "
+        "over the Smallcap 250, max drawdown -50.5%, 806 trades. v1.9 read 25.89% and +10.45 over the same "
+        "years; the 1.82 points were one purchase the turnover floor should have refused. On 2020-12-31 a stale "
+        "20-day average kept AURUM, ex a 98.8% special dividend, above the floor, and the book topped it up "
+        "on a locked upper circuit, buying about 82% of that day's volume (changelog 1.10). Every v1.9 figure "
+        "below whose window includes December 2020 (the full-stage and 2018 runs) carries that trade; the "
+        "verify window (2022 on) does not. US, same stage and version: 7.30% CAGR against IWM's 11.03%, -3.73 "
+        "excess, max drawdown -48.1% against -42.3%, 962 trades -- unchanged by the fix. "
         "FROM 2018-06-01 (full stage, v1.9, 2026-11-11 -- context, not a verdict; the years from 2022 are the "
         "verify window, and the start matches the quality-momentum runs, whose India filings only carry equity "
         "from then): INDIA 25.27% CAGR, -40.7% max drawdown against the Smallcap 250's 13.15% and -52.2% "

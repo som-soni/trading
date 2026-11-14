@@ -289,40 +289,6 @@ def save_sector_cache(market: str, sectors: dict[str, str]) -> None:
     ).to_csv(path, index=False)
 
 
-def get_market_caps_cr(tickers: list[str]) -> dict[str, float | None]:
-    """Market cap in crore (1 crore = 1e7) for each ticker.
-
-    Read first from `symbol_industry` (market caps captured with the industry
-    classification, refreshed monthly — ample for a market-cap floor); only
-    tickers missing there are looked up via yfinance .info, and not at all in
-    offline mode (they come back None, which the floor treats as unknown)."""
-    from . import cache
-    out: dict[str, float | None] = {}
-    try:
-        from . import industries
-        known = industries.load("india")
-        for t in tickers:
-            cap = known.get(t, (None, None, None))[2]
-            if cap:
-                out[t] = cap / 1e7
-    except Exception as e:  # noqa: BLE001 - table not built yet
-        logger.info("Market caps not in symbol_industry (%s); looking them up", e)
-    todo = [t for t in tickers if t not in out]
-    if cache.is_offline():
-        out.update({t: None for t in todo})
-        return out
-    import yfinance as yf
-
-    for t in todo:
-        try:
-            cap = yf.Ticker(t).info.get("marketCap")
-            out[t] = (cap / 1e7) if cap else None
-        except Exception as e:
-            logger.warning("Market cap lookup failed for %s: %s", t, e)
-            out[t] = None
-    return out
-
-
 def get_sectors(market: str, tickers: list[str]) -> dict[str, str]:
     """Return {ticker: sector} for `tickers`, using the cache for anything
     already looked up and yfinance for the rest. Writes back to the cache

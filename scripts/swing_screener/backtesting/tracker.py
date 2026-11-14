@@ -97,9 +97,9 @@ def track(df: pd.DataFrame, policy: "ps.ExitPolicy", cfg, *, symbol: str, entry_
     """Replay `df` (enriched daily bars) from `entry_date` through the strategy's exit, exactly as
     `simulate` manages a held position, and say where the position stands after the last bar.
 
-    `entry_at` is the moment of the fill: INTRADAY (a buy-stop, or a buy at the open -- the rest of the
-    entry bar can still reach the stop, as in the backtest) or AT_CLOSE (a close order: the entry bar is
-    not tested). Fills here are the raw levels: your own fills carry the slippage and costs.
+    `entry_at` is the moment of the fill: AT_OPEN (a buy at the open -- the rest of the entry bar can
+    still reach the stop, as in the backtest), INTRADAY (a buy-stop) or AT_CLOSE (a close order: the entry
+    bar is not tested). Fills here are the raw levels: your own fills carry the slippage and costs.
 
     `frame`: `df` already through `ps.exit_frames` for this policy -- a caller replaying many entries in one
     stock (the chart's setup outcomes, strategies/setup_outcomes.py) builds it once."""
@@ -245,7 +245,11 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
                 stats["no_bars"] += 1
                 continue
             df = ind.enrich_daily(raw, corporate_actions.credits_for(market, o.symbol, raw))
-            at = ps.AT_CLOSE if (o.meta or {}).get("order") == "close" else ps.INTRADAY
+            om = o.meta or {}
+            # the fill moment, as `simulate` sets it: a close order or a close-confirmed buy-stop at the
+            # close, an open order at the open, any other buy-stop during the session
+            at = (ps.AT_CLOSE if om.get("order") == "close" or om.get("confirm_close_above") is not None
+                  else ps.AT_OPEN if om.get("order") == "open" else ps.INTRADAY)
             r = track(df, policy, cfg, symbol=o.symbol, entry_date=o.entry_date, entry_price=o.entry_price,
                       initial_stop=o.initial_stop, shares=o.shares, target=o.target, meta=o.meta,
                       fee_rate=fee, entry_at=at, setup=o.setup)

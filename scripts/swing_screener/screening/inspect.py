@@ -32,6 +32,10 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
             cache.save_cached(market_key, symbol, raw)
     else:
         raw = cache.get_bars(provider, market_key, symbol, LOOKBACK_DAYS)
+        if strategy.needs_full_history():   # as the market-wide run reads it (screening/pipeline)
+            full = cache.load_cached(market_key, symbol)
+            if full is not None and len(full) > (0 if raw is None else len(raw)):
+                raw = full
 
     if raw is None or raw.empty:
         print(f"No data for {symbol}")

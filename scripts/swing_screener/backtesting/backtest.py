@@ -2034,13 +2034,84 @@ def exit_policy_from_args(args) -> "ExitPolicy":
     )
 
 
-def exit_policy_for(strategy_key: str, market: str) -> "ExitPolicy":
-    """A registered strategy's exit policy: its own `backtest_args`, read by the backtest's parser."""
+def _spec_defaults(args) -> None:
+    """What `--spec` sets that the command line left unset: the minervini strategy's exits, slots, RS floor,
+    ranking, open-risk and traded-value caps and results blackout. One place, for `main` and
+    `sim_settings_for`."""
+    from ..strategies import minervini_spec as ms
+    if not args.spec:
+        return
+    if args.exit_mode == "bracket":
+        args.exit_mode, args.no_target = "minervini", True
+    if args.max_positions is None:
+        args.max_positions = ms.MAX_POSITIONS
+    if args.min_rs is None:
+        # TT-08's own threshold, the one the live screen gates G8 on -- a literal here would
+        # leave backtests on the old number the day RS_MIN_RANK is tuned
+        args.min_rs = int(ms.RS_MIN_RANK)
+    if args.rank_by == "setup":
+        args.rank_by = "rs"
+    if args.max_open_risk is None:
+        args.max_open_risk = ms.MAX_OPEN_RISK_PCT
+    if args.max_adv_pct is None:
+        args.max_adv_pct = ms.MAX_ADV_PCT
+    if args.results_blackout is None:
+        args.results_blackout = ms.EARNINGS_BLACKOUT_DAYS
+
+
+def _strategy_args(strategy_key: str, market: str):
+    """The strategy's own `backtest_args`, read by the backtest's parser, with `--spec`'s defaults."""
     import shlex
     from ..strategies import get_strategy
     argv = ["--market", market, "--start", "2000-01-01", "--strategy", strategy_key,
             *shlex.split(get_strategy(strategy_key).backtest_args or "")]
-    return exit_policy_from_args(build_parser().parse_args(argv))
+    args = build_parser().parse_args(argv)
+    _spec_defaults(args)
+    return args
+
+
+def exit_policy_for(strategy_key: str, market: str) -> "ExitPolicy":
+    """A registered strategy's exit policy: its own `backtest_args`, read by the backtest's parser, under the
+    strategy's rules for `market` (`market_consts`: the US minervini exits differ)."""
+    from ..strategies.variants import market_rules
+    with market_rules(strategy_key, market):
+        return exit_policy_from_args(_strategy_args(strategy_key, market))
+
+
+def sim_settings_for(strategy_key: str, market: str) -> dict:
+    """How the strategy's backtest runs the portfolio simulator, from its own `backtest_args` (the same parser
+    and `--spec` defaults `main` uses), so a forward record (the paper book) trades the backtested rules:
+    {"cfg", "rank_by", "spec_costs", "simulate": keyword arguments for `portfolio_sim.simulate`}.
+    Call it inside `variants.market_rules(strategy_key, market)` when the market has its own rules."""
+    import dataclasses as _dc
+    from . import spec as spec_mod
+    args = _strategy_args(strategy_key, market)
+    cfg = MARKETS[market]
+    if args.risk_pct is not None or args.max_position_pct is not None:
+        cfg = _dc.replace(cfg, risk_pct=cfg.risk_pct if args.risk_pct is None else args.risk_pct,
+                          max_position_pct=(cfg.max_position_pct if args.max_position_pct is None
+                                            else args.max_position_pct))
+    if args.target:
+        args.no_target = False
+    kw = dict(
+        max_positions=args.max_positions, exit_policy=exit_policy_from_args(args),
+        max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
+        max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
+        pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct, pyramid_at=args.pyramid_at,
+        exposure=_exposure_from(args),
+        equal_alloc_pct=args.equal_alloc / 100 if args.equal_alloc else None,
+    )
+    if args.min_fill is not None:
+        kw["min_fill_frac"] = float(args.min_fill)
+    if args.slot_wait is not None:
+        kw["slot_wait_bdays"] = int(args.slot_wait)
+    if args.spec:
+        kw.update(cost_bps=spec_mod.COST_BPS[market], slippage_bps=spec_mod.SLIPPAGE_BPS[market])
+    if args.market_filter:
+        # the same series `main` hands the simulator: it cancels resting orders while the market is risk-off
+        from ..strategies import minervini_spec as ms
+        kw["regime_ok"] = spec_mod.market_ok(market, args.mkt_confirm, bool(args.spec and ms.MKT_GUIDE and not args.mkt01))
+    return {"cfg": cfg, "rank_by": args.rank_by, "spec_costs": bool(args.spec), "simulate": kw}
 
 
 def main(argv: list[str] | None = None) -> dict | None:
@@ -2175,23 +2246,7 @@ def main(argv: list[str] | None = None) -> dict | None:
 
     from . import spec as spec_mod
     from ..strategies import minervini_spec as ms
-    if args.spec:
-        if args.exit_mode == "bracket":
-            args.exit_mode, args.no_target = "minervini", True
-        if args.max_positions is None:
-            args.max_positions = ms.MAX_POSITIONS
-        if args.min_rs is None:
-            # TT-08's own threshold, the one the live screen gates G8 on -- a literal here would
-            # leave backtests on the old number the day RS_MIN_RANK is tuned
-            args.min_rs = int(ms.RS_MIN_RANK)
-        if args.rank_by == "setup":
-            args.rank_by = "rs"
-        if args.max_open_risk is None:
-            args.max_open_risk = ms.MAX_OPEN_RISK_PCT
-        if args.max_adv_pct is None:
-            args.max_adv_pct = ms.MAX_ADV_PCT
-        if args.results_blackout is None:
-            args.results_blackout = ms.EARNINGS_BLACKOUT_DAYS
+    _spec_defaults(args)
     # the strategy's own market filter (the SEPA guide's) under --spec, MKT-01 otherwise or with --mkt01
     market_guide = bool(args.spec and ms.MKT_GUIDE and not args.mkt01)
     if args.exit_mode == "minervini" and any(
