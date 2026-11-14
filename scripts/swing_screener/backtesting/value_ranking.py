@@ -262,6 +262,9 @@ DOC = {
                    "sales-to-price and free-cash-flow yield, from the filings public on the rebalance date; "
                    "equal weight, rebalanced every quarter-end.",
     "status": (
+        "v1.1 (2026-11-14) changed only how the turnover floor reads trading after a special dividend or "
+        "demerger: re-run on the optimise stage it gives 9.32%, -55.2%, 279 trades, the same as v1.0, so the "
+        "figures below describe the current rules. "
         "FAILS ITS PASS CRITERIA IN-SAMPLE (v1.0, measured 2026-11-14, optimise stage only: US, 2013-01-01 to "
         "2021-12-31; the verify years have not been run). Pass criteria, written before any result was read: "
         "excess CAGR above 0 against SPY, OR a CAGR within 2 points of SPY's with a correlation of monthly "
