@@ -252,6 +252,17 @@ def _corporate_actions(ctx: Ctx) -> None:
     ctx.step.stats = {**r, "credits": k}
 
 
+def _payout_turnover(ctx: Ctx) -> None:
+    """The stored 20-day turnover (prices.dollar_vol_sma20) re-derived after credited special dividends and
+    demergers, so pre-ex trading reads on today's price basis (marketdata/cache.restate_turnover)."""
+    from swing_screener.marketdata import cache
+    r = cache.restate_turnover(ctx.market, progress=ctx.step.progress)
+    ctx.step.detail = (f"{r['rows']:,} stored session(s) restated in {r['symbols_changed']:,} of {r['symbols']:,} symbols "
+                       f"with a credited payout ({r['credits']:,} credits)" if r["rows"] else
+                       f"up to date: {r['symbols']:,} symbols with a credited payout ({r['credits']:,} credits)")
+    ctx.step.stats = r
+
+
 def _sessions(ctx: Ctx) -> None:
     from swing_screener.marketdata import sessions
     r = sessions.repair(ctx.market, apply=True)
@@ -1139,6 +1150,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("corporate_actions", "data", "corporate actions: dividends and splits (Yahoo), demergers and bonuses (NSE) — the "
         "special dividends and demergers backtests credit to a holder (marketdata/corporate_actions.py)",
         "weekly", True, _corporate_actions, after=("prices",)),
+    Job("payout_turnover", "data", "turnover after payouts: the stored 20-day traded value re-derived after a credited "
+        "special dividend or demerger, so a liquidity floor values pre-ex trading on today's price basis "
+        "(marketdata/cache.restate_turnover)", "weekly", False, _payout_turnover, after=("corporate_actions",)),
     Job("sessions", "data", "stray sessions: remove bars the source dates on a holiday or weekend that most of the market "
         "did not trade, which would blank every symbol's 200-day average in a whole-market frame", "daily", False, _sessions,
         after=("prices",)),
@@ -1256,8 +1270,8 @@ PIPELINES: dict[str, dict] = {
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
                  "jobs": ["backtest", "ingest"]},
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, analyst estimates, fundamentals, "
-                          "company financials and their scores, quality scores; corporate actions; split & bonus repair; each stock's weekly RS rating",
-               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "estimates", "guidance", "fundamentals", "financials",
+                          "company financials and their scores, quality scores; corporate actions and the turnover after payouts; split & bonus repair; each stock's weekly RS rating",
+               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "payout_turnover", "splits", "earnings", "estimates", "guidance", "fundamentals", "financials",
                         "fundamental_scores", "quality", "fpi_sectors", "stock_rs_history", "prune_signals"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},

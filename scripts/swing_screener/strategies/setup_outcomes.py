@@ -189,7 +189,8 @@ def _breakout_orders(strategy, cfg, raw: pd.DataFrame, symbol: str, setups: list
     v1.51 run bought it at the open -- a rule of that version (S2's volume test was reworked in 1.53) or a
     portfolio slot, neither of which a one-setup replay of today's rules can see."""
     from ..core import context as ctx_mod
-    frames = ctx_mod.prepare_frames(raw)
+    from ..marketdata import corporate_actions
+    frames = ctx_mod.prepare_frames(raw, corporate_actions.credits_for(market, symbol, raw))
     idx = frames.daily.index
     for s in setups:
         z = _entry_zone(s)

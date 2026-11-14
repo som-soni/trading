@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ..config import MARKETS
 from ..core import context as ctx_mod
+from ..marketdata import corporate_actions
 from ..core import sizing
 
 YEARS = 5            # default lookback: the scan is a full evaluate() per bar, so it is bounded
@@ -45,7 +47,9 @@ def scan(strategy, raw: pd.DataFrame, cfg, symbol: str, years: int | None = YEAR
     exactly that stop (else the latest bar the strategy decided to trade); an episode holding it is split
     there and judged on it — so the drawn plan is the one the run took, not the episode's first passing
     bar (a weekly setup can stay armed for months, and the run may trade its third breakout)."""
-    frames = ctx_mod.prepare_frames(raw)
+    # the 20-day turnover the liquidity gate reads, on today's price basis after a payout (as a run's scan)
+    market = next((k for k, c in MARKETS.items() if c.name == cfg.name), None)
+    frames = ctx_mod.prepare_frames(raw, corporate_actions.credits_for(market, symbol, raw) if market else None)
     daily = frames.daily
     if daily.empty:
         return []

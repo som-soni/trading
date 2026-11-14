@@ -31,7 +31,7 @@ from . import paths
 from .config import MARKETS
 from .core import indicators as ind
 from .core import vcp_spec
-from .marketdata import cache, db, names
+from .marketdata import cache, corporate_actions, db, names
 from .strategies.minervini_spec import (
     BUY_RANGE_PCT, VCP, VOL_MULT, entry_misses, pivot_buy_stop, pivot_stop, vcp_measured_move,
 )
@@ -95,7 +95,7 @@ def scan_symbol(market: str, symbol: str, market_cap: float) -> list[dict]:
     raw = cache.load_cached(market, symbol)
     if raw is None or len(raw) < 300:
         return []
-    daily = ind.enrich_daily(raw)
+    daily = ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw))
     close, high, low, vol = (daily[k].to_numpy(float) for k in ("close", "high", "low", "volume"))
     v50 = daily["vol_sma50"].to_numpy(float)
     start = 2 * VCP.swing_k + VCP.prior_window

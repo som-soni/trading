@@ -11,7 +11,7 @@ Usage:
 
 import argparse
 
-from ..marketdata import cache, earnings
+from ..marketdata import cache, corporate_actions, earnings
 
 from ..core import context as ctx_mod, indicators as ind, patterns, sizing
 from ..config import MARKETS
@@ -41,7 +41,8 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
     print(f"{len(raw)} daily bars, {raw.index[0].date()} -> {raw.index[-1].date()}")
     print(raw.tail(5))
 
-    enriched = ind.enrich_daily(raw)
+    credits = corporate_actions.credits_for(market_key, symbol, raw)   # the 20-day turnover after a payout
+    enriched = ind.enrich_daily(raw, credits)
     ok, why = strategy.passes_prefilter(cfg, enriched)
     print(f"\npre-filter: {'PASS' if ok else 'FAIL — ' + why}")
 
@@ -51,7 +52,7 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
         return
 
     earnings_map = earnings.load_earnings_days_away(market_key, [symbol])
-    ctx = ctx_mod.build_context(symbol, raw, earnings_map.get(symbol))
+    ctx = ctx_mod.build_context(symbol, raw, earnings_map.get(symbol), credits=credits)
     if ctx is None:
         print("\nInsufficient history to build a context")
         return

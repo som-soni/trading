@@ -81,14 +81,18 @@ PASS_MIN_AVG_R = 0.25
 PASS_PUNITIVE_BORROW = 100.0
 
 
-def symbol_frame(df: pd.DataFrame) -> pd.DataFrame:
+def symbol_frame(df: pd.DataFrame, cr: pd.DataFrame | None = None) -> pd.DataFrame:
     """Everything the signal and the exits read, per daily bar, causal (each column uses its own bar
-    and earlier ones; the targets are read from the PRIOR session's averages by the simulator)."""
+    and earlier ones; the targets are read from the PRIOR session's averages by the simulator).
+
+    `cr` (this symbol's credited special dividends and demergers, `corporate_actions.credits_for`): the
+    liquidity mean and the size median value every session on bar t's price basis
+    (`corporate_actions.traded_value`), so trading before a payout is not read at the pre-payout price."""
     d = df[["open", "high", "low", "close", "volume"]].astype(float)
     out = d.copy()
-    tv = d["close"] * d["volume"]
-    out["liq"] = tv.rolling(LIQ_BARS, min_periods=LIQ_BARS).mean()
-    out["size_tv"] = tv.shift(RUN_MAX_BARS + 1).rolling(SIZE_BARS, min_periods=SIZE_BARS).median()
+    out["liq"] = corporate_actions.traded_value(d["close"], d["volume"], cr, LIQ_BARS)
+    out["size_tv"] = corporate_actions.traded_value(d["close"], d["volume"], cr, SIZE_BARS, stat="median",
+                                                    lag=RUN_MAX_BARS + 1)
     prev_close = d["close"].shift(1)
     out["run_pct"] = (prev_close / d["low"].shift(1).rolling(RUN_MAX_BARS, min_periods=RUN_MAX_BARS).min() - 1) * 100
     up = (d["close"] > prev_close).astype(int)
@@ -124,7 +128,7 @@ def prepare(market: str) -> dict:
             if d is None or len(d) < MIN_BARS:
                 continue
             try:
-                f = symbol_frame(d)
+                f = symbol_frame(d, corporate_actions.credits_for(market, sym, d))
             except Exception as e:   # noqa: BLE001 -- one malformed history must not end the run
                 logger.warning("%s: skipped (%s)", sym, e)
                 continue
@@ -543,7 +547,7 @@ class ParabolicShortStrategy(PortfolioStrategy):
         braw = cache.load_cached(market, cfg.benchmark_ticker)
         if market != "us" or braw is None or len(raw) < MIN_BARS:
             return []
-        f = symbol_frame(raw)
+        f = symbol_frame(raw, corporate_actions.credits_for(market, symbol, raw))
         bench = braw["close"].astype(float)
         start = pset.since(f, years)
         prep = {"market": market, "bench": bench[bench.index <= f.index[-1]], "frames": {symbol: f},

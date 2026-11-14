@@ -241,17 +241,14 @@ def top_dollar_volume(market: str, dates: list, n: int) -> dict:
         return {}
     since = dates[0] - pd.Timedelta(days=150)      # enough history for a 50-session mean
     with db.get_connection().cursor() as cur:
-        cur.execute("""SELECT symbol, date, close, volume FROM prices
+        cur.execute("""SELECT symbol, date, open, close, volume FROM prices
                        WHERE market=%s AND date >= %s AND date <= %s AND close > 0 AND symbol NOT LIKE '^%%'""",
                     (market, since.date(), dates[-1].date()))
-        raw = pd.DataFrame(cur.fetchall(), columns=["symbol", "date", "close", "volume"])
+        raw = pd.DataFrame(cur.fetchall(), columns=["symbol", "date", "open", "close", "volume"])
     if raw.empty:
         return {}
-    raw["date"] = pd.to_datetime(raw["date"])
-    value = (raw.pivot(index="date", columns="symbol", values="close").astype(float)
-             * raw.pivot(index="date", columns="symbol", values="volume").astype(float)).sort_index()
+    v50 = _traded_value_50(market, raw)
     del raw
-    v50 = value.rolling(50, min_periods=40).mean()
     out = {}
     for d in dates:
         row = v50[v50.index <= d]
@@ -260,6 +257,37 @@ def top_dollar_volume(market: str, dates: list, n: int) -> dict:
         top = row.iloc[-1].dropna().nlargest(n)
         out[d] = set(top.index)
     return out
+
+
+TRADED_VALUE_RANK_BARS = 50       # the traded-value ranks' average: 50 sessions ...
+TRADED_VALUE_RANK_MIN_BARS = 40   # ... of which at least this many stored
+
+
+def _traded_value_50(market: str, raw: pd.DataFrame) -> pd.DataFrame:
+    """dates x symbols, the 50-session mean of daily traded value from long rows (symbol, date, open, close,
+    volume). A stock with a credited special dividend or demerger in its rows has its window valued on each
+    session's own price basis (corporate_actions.traded_value, as the 20-day floors are), so its pre-payout
+    trading cannot keep it ranked among the most traded for 50 sessions; every other column is the plain mean."""
+    from ..marketdata import corporate_actions
+    raw = raw.assign(date=pd.to_datetime(raw["date"]))
+    close = raw.pivot(index="date", columns="symbol", values="close").astype(float).sort_index()
+    volume = raw.pivot(index="date", columns="symbol", values="volume").astype(float).sort_index()
+    v50 = (close * volume).rolling(TRADED_VALUE_RANK_BARS, min_periods=TRADED_VALUE_RANK_MIN_BARS).mean()
+    paid = set(corporate_actions.payouts(market)) & set(close.columns)
+    if paid:
+        opens = raw[raw["symbol"].isin(paid)].pivot(index="date", columns="symbol", values="open").astype(float)
+        for sym in sorted(paid):
+            bars = pd.DataFrame({"open": opens[sym], "close": close[sym]}).dropna()   # credits: its own sessions
+            cr = corporate_actions.credits_for(market, sym, bars)
+            if cr is not None:
+                # on the market's calendar, as the plain mean above: a session it did not trade has no
+                # volume (so no traded value), and the carried close only puts the price basis on it
+                tv = corporate_actions.traded_value(close[sym].ffill(), volume[sym], cr,
+                                                    TRADED_VALUE_RANK_BARS, TRADED_VALUE_RANK_MIN_BARS)
+                # only the sessions whose window spans an ex-date move; the rest stay as computed above
+                moved = tv.index[tv.notna() & (tv != v50[sym])]
+                v50.loc[moved, sym] = tv[moved]
+    return v50
 
 
 def filter_top_dollar_volume(signals: list, market: str, n: int) -> tuple[list, dict]:
@@ -588,17 +616,14 @@ def traded_value_ranks(market: str, dates: list) -> dict:
     skip = set(universe.index_symbols(market))
     since = dates[0] - pd.Timedelta(days=150)
     with db.get_connection().cursor() as cur:
-        cur.execute("""SELECT symbol, date, close, volume FROM prices
+        cur.execute("""SELECT symbol, date, open, close, volume FROM prices
                        WHERE market=%s AND date >= %s AND date <= %s AND close > 0 AND symbol NOT LIKE '^%%'""",
                     (market, since.date(), dates[-1].date()))
-        raw = pd.DataFrame(cur.fetchall(), columns=["symbol", "date", "close", "volume"])
+        raw = pd.DataFrame(cur.fetchall(), columns=["symbol", "date", "open", "close", "volume"])
     raw = raw[~raw["symbol"].isin(skip)]
     if raw.empty:
         return {}
-    raw["date"] = pd.to_datetime(raw["date"])
-    value = (raw.pivot(index="date", columns="symbol", values="close").astype(float)
-             * raw.pivot(index="date", columns="symbol", values="volume").astype(float)).sort_index()
-    v50 = value.rolling(50, min_periods=40).mean()
+    v50 = _traded_value_50(market, raw)
     out = {}
     for d in dates:
         row = v50[v50.index <= d]

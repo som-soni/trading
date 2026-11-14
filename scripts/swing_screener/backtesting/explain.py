@@ -175,7 +175,8 @@ def explain_trades(market: str, strategy: str, symbol: str, tr, px, cfg,
     """Entry and exit of each trade, restated as the rules that produced them."""
     from ..core import indicators as ind
 
-    enriched = ind.enrich_daily(px)
+    from ..marketdata import corporate_actions
+    enriched = ind.enrich_daily(px, corporate_actions.credits_for(market, symbol, px))
     seen = set()
     for _, t in tr.iterrows():
         ed = pd.Timestamp(t["entry_date"])

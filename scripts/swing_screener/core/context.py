@@ -80,12 +80,13 @@ class SymbolFrames:
 _AGG_COLS = ("open", "high", "low", "close", "volume")
 
 
-def prepare_frames(daily_raw: pd.DataFrame) -> SymbolFrames:
-    """Do once per symbol what build_context would otherwise do per bar."""
+def prepare_frames(daily_raw: pd.DataFrame, credits: pd.DataFrame | None = None) -> SymbolFrames:
+    """Do once per symbol what build_context would otherwise do per bar. `credits`: the symbol's
+    credited payouts (`corporate_actions.credits_for`), read by the 20-day turnover (enrich_daily)."""
     months = pd.Series(daily_raw.index.to_period("M"), index=daily_raw.index)
     return SymbolFrames(
         raw=daily_raw,
-        daily=ind.enrich_daily(daily_raw),
+        daily=ind.enrich_daily(daily_raw, credits),
         weekly_raw=ind.resample_weekly(daily_raw),
         monthly_raw=ind.resample_monthly(daily_raw),
         month_count=(~months.duplicated()).cumsum(),
@@ -120,12 +121,16 @@ def build_context(
     earnings_days_away: int | None = None,
     frames: "SymbolFrames | None" = None,
     as_of=None,
+    credits: pd.DataFrame | None = None,
 ) -> StockContext | None:
     """Build a StockContext from raw daily OHLCV. Returns None if there
     isn't enough history to compute the core structure (see DATA RULE).
 
     `frames` + `as_of` take the same context from a per-symbol SymbolFrames
-    instead of re-deriving it; the result is identical (tests/test_context_frames.py)."""
+    instead of re-deriving it; the result is identical (tests/test_context_frames.py).
+
+    `credits` (`corporate_actions.credits_for`) put the 20-day turnover on today's price basis after a
+    special dividend or demerger (enrich_daily); the frames path takes them from `prepare_frames`."""
     if frames is not None and as_of is not None:
         hi = int(frames.raw.index.searchsorted(as_of, side="right"))
         if hi < MIN_CONTEXT_BARS:
@@ -139,7 +144,7 @@ def build_context(
     if daily_raw is None or len(daily_raw) < MIN_CONTEXT_BARS:
         return None
 
-    daily = ind.enrich_daily(daily_raw)
+    daily = ind.enrich_daily(daily_raw, credits)
     weekly = ind.enrich_weekly(ind.resample_weekly(daily_raw))
     monthly = ind.enrich_monthly(ind.resample_monthly(daily_raw))
 

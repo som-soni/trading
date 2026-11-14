@@ -14,7 +14,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from . import db, frozen, sessions, spac_history, splits
+from . import corporate_actions, db, frozen, sessions, spac_history, splits
 from . import asof
 
 from ..core import indicators as ind
@@ -115,7 +115,8 @@ def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
     # a source error recorded in `price_corrections` (an unadjusted split, a stray run): a re-fetch, or a
     # refresh re-writing its recent window from the source, must not bring it back (marketdata/splits.py)
     df = splits.apply_recorded(market, symbol, df)
-    enriched = ind.enrich_daily(df)
+    # the 20-day turnover values pre-payout trading on today's price basis (corporate_actions.traded_value)
+    enriched = ind.enrich_daily(df, corporate_actions.credits_for(market, symbol, df))
     rows = [
         (
             market, symbol, idx.date(),
@@ -151,7 +152,7 @@ def append_bars(market: str, new: dict[str, pd.DataFrame], context_days: int = 6
         if add.empty:
             continue
         combined = pd.concat([old, add]).sort_index() if old is not None else add.sort_index()
-        enriched = ind.enrich_daily(combined)
+        enriched = ind.enrich_daily(combined, corporate_actions.credits_for(market, sym, combined))
         for idx, row in enriched.loc[enriched.index.isin(add.index)].iterrows():
             rows.append((market, sym, idx.date(), *[db.py_value(row.get(c)) for c in _RAW_COLUMNS],
                          *[db.py_value(row.get(c)) for c in _INDICATOR_COLUMNS]))
@@ -159,6 +160,45 @@ def append_bars(market: str, new: dict[str, pd.DataFrame], context_days: int = 6
         cols = ["market", "symbol", "date"] + _RAW_COLUMNS + _INDICATOR_COLUMNS
         db.execute_values(f"INSERT INTO prices ({', '.join(cols)}) VALUES %s ON CONFLICT (market, symbol, date) DO NOTHING", rows)
     return len(rows)
+
+
+TURNOVER_RTOL = 1e-9   # restate_turnover rewrites a stored value only when it differs by more than this share
+
+
+def restate_turnover(market: str, progress=None) -> dict:
+    """Re-derive the stored `dollar_vol_sma20` of every symbol with a credited special dividend or
+    demerger (corporate_actions.credits), as `save_cached` now writes it: every session of the 20-day
+    window on bar t's price basis (enrich_daily's `credits`). Rows written before that rule, or before
+    the action itself was stored (the actions refresh is weekly, the bars daily), kept pre-ex trading at
+    the pre-ex price for 20 sessions. Only rows that differ are rewritten -- the sessions whose window
+    spans an ex-date; elsewhere the value is the plain mean either way. Reads stored data only.
+    Idempotent: a second run rewrites nothing."""
+    cr = corporate_actions.credits(market)
+    syms = sorted(set(cr["symbol"]))
+    conn = db.get_connection()
+    rows, touched = [], set()
+    for i, sym in enumerate(syms):
+        with conn.cursor() as cur:
+            cur.execute("SELECT date, open, high, low, close, volume, dollar_vol_sma20 FROM prices "
+                        "WHERE market=%s AND symbol=%s ORDER BY date", (market, sym))
+            got = cur.fetchall()
+        if not got:
+            continue
+        df = pd.DataFrame(got, columns=["Date", "open", "high", "low", "close", "volume", "stored"])
+        df = df.set_index(pd.to_datetime(df.pop("Date"))).astype(float)
+        new = ind.enrich_daily(df[_RAW_COLUMNS], corporate_actions.credits_for(market, sym, df))["dollar_vol_sma20"]
+        old = df["stored"]
+        diff = (new.isna() != old.isna()) | ((new - old).abs() > TURNOVER_RTOL * old.abs())
+        for d, v in new[diff.fillna(False)].items():
+            rows.append((market, sym, d.date(), db.py_value(v)))
+            touched.add(sym)
+        if progress and (i + 1) % 100 == 0:
+            progress(f"turnover after payouts: {i + 1:,}/{len(syms):,} symbols", done=i + 1, total=len(syms))
+    if rows:
+        db.execute_values(
+            "UPDATE prices p SET dollar_vol_sma20 = v.dv::double precision FROM (VALUES %s) AS v(market, symbol, date, dv) "
+            "WHERE p.market = v.market AND p.symbol = v.symbol AND p.date = v.date::date", rows)
+    return {"credits": len(cr), "symbols": len(syms), "symbols_changed": len(touched), "rows": len(rows)}
 
 
 RESCALE_CHECK_BARS = 20   # the latest sessions both the stored bars and a fetched window hold ...

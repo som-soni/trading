@@ -134,7 +134,8 @@ def gather_entry(market: str, symbol: str, date=None, snap_loader=None) -> dict:
     if len(raw) < snapshot.MIN_SNAPSHOT_BARS:
         return {"market": market, "symbol": symbol, "error": f"needs {snapshot.MIN_SNAPSHOT_BARS} sessions of history before the date"}
     asof = raw.index[-1]
-    daily = ind.enrich_daily(raw)
+    from swing_screener.marketdata import corporate_actions
+    daily = ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw))   # value20 as the snapshot's
     bench = snapshot._bench(market, asof - pd.Timedelta(days=snapshot.LOOKBACK_DAYS + 10))
     bench = bench[bench.index <= asof]
     row = {k: _clean(v) for k, v in snapshot._row(cfg, symbol, raw, daily, len(daily) - 1, bench).items()}

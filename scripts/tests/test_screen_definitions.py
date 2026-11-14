@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 from swing_screener.core import indicators as ind
-from swing_screener.marketdata import cache
+from swing_screener.marketdata import cache, corporate_actions
 from swing_screener.screens import SCREENS, definitions, snapshot
 from swing_screener.screens import criteria as crit
 
@@ -27,7 +27,7 @@ def check(market: str) -> list[str]:
     coded: dict[str, set] = {k: set() for k in SCREENS}
     for sym, raw in bars.items():
         raw = raw[raw.index <= d]
-        daily = ind.enrich_daily(raw)
+        daily = ind.enrich_daily(raw, corporate_actions.credits_for(market, sym, raw))   # as the snapshot does
         ctx = SimpleNamespace(daily=daily, weekly=ind.enrich_weekly(ind.resample_weekly(raw)), last=daily.iloc[-1],
                               close=float(daily["close"].iloc[-1]), extras={})
         for key, sc in SCREENS.items():

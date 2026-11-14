@@ -31,7 +31,7 @@ from ..core import indicators as ind
 from fundamentals.growth import SALES_ACCELERATING_QUARTERS
 from ..core.pattern_spec import longest_window_within_depth
 from ..core.swings import is_contracting, volatility_contractions
-from ..marketdata import cache, db, freshness
+from ..marketdata import cache, corporate_actions, db, freshness
 from . import criteria as crit
 from .base import MIN_BARS, Screen
 
@@ -105,7 +105,8 @@ FIELDS = [
     ("rsi14", "RSI 14", "Momentum", "num", "Relative strength index (0–100)."),
     ("volume", "Volume", "Volume", "num", "The session's volume."),
     ("rvol", "Relative volume", "Volume", "num", "The session's volume ÷ its 50-day average."),
-    ("value20", "Avg traded value (20d)", "Volume", "money", "20-day average of close × volume, in the market's currency."),
+    ("value20", "Avg traded value (20d)", "Volume", "money", "20-day average of close × volume, in the market's currency. After a special dividend or demerger "
+     "the sessions before it are valued on today's price basis, as a split already is."),
     ("bars", "Days of history", "Data", "num", "Sessions of price history stored."),
     ("tradable", "Tradable", "Trend & structure", "bool", "Clears the market's floor: minimum price (on the price traded that day) and 20-day traded value, a year of history, "
                                                           "a valid ATR — the floor the built-in screens and the strategies use."),
@@ -642,7 +643,8 @@ def build(market: str, d=None) -> pd.DataFrame:
         raw = raw[raw.index <= d]
         if len(raw) < MIN_SNAPSHOT_BARS or raw.index[-1] != d:
             continue
-        rows.append(_row(cfg, sym, raw, ind.enrich_daily(raw), len(raw) - 1, bench, _split_at(k, d, sym)))
+        rows.append(_row(cfg, sym, raw, ind.enrich_daily(raw, corporate_actions.credits_for(market, sym, raw)),
+                         len(raw) - 1, bench, _split_at(k, d, sym)))
     df = _finish(market, rows, d, present=True)
     _save(market, df, d)
     df.attrs["date"] = d.date()
@@ -675,7 +677,8 @@ def backfill(market: str, years: float = 5, force: bool = False, refill: bool = 
     per_date: dict = {d: [] for d in todo}
     k = _split_factors(market, todo, bars)
     for n, (sym, raw) in enumerate(bars.items(), 1):
-        enriched = ind.enrich_daily(raw)
+        # credits up to the last month-end only: traded_value is point in time either way
+        enriched = ind.enrich_daily(raw, corporate_actions.credits_for(market, sym, raw))
         idx = enriched.index
         for d in todo:
             t = pd.Timestamp(d)

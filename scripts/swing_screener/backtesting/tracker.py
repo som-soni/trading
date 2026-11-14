@@ -30,7 +30,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ..config import MARKETS
-from ..marketdata import db
+from ..marketdata import corporate_actions, db
 from . import portfolio_sim as ps
 
 SCHEMA = """
@@ -244,7 +244,7 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
             if raw is None or raw.empty:
                 stats["no_bars"] += 1
                 continue
-            df = ind.enrich_daily(raw)
+            df = ind.enrich_daily(raw, corporate_actions.credits_for(market, o.symbol, raw))
             at = ps.AT_CLOSE if (o.meta or {}).get("order") == "close" else ps.INTRADAY
             r = track(df, policy, cfg, symbol=o.symbol, entry_date=o.entry_date, entry_price=o.entry_price,
                       initial_stop=o.initial_stop, shares=o.shares, target=o.target, meta=o.meta,

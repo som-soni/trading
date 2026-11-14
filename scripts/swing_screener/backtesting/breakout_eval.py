@@ -286,7 +286,8 @@ def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET)
             frames[symbol] = None
         else:
             raw.columns = [c.lower() for c in raw.columns]
-            frames[symbol] = (raw, ctx_mod.prepare_frames(raw))
+            from ..marketdata import corporate_actions
+            frames[symbol] = (raw, ctx_mod.prepare_frames(raw, corporate_actions.credits_for(market, symbol, raw)))
     if frames[symbol] is None:
         return None
     raw, f = frames[symbol]

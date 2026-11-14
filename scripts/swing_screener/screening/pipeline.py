@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..marketdata import cache, universe
+from ..marketdata import cache, corporate_actions, universe
 
 from ..core import indicators as ind, context as ctx_mod
 from ..core import regime as regime_mod, sizing, patterns
@@ -131,10 +131,13 @@ def _run(
 
     logger.info("Computing indicators for %d symbols...", len(bars_by_symbol))
     enriched_by_symbol: dict[str, pd.DataFrame] = {}
+    # each symbol's credited payouts: the 20-day turnover reads pre-ex trading on today's price basis
+    credits_by_symbol: dict[str, "pd.DataFrame | None"] = {}
     _t0 = time.time()
     _step = max(1, len(bars_by_symbol) // 10)
     for _i, (s_, df_) in enumerate(bars_by_symbol.items(), 1):
-        enriched_by_symbol[s_] = ind.enrich_daily(df_)
+        credits_by_symbol[s_] = corporate_actions.credits_for(market_key, s_, df_)
+        enriched_by_symbol[s_] = ind.enrich_daily(df_, credits_by_symbol[s_])
         if _i % _step == 0 or _i == len(bars_by_symbol):
             logger.info("  indicators %d/%d (%.0f/s)", _i, len(bars_by_symbol),
                         _i / max(time.time() - _t0, 1e-9))
@@ -242,7 +245,7 @@ def _run(
                 strategy, sym, sector, "NOT REVIEWED",
                 f"insufficient history ({len(raw)} bars < {strategy.signal_floor()})"))
             continue
-        ctx = ctx_mod.build_context(sym, raw, earnings_map.get(sym))
+        ctx = ctx_mod.build_context(sym, raw, earnings_map.get(sym), credits=credits_by_symbol.get(sym))
         if ctx is None:
             all_rows.append(_empty_universe_row(strategy, sym, sector, "NOT REVIEWED", "insufficient history"))
             continue

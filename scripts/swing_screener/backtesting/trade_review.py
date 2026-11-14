@@ -22,7 +22,7 @@ import pandas as pd
 
 from ..config import MARKETS
 from ..core import indicators as ind
-from ..marketdata import cache, db, financials
+from ..marketdata import cache, corporate_actions, db, financials
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
@@ -206,7 +206,7 @@ def review_run(run_id: int) -> pd.DataFrame:
         raw = cache.load_cached(market, sym)
         if raw is None:
             continue
-        d = ind.enrich_daily(raw)
+        d = ind.enrich_daily(raw, corporate_actions.credits_for(market, sym, raw))
         entries = list(g.entry_date)
         for _, t in g.iterrows():
             m = _clean(review_trade(t, d, ann.get(sym, []), bench, run, [x for x in entries if x > t.entry_date]))

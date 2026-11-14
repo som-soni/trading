@@ -141,7 +141,8 @@ def symbol_frame(df: pd.DataFrame, bench_close: pd.Series, cr: pd.DataFrame | No
     `cr` (this symbol's credited special dividends and demergers): the stage, the lines, the ATR and
     the signals are computed on the series back-adjusted for them, so a demerger is not read as a
     Stage 4 breakdown, and every price level is then put back on its own bar's scale (`pit_scale`),
-    so a stop never carries an action dated after it. Turnover and fills read the traded prices.
+    so a stop never carries an action dated after it. Fills read the traded prices; turnover reads them too,
+    with the sessions before a payout put on the bar's own price basis (`corporate_actions.traded_value`).
     """
     raw = df[["open", "high", "low", "close", "volume"]].astype(float)
     df = corporate_actions.back_adjust_ohlc(raw, cr)
@@ -158,7 +159,8 @@ def symbol_frame(df: pd.DataFrame, bench_close: pd.Series, cr: pd.DataFrame | No
     out["stage4_run"] = s4.groupby((s4 == 0).cumsum()).cumsum()
     out["sma50"] = df["close"].rolling(TREND_SMA).mean()
     out["atr"] = ind.atr(df, ATR_BARS)
-    out["turnover"] = (raw["close"] * raw["volume"]).rolling(LIQ_BARS, min_periods=LIQ_BARS).median()
+    # traded prices, each session valued on this bar's basis after a payout (corporate_actions.traded_value)
+    out["turnover"] = corporate_actions.traded_value(raw["close"], raw["volume"], cr, LIQ_BARS, stat="median")
     b = bench_close.reindex(df.index).ffill()
     out["rs_excess"] = (df["close"] / df["close"].shift(RS_BARS) - b / b.shift(RS_BARS)) * 100
     # entry B: a rally into the falling line that closes back below it

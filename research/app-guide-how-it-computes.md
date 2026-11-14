@@ -315,7 +315,7 @@ proven equal to the coded criteria by `tests.test_screen_definitions`. See
 | `atr_pct` | ATR14 ÷ close × 100 |
 | `adx14` | Wilder's ADX from +DM / −DM and the true range, all smoothed over 14 |
 | `vol_sma50` | 50-day average volume, including today |
-| `dollar_vol_sma20` | 20-day average of close × volume |
+| `dollar_vol_sma20` | 20-day average of close × volume. After a credited special dividend or demerger the sessions before it are valued on the bar's own price basis (`corporate_actions.traded_value`, via `enrich_daily`'s `credits`), as a split already is; the weekly `payout_turnover` job restates the stored column |
 | `high_252`, `low_252` | Highest high / lowest low of 252 bars |
 | `mom_12_1` | Close 21 bars ago ÷ close 252 bars ago − 1 |
 

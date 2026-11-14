@@ -342,6 +342,13 @@ def _signal_peers(market_key: str, strategy) -> list[str]:
     return _PEERS[k]
 
 
+def _credits(market_key: str, symbol: str, raw: "pd.DataFrame | None") -> "pd.DataFrame | None":
+    """The symbol's credited payouts inside `raw`, for enrich_daily's 20-day turnover: after a special
+    dividend or demerger it values pre-ex trading on today's price basis, as the stored
+    `prices.dollar_vol_sma20` (the signal cache's tail) does (corporate_actions.credits_for)."""
+    return corporate_actions.credits_for(market_key, symbol, raw) if market_key else None
+
+
 def backtest_symbol(
     symbol: str, raw_daily: pd.DataFrame, cfg: MarketConfig, start_date: pd.Timestamp,
     strategy=None, market_key: str = "", use_signal_cache: bool = True,
@@ -363,7 +370,8 @@ def backtest_symbol(
     # backward-looking) and vastly cheaper. A bar where the screen fails is
     # a bar on which the live pipeline would never have shown this symbol,
     # so it must not produce a new entry.
-    screened_in = strategy.prefilter_mask(cfg, ind.enrich_daily(raw_daily))
+    credits = _credits(market_key, symbol, raw_daily)
+    screened_in = strategy.prefilter_mask(cfg, ind.enrich_daily(raw_daily, credits))
 
     in_position = False
     pos: dict | None = None
@@ -449,7 +457,7 @@ def backtest_symbol(
             if len(slice_df) < strategy.min_bars:
                 continue
             try:
-                ctx = ctx_mod.build_context(symbol, slice_df, earnings_days_away=None)
+                ctx = ctx_mod.build_context(symbol, slice_df, earnings_days_away=None, credits=credits)
             except Exception:
                 continue
             if ctx is None:
@@ -529,7 +537,7 @@ def collect_signals(
     # daily/weekly/monthly frames on every qualifying bar of a growing slice, which
     # is quadratic and was ~89% of a scan. tests/test_context_frames.py checks the
     # sliced context is identical to the rebuilt one.
-    frames = ctx_mod.prepare_frames(raw_daily)
+    frames = ctx_mod.prepare_frames(raw_daily, _credits(market_key, symbol, raw_daily))
     screened_in = strategy.prefilter_mask(cfg, frames.daily)
     cached_rows = (_cached_signal_rows(market_key, strategy, symbol, sim_dates[0])
                    if (use_signal_cache and market_key) else {})
@@ -1009,7 +1017,7 @@ def _collect_one(sym: str) -> tuple[str, list, "pd.DataFrame | None", "funnel_mo
         sym, raw, ctx["cfg"], ctx["start"], strategy=ctx["strategy"], market_key=ctx["market_key"],
         use_signal_cache=ctx["use_signal_cache"], accept_labels=ctx["accept_labels"], fn=fn,
     )
-    enriched = ind.enrich_daily(raw) if sigs else None
+    enriched = ind.enrich_daily(raw, _credits(ctx["market_key"], sym, raw)) if sigs else None
     # drop_symbols is a defaultdict whose factory is a lambda, which cannot be pickled back to the
     # parent; Funnel.merge only reads it with .items(), so a plain dict of the same content will do.
     fn.drop_symbols = {stage: dict(reasons) for stage, reasons in fn.drop_symbols.items()}
@@ -1055,7 +1063,7 @@ def collect_portfolio_signals(
             if sigs:
                 all_signals.extend(sigs)
                 # enriched, not raw: the exit policies read atr14/sma50 off the bar
-                prices[sym] = ind.enrich_daily(raw)
+                prices[sym] = ind.enrich_daily(raw, _credits(market_key, sym, raw))
             _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far",
                       done=i + 1, total=len(candidates))
             if (i + 1) % 100 == 0:
@@ -1073,6 +1081,7 @@ def collect_portfolio_signals(
             use_signal_cache=use_signal_cache, accept_labels=accept_labels, deep_data=deep_data,
         )
         logger.info("Scanning %d symbols with %d worker processes", len(candidates), workers)
+        corporate_actions.payouts(market_key)   # read once here; the forked workers inherit it
         # Close, don't share: each worker opens its own (_pool_worker_init), and this process
         # reopens lazily on its next query.
         if db._connection is not None and not db._connection.closed:
@@ -1144,7 +1153,7 @@ def _prefilter_symbol(
     raw = cache.load_cached(market_key, sym)
     if raw is None or len(raw) < 260:
         return False, False
-    enriched = ind.enrich_daily(raw)
+    enriched = ind.enrich_daily(raw, _credits(market_key, sym, raw))
     mask = strategy.prefilter_mask(cfg, enriched)
     if not bool(mask[mask.index >= start].any()):
         return False, False
@@ -1192,7 +1201,20 @@ def _price_sigs(market_key: str) -> dict[str, str]:
             + (" AND date <= %s" if end else "") + " GROUP BY symbol",
             (market_key, end) if end else (market_key,),
         )
-        return {r[0]: "|".join(map(str, r[1:])) for r in cur.fetchall()}
+        sigs = {r[0]: "|".join(map(str, r[1:])) for r in cur.fetchall()}
+        # and its stored dividends / demergers: a credited payout moves the 20-day turnover the
+        # pre-filter's liquidity floor reads (enrich_daily's `credits`) without touching a price
+        corporate_actions.init_schema()
+        cur.execute(
+            "SELECT symbol, count(*), max(ex_date), sum(round(coalesce(value, 0)::numeric, 6)) FROM corporate_actions "
+            "WHERE market=%s AND kind IN ('dividend', 'demerger')" + (" AND ex_date <= %s" if end else "")
+            + " GROUP BY symbol",
+            (market_key, end) if end else (market_key,),
+        )
+        for sym, *rest in cur.fetchall():
+            if sym in sigs:
+                sigs[sym] += "|ca:" + "|".join(map(str, rest))
+        return sigs
 
 
 def _point_in_time_candidates(
@@ -1243,6 +1265,7 @@ def _point_in_time_candidates(
         global _POOL_CTX
         _POOL_CTX = dict(cfg=cfg, strategy=strategy, market_key=market_key, start=start)
         logger.info("Pre-filtering %d symbols with %d worker processes", len(tickers), workers)
+        corporate_actions.payouts(market_key)   # read once here; the forked workers inherit it
         # Same fork discipline as collect_portfolio_signals: close the parent's connection so no
         # worker inherits a live one, fork-safe init per worker, and an executor that fails loudly.
         if db._connection is not None and not db._connection.closed:

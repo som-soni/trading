@@ -346,41 +346,104 @@ def _bars_around(market: str, pairs: list[tuple[str, dt.date]]) -> dict:
     return out
 
 
+_CREDIT_COLS = ["symbol", "date", "kind", "cash", "prev_close", "open", "pct", "detail"]
+
+
+def _credit(r, day, prev, o) -> dict | None:
+    """The credit one stored action `r` earns, measured on the first session on or after its ex-date
+    (`day`, its `o`pen and the `prev`ious close) -- or None. THE rule; `credits` and `credits_in` both
+    apply it, one measuring on the stored bars, the other on a frame of them."""
+    if not prev or prev != prev or prev <= 0 or o is None or o != o or o <= 0:
+        return None
+    prev, o = float(prev), float(o)
+    gap = prev - o
+    if r.kind == "dividend":
+        cash = float(r.value or 0.0)
+        if not (SPECIAL_DIVIDEND_MIN_YIELD * prev <= cash < prev) or gap < GAP_CONFIRM * cash:
+            return None
+        kind = "special_dividend"
+    else:
+        if gap < DEMERGER_MIN_GAP * prev:
+            return None
+        cash, kind = gap, "demerger"
+    return {"symbol": r.symbol, "date": pd.Timestamp(day), "kind": kind, "cash": cash,
+            "prev_close": prev, "open": o, "pct": cash / prev,
+            "detail": r.detail if isinstance(r.detail, str) else f"{r.source} {r.kind} {r.value or 0:g}"}
+
+
+def _credit_frame(out: list) -> pd.DataFrame:
+    df = pd.DataFrame(out, columns=_CREDIT_COLS)
+    # one credit per symbol and session: a special dividend paid on a demerger's ex-date is inside its gap
+    return df.sort_values(["date", "symbol", "kind"]).drop_duplicates(["symbol", "date"], keep="first").reset_index(drop=True)
+
+
 def credits(market: str, symbols=None) -> pd.DataFrame:
     """The cash per share a holder is credited, one row per creditable action:
     symbol, date (the stored session it lands on), kind (special_dividend | demerger), cash,
     prev_close, open, pct (cash / prev_close), detail. See the module docstring for the rules."""
     acts = load(market, symbols, kinds=("dividend", "demerger"))
-    cols = ["symbol", "date", "kind", "cash", "prev_close", "open", "pct", "detail"]
     if acts.empty:
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=_CREDIT_COLS)
     # a demerger is often recorded twice (NSE "Demerger" and "Scheme of Arrangement" the same day): one key
     acts = acts.drop_duplicates(["symbol", "ex_date", "kind"])
     bars = _bars_around(market, [(r.symbol, r.ex_date.date()) for r in acts.itertuples()])
     out = []
     for r in acts.itertuples():
         b = bars.get((r.symbol, r.ex_date.date()))
-        if b is None:
-            continue
-        day, prev, o = b
-        if not prev or prev <= 0 or o is None or o != o or o <= 0:
-            continue
-        gap = prev - o
-        if r.kind == "dividend":
-            cash = float(r.value or 0.0)
-            if not (SPECIAL_DIVIDEND_MIN_YIELD * prev <= cash < prev) or gap < GAP_CONFIRM * cash:
-                continue
-            kind = "special_dividend"
-        else:
-            if gap < DEMERGER_MIN_GAP * prev:
-                continue
-            cash, kind = gap, "demerger"
-        out.append({"symbol": r.symbol, "date": pd.Timestamp(day), "kind": kind, "cash": cash,
-                    "prev_close": float(prev), "open": float(o), "pct": cash / float(prev),
-                    "detail": r.detail if isinstance(r.detail, str) else f"{r.source} {r.kind} {r.value or 0:g}"})
-    df = pd.DataFrame(out, columns=cols)
-    # one credit per symbol and session: a special dividend paid on a demerger's ex-date is inside its gap
-    return df.sort_values(["date", "symbol", "kind"]).drop_duplicates(["symbol", "date"], keep="first").reset_index(drop=True)
+        c = _credit(r, *b) if b is not None else None
+        if c is not None:
+            out.append(c)
+    return _credit_frame(out)
+
+
+def credits_in(bars: pd.DataFrame, acts: pd.DataFrame | None) -> pd.DataFrame | None:
+    """`credits` for one symbol, measured on its own bars (a date-indexed OHLC frame) instead of the
+    stored ones: `acts` are that symbol's stored dividend / demerger rows (`load`). An action counts
+    only when the frame holds the first session on or after its ex-date and the session before it, so
+    an action after the frame's last bar never enters -- a frame cut at t gives the credits known at t.
+    On the stored history it returns exactly `credits(market, [symbol])`. None when there are none."""
+    if acts is None or not len(acts) or bars is None or len(bars) < 2:
+        return None
+    idx, opens, closes = bars.index, bars["open"].to_numpy(float), bars["close"].to_numpy(float)
+    pos = idx.searchsorted(acts["ex_date"].to_numpy())
+    # most stored actions are ordinary dividends: drop, in one vector step, every one that cannot pass
+    # `_credit`'s yield test (or falls outside the frame) before measuring the rest one by one
+    ok = (pos >= 1) & (pos < len(idx))
+    prev = closes[(pos - 1).clip(0, len(idx) - 1)]
+    val = pd.to_numeric(acts["value"], errors="coerce").fillna(0.0).to_numpy(float)
+    ok &= (acts["kind"].to_numpy() != "dividend") | (val >= SPECIAL_DIVIDEND_MIN_YIELD * prev)
+    if not ok.any():
+        return None
+    out = []
+    for r, p in zip(acts[ok].drop_duplicates(["symbol", "ex_date", "kind"]).itertuples(),
+                    pos[ok][~acts[ok].duplicated(["symbol", "ex_date", "kind"]).to_numpy()]):
+        c = _credit(r, idx[p], closes[p - 1], opens[p])
+        if c is not None:
+            out.append(c)
+    return _credit_frame(out) if out else None
+
+
+PAYOUTS_TTL = 3600.0   # seconds a process keeps a market's stored actions (the web server is long-lived)
+_payouts: dict = {}
+
+
+def payouts(market: str) -> dict:
+    """{symbol: its stored dividend / demerger rows}, one read per market per process (refreshed after
+    PAYOUTS_TTL seconds), none dated after `asof.end()` -- what `credits_for` measures."""
+    key = (market, asof.end_date())
+    hit = _payouts.get(key)
+    if hit is None or time.time() - hit[0] > PAYOUTS_TTL:
+        acts = load(market, kinds=("dividend", "demerger"))
+        hit = _payouts[key] = (time.time(), {s: g for s, g in acts.groupby("symbol", sort=False)})
+    return hit[1]
+
+
+def credits_for(market: str, symbol: str, bars: pd.DataFrame | None) -> pd.DataFrame | None:
+    """The credits `bars` (one symbol's stored OHLCV, up to some date) span -- the `credits` argument of
+    `indicators.enrich_daily`, so its 20-day turnover reads pre-payout trading on today's price basis."""
+    if bars is None or bars.empty:
+        return None
+    return credits_in(bars, payouts(market).get(symbol))
 
 
 def back_adjust(px: pd.DataFrame, cr: pd.DataFrame | None) -> pd.DataFrame:
@@ -431,7 +494,7 @@ def pit_scale(raw_close: pd.Series, adj_close: pd.Series) -> pd.Series:
 
 
 def traded_value(close: pd.Series, volume: pd.Series, cr: pd.DataFrame | None, window: int = 20,
-                 min_periods: int | None = None) -> pd.Series:
+                 min_periods: int | None = None, stat: str = "mean", lag: int = 0) -> pd.Series:
     """One symbol's trailing `window`-session mean of daily traded value (close x volume), every session
     of the window valued on bar t's own price basis -- the liquidity a turnover floor should read.
 
@@ -446,17 +509,26 @@ def traded_value(close: pd.Series, volume: pd.Series, cr: pd.DataFrame | None, w
     would be -- so on 2020-12-31 AURUM reads ₹1.4 cr.
 
     Only a session whose window spans a credited ex-date differs from the plain mean, and it is computed
-    from the plain value elsewhere, so every other session is bit-identical to (close x volume).rolling."""
+    from the plain value elsewhere, so every other session is bit-identical to (close x volume).rolling.
+
+    `stat` "median" takes the window's median instead (a median scales with the price basis as a mean
+    does); `lag` ends the window `lag` sessions before t -- (close x volume).shift(lag).rolling(window) --
+    still valued on t's own basis."""
     mp = window if min_periods is None else min_periods
-    plain = (close * volume).rolling(window, min_periods=mp).mean()
+
+    def roll(v: pd.Series) -> pd.Series:
+        r = (v.shift(lag) if lag else v).rolling(window, min_periods=mp)
+        return r.median() if stat == "median" else r.mean()
+
+    plain = roll(close * volume)
     if cr is None or not len(cr) or close.empty:
         return plain
     adj = back_adjust(close.to_frame("c"), cr.assign(symbol="c"))["c"]
-    scaled = (adj * volume).rolling(window, min_periods=mp).mean() * pit_scale(close, adj)
+    scaled = roll(adj * volume) * pit_scale(close, adj)
     spans = pd.Series(False, index=close.index)
     for day in cr["date"]:
         p = close.index.searchsorted(pd.Timestamp(day))   # the first bar on or after the ex-date
-        spans.iloc[p:p + window - 1] = True                # bars whose window still holds a pre-ex bar
+        spans.iloc[p:p + lag + window - 1] = True          # bars whose window still holds a pre-ex bar
     return plain.where(~spans, scaled)
 
 

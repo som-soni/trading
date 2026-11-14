@@ -32,7 +32,7 @@ from ..core import chart_patterns as cp
 from ..core import context as ctx_mod
 from ..core import indicators as ind
 from ..core import sizing
-from ..marketdata import cache, earnings
+from ..marketdata import cache, corporate_actions, earnings
 from ..marketdata.universe import load_sector_cache
 from ..paths import REPORTS_DIR
 from . import links
@@ -70,7 +70,7 @@ def scan_market(
         if raw is None or len(raw) < strategy.min_bars:
             continue
         tail = raw.tail(SCAN_TAIL)
-        enriched = ind.enrich_daily(tail)
+        enriched = ind.enrich_daily(tail, corporate_actions.credits_for(market, sym, tail))
         last = enriched.iloc[-1]
         # price/liquidity only — the trend and 52-week-high conditions are
         # GATES, and this report is meant to show what they reject too
@@ -103,7 +103,8 @@ def scan_market(
     rows: list[dict] = []
     for sym, scan_match in hits:
         raw = cache.load_cached(market, sym)
-        ctx = ctx_mod.build_context(sym, raw, earnings_days_away=days_away.get(sym))
+        ctx = ctx_mod.build_context(sym, raw, earnings_days_away=days_away.get(sym),
+                                    credits=corporate_actions.credits_for(market, sym, raw))
         if ctx is None:
             continue
         result = strategy.evaluate(ctx)

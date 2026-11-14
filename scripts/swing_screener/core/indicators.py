@@ -86,9 +86,19 @@ def rs_score(close):
     return w * q1 + q2 + q3 + q4
 
 
-def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
+def enrich_daily(df: pd.DataFrame, credits: pd.DataFrame | None = None) -> pd.DataFrame:
     """Add every indicator column the gate/flag/entry logic needs to a raw
-    daily OHLCV DataFrame. Non-mutating."""
+    daily OHLCV DataFrame. Non-mutating.
+
+    `credits` are the symbol's credited special dividends and demergers inside `df`
+    (`marketdata.corporate_actions.credits_for(market, symbol, df)`). Only the 20-day
+    turnover reads them: the stored bars are split-adjusted but not payout-adjusted, so
+    after a payout a plain mean of close x volume keeps valuing pre-ex trading at the
+    pre-ex price for 20 sessions (AURUM, ex a 98.8% special dividend on 2020-12-23, read
+    Rs 121 cr a day while it traded Rs 8 lakh). With them, `dollar_vol_sma20` is
+    `corporate_actions.traded_value` -- every session on bar t's price basis, point in
+    time -- and identical to the bit wherever the window spans no ex-date. Without them
+    (a caller with no market, a synthetic frame) it is the plain mean."""
     out = df.copy()
     out["sma20"] = sma(out["close"], 20)
     out["sma50"] = sma(out["close"], 50)
@@ -117,7 +127,11 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     out["atr_pct"] = out["atr14"] / out["close"] * 100
     out["adx14"] = adx(out, 14)
     out["vol_sma50"] = sma(out["volume"], 50)
-    out["dollar_vol_sma20"] = sma(out["close"] * out["volume"], 20)
+    if credits is not None and len(credits):
+        from ..marketdata.corporate_actions import traded_value   # pure pandas; lazy so core stays light
+        out["dollar_vol_sma20"] = traded_value(out["close"], out["volume"], credits, 20)
+    else:
+        out["dollar_vol_sma20"] = sma(out["close"] * out["volume"], 20)
     out["high_252"] = out["high"].rolling(252, min_periods=20).max()  # 52-week high
     out["low_252"] = out["low"].rolling(252, min_periods=20).min()  # 52-week low
     # "the 200-day has been rising for at least a month" -- compare against

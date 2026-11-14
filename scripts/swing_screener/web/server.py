@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import paths
 from ..config import MARKETS
-from ..marketdata import freshness
+from ..marketdata import corporate_actions, freshness
 from ..marketdata import names as names_mod
 from ..marketdata import db as db_mod
 from ..marketdata.db import get_connection, py_value
@@ -1391,7 +1391,7 @@ def chart_patterns_live(market: str, symbol: str, date: str | None = None, show:
             raise HTTPException(404, f"no prices stored for {symbol}")
         if len(_pattern_daily) > 64:
             _pattern_daily.clear()
-        hit = _pattern_daily[(market, symbol)] = (last, ind.enrich_daily(raw))
+        hit = _pattern_daily[(market, symbol)] = (last, ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw)))
     daily = hit[1]
     if date:
         daily = daily[daily.index <= pd.Timestamp(date)]
@@ -2153,7 +2153,7 @@ def _attach_outcomes(strat, market: str, raw: pd.DataFrame, symbol: str, setups:
     from ..core import indicators as ind
     from ..strategies import setup_outcomes
     try:
-        setup_outcomes.attach(strat, market, MARKETS[market], ind.enrich_daily(raw), symbol, setups, raw=raw)
+        setup_outcomes.attach(strat, market, MARKETS[market], ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw)), symbol, setups, raw=raw)
     except Exception as e:  # noqa: BLE001 -- outcomes are extra: the setups still show without them
         print(f"setup outcomes for {strat.key} {symbol} failed: {e}", flush=True)
 
@@ -2251,7 +2251,7 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     raw = cache.load_cached(market, symbol)
     if raw is None or raw.empty:
         raise HTTPException(404, f"no prices stored for {symbol}")
-    daily = ind.enrich_daily(raw)
+    daily = ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw))
     if date:
         daily = daily[daily.index <= pd.Timestamp(date)]
     if daily.empty:
@@ -2350,7 +2350,7 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
         raise HTTPException(404, f"no prices stored for {symbol}")
     from ..analytics import stock_rs_history
     from ..screens.criteria import RS_MIN_RANK, RS_MIN_SCORE
-    daily = ind.enrich_daily(raw)
+    daily = ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw))
     if years:
         daily = daily[daily.index >= daily.index[-1] - pd.DateOffset(years=years)]
     fridays, mine = stock_rs_history.load(market, symbol, since=(daily.index[0] - pd.Timedelta(days=10)).date())
@@ -2430,7 +2430,7 @@ def setup_replay(strategy: str, market: str, symbol: str, start: str, end: str):
     if key in _replays:
         return _replays[key]
     cfg = MARKETS[market]
-    frames = ctx_mod.prepare_frames(raw)
+    frames = ctx_mod.prepare_frames(raw, corporate_actions.credits_for(market, symbol, raw))
     daily = frames.daily
     mask = strat.prefilter_mask(cfg, daily)
     days = daily.index[(daily.index >= pd.Timestamp(start)) & (daily.index <= pd.Timestamp(end))][:REPLAY_MAX_BARS]
@@ -2495,7 +2495,7 @@ def chart_conflicts(market: str, symbol: str):
     key = (market, symbol, as_of)
     if key in _conflicts:
         return _conflicts[key]
-    daily, cfg, out = ind.enrich_daily(raw), MARKETS[market], []
+    daily, cfg, out = ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw)), MARKETS[market], []
     try:
         passes = []
         for _, row in daily.iterrows():
@@ -2549,7 +2549,7 @@ def chart_patterns_history(market: str, symbol: str, years: int = 5):
     if key not in _pattern_lists:
         if len(_pattern_lists) > 64:
             _pattern_lists.clear()
-        found = strat.patterns_history(ind.enrich_daily(raw), market, symbol, years or None)
+        found = strat.patterns_history(ind.enrich_daily(raw, corporate_actions.credits_for(market, symbol, raw)), market, symbol, years or None)
         _pattern_lists[key] = {"as_of": as_of, "spec_id": strat.spec_id(), "years": years, "patterns": found,
                                "note": f"{len(found)} patterns in {years} years" if years else f"{len(found)} patterns"}
     return _pattern_lists[key]

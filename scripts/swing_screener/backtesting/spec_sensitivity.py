@@ -29,7 +29,7 @@ import pandas as pd
 from .. import paths
 from ..config import MARKETS
 from ..core import indicators as ind
-from ..marketdata import cache, db
+from ..marketdata import cache, corporate_actions, db
 from ..strategies import get_strategy
 from ..strategies import minervini_spec as ms
 from . import spec as spec_mod
@@ -82,7 +82,7 @@ def load(market: str, start: str = START) -> None:
         raw = cache.load_cached(market, s)
         if raw is None or len(raw) < strat.min_bars:
             continue
-        e = ind.enrich_daily(raw)
+        e = ind.enrich_daily(raw, corporate_actions.credits_for(market, s, raw))
         m = strat.prefilter_mask(cfg, e)
         if not m[m.index >= st].any():
             continue

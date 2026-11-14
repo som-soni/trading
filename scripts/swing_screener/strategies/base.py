@@ -358,6 +358,11 @@ def tradable_point_in_time(cfg, last) -> tuple[bool, str]:
     volume rises by it, so the product is unchanged -- so it carries the whole
     liquidity test here. Live screening keeps the price floor, in
     screens/base.py's `tradable`, where today's price really is today's price.
+
+    A special dividend or demerger is not adjusted in the stored bars, so there
+    the product is not invariant: `dollar_vol_sma20` is built with the symbol's
+    credits (indicators.enrich_daily, corporate_actions.traded_value), valuing
+    the sessions before the payout on the bar's own price basis.
     """
     if cfg.screener.min_dollar_volume:
         dv = last.get("dollar_vol_sma20")
