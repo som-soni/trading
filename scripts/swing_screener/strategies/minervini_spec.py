@@ -2167,6 +2167,12 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.68 (review bug fixes, judged as fixes, not tuned) optimise stage, 2013-2021, IN-SAMPLE: India 6.09% CAGR, "
+        "-14.2% max drawdown, +0.44R over 290 trades (run #1811; 1.67: 10.31%, -18.0%, +0.89R over 181); US 11.12%, "
+        "-19.8%, +0.53R over 334 (run #1812; 1.67: 10.83%, -18.9%, +0.45R over 342). India's fall comes from the "
+        "wider RS rating universe (B6): it added mostly break-even 2013-2016 trades that displaced better ones -- "
+        "flagged for the next review (is the RS cut-off too loose on the wider universe?). No verify run for 1.68: "
+        "the verify results below are 1.67's and 1.64's. "
         "v1.67 PASSED verify (US), 2022-01-01 to 2026-11-13, a SECOND look at those years (run #1632): 9.38% CAGR "
         "(SPY held: 10.03%, excess -0.64 points, reported only), max drawdown -19.1% (SPY -25.4%), 170 trades, 26% won, "
         "+0.38R a trade, profit factor 1.81 -- passes all three conditions. The same years under the shared rules "
