@@ -85,7 +85,12 @@ def _cagr(summary) -> float | None:
 
 def better_runs(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> set[tuple[str, str]]:
     """Spec ids outside the kept versions with a backtest run (report_runs) whose CAGR beats every kept
-    spec id's in the same strategy, market and stage -- a rule set worth going back to, so its rows stay."""
+    spec id's in the same strategy, market and stage -- a rule set worth going back to, so its rows stay.
+    Registered strategies only: an unregistered one has no kept spec id to beat, so every old run of it
+    "won" and its rows were never pruned (17 GB of ema_pullback, supertrend and delivery_breakout by
+    2026-11-14) -- and there is no current rule set to go back from."""
+    from ..strategies import list_strategies
+    registered = set(list_strategies())
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT strategy, market, coalesce(stage, 'legacy'), spec_id, summary FROM report_runs "
                     "WHERE kind='backtest' AND spec_id IS NOT NULL")
@@ -95,7 +100,7 @@ def better_runs(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> set
         if c is not None and (s, sp) in kept:
             best_kept[(s, m, st)] = max(c, best_kept.get((s, m, st), c))
     return {(s, sp) for s, m, st, sp, c in runs
-            if c is not None and (s, sp) in stored and (s, sp) not in kept
+            if s in registered and c is not None and (s, sp) in stored and (s, sp) not in kept
             and c > best_kept.get((s, m, st), float("-inf"))}
 
 
