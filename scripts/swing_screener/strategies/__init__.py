@@ -142,6 +142,7 @@ def portfolio_strategies() -> dict:
     """
     from ..backtesting.baseline import MomentumBaselineStrategy, VolScaledMomentumStrategy
     from ..backtesting.boucher_bonds_gold import BoucherBondsGoldStrategy
+    from ..backtesting.boucher_book import BoucherBookStrategy
     from ..backtesting.boucher_stocks import BoucherStocksStrategy
     from ..backtesting.combination import CombinationStrategy
     from ..backtesting.dual_momentum import DualMomentumStrategy
@@ -164,7 +165,8 @@ def portfolio_strategies() -> dict:
                                 MaTrendStrategy, CombinationStrategy, QualityMomentumStrategy,
                                 Stage4ShortsStrategy, TurtleTrendStrategy, EtfSwingStrategy,
                                 ParabolicShortStrategy, MasonsonTqqqStrategy,
-                                BoucherStocksStrategy, BoucherBondsGoldStrategy, ValueRankingStrategy)}
+                                BoucherStocksStrategy, BoucherBondsGoldStrategy, BoucherBookStrategy,
+                                ValueRankingStrategy)}
 
 
 def expand_all(keys, portfolio: bool = True) -> list[str]:

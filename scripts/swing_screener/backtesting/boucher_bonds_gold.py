@@ -61,6 +61,9 @@ GMI_WEEKS = 16                  # gold miners above their 16-week average
 GOLD_WEEKS = 68                 # gold above its 68-week average
 SILVER_WEEKS = 12               # silver above its 12-week average
 
+# ---- the pass rule (1.1): against the asset held at the model's own exposure, the rest in T-bills
+MATCH_SHARPE_MARGIN = 0.10      # Sharpe over T-bills must beat the exposure-matched mix's by this much
+
 # ---- the synthetic long bond before TLT
 SYN_BOND_YEARS = 25             # TLT holds 20+-year Treasuries, average maturity about 25 years
 SYN_EXPENSE = 0.0015            # TLT's expense ratio, a year, charged to the synthetic
@@ -169,7 +172,7 @@ def run(start: str, mode: str = "bbu", cost_bps: float = 5.0):
     rate = (index_data.load(MARKET, TBILL) / 100.0).clip(lower=0.0)
     gold_side = mode in ("gold", "hold_gold")
     if gold_side:
-        price, symbol = index_data.load(MARKET, GOLD_MINERS), "GDX"
+        price, symbol = index_data.load(MARKET, GOLD_MINERS), GDX
         bench_name = "GDX total return"
     else:
         price, symbol = long_bond(), "TLT"
@@ -186,9 +189,38 @@ def run(start: str, mode: str = "bbu", cost_bps: float = 5.0):
         first = state.dropna().index[0]
         want = to_sessions(state.fillna(False), price.index).astype(int)
     used = max(pd.Timestamp(start), first)
+    # the log's prices are the fund's own close; the total-return levels it earns are logged beside them
     tdf, eq, held, csh, costs, _pos = simulate(price, want, rate, used.date().isoformat(), cost_bps,
-                                               float(cfg.account_size), symbol)
+                                               float(cfg.account_size), symbol, quote=closes(symbol))
     return tdf, eq, held, csh, costs, price, bench_name, readings, used
+
+
+def matched(eq: pd.Series, held: pd.Series, price: pd.Series, cost_bps: float) -> dict:
+    """The pass rule's yardstick (1.1): the model's asset held at the model's own average exposure over
+    the run, the rest in T-bills, rebalanced at each month's last session -- and the model's own figures
+    beside it, all on the same sessions. A comparison built with the run's exposure, never a trade."""
+    from .boucher_book import book_stats, mix
+    rate = (index_data.load(MARKET, TBILL) / 100.0).clip(lower=0.0)
+    x = float(held.reindex(eq.index).fillna(0).mean())
+    start = eq.index[0].date().isoformat()
+    one = pd.Series(1, index=price.index)
+    asset = simulate(price, one, rate, start, cost_bps, 1.0, "asset")[1]
+    bills = simulate(price, one * 0, rate, start, cost_bps, 1.0, "bills")[1]
+    mixed, _v, _c = mix({"asset": asset, "bills": bills}, {"asset": x, "bills": 1 - x}, cost_bps)
+    return {"exposure": x, "model": book_stats(eq, rate), "matched": book_stats(mixed, rate),
+            "asset": book_stats(asset, rate)}
+
+
+def pass_verdict(m: dict) -> tuple[bool, str]:
+    """The 1.1 pass rule, fixed 2026-11-14: Sharpe over T-bills at least MATCH_SHARPE_MARGIN above the
+    exposure-matched mix's, and a max drawdown no deeper than the mix's."""
+    a, b = m["model"], m["matched"]
+    ok = a["sharpe"] >= b["sharpe"] + MATCH_SHARPE_MARGIN and a["max_dd_pct"] >= b["max_dd_pct"]
+    return ok, (f"Pass rule (1.1): model Sharpe over T-bills {a['sharpe']:.2f} vs {b['sharpe']:.2f} for "
+                f"{m['exposure'] * 100:.0f}% asset / {100 - m['exposure'] * 100:.0f}% T-bills (needs +"
+                f"{MATCH_SHARPE_MARGIN:.2f}); max DD {a['max_dd_pct']:.1f}% vs {b['max_dd_pct']:.1f}%; CAGR "
+                f"{a['cagr_pct']:.2f}% vs {b['cagr_pct']:.2f}% (asset held {m['asset']['cagr_pct']:.2f}%, "
+                f"Sharpe {m['asset']['sharpe']:.2f}) -> {'PASS' if ok else 'FAIL'}.")
 
 
 # ------------------------------------------------------------------ docs
@@ -201,18 +233,22 @@ BG_DOC = {
                    "count; hold gold miners while miners, gold and silver are all above their averages. "
                    "T-bills otherwise. Mark Boucher's weekly models.",
     "status": (
-        "OPTIMISE STAGE (2013-2021, in-sample) -- GOLD PASSES; BOND-BILL-UTILITY BORDERLINE; HEINE FAILS. "
-        "Settings are his published ones, fixed before any run. The pass rule, written before reading a "
-        "result: excess CAGR over the model's buy-and-hold (long Treasuries for bbu and heine, GDX for gold) "
-        "above zero with a max drawdown no deeper, or a materially shallower drawdown at a CAGR within 1 "
-        "point. Gold-Silver-GMI: -0.81% against GDX's -3.45%, excess +2.64, drawdown -40.5% against -72.9%, "
-        "21 trades, 38% won, invested 26% of the time (passes). Bond-Bill-Utility: 3.88% against 4.88%, "
-        "excess -0.99, drawdown -15.7% against -21.3%, Sharpe 0.42 against 0.42, 49 trades, 45% won, "
-        "invested 49%: inside the 1-point band with a 5.6-point shallower drawdown, but no better "
-        "risk-adjusted, so borderline. Heine: 3.69%, excess -1.19, drawdown -19.4%, 54 trades (fails). "
-        "Context, full stage 1980-2012 (never a verdict; the start moves to the first week every input "
-        "exists, 1992 for bbu): bbu 4.68% against 8.82%, heine 1.65% (excess -8.53), gold -7.87% "
-        "(excess -10.89) -- all fail. No verify run."
+        "OPTIMISE STAGE (2013-2021, in-sample) -- NO MODEL PASSES; THE GOLD MODEL FAILS. The pass rule, "
+        "re-stated in 1.1 (2026-11-14 review, tracker #76), because the 1.0 rule (excess over the asset held) "
+        "could not tell timing from simply holding less of a falling asset: a model passes only if its Sharpe "
+        "over T-bills is at least {MATCH_SHARPE_MARGIN} above that of its own asset held at the model's own "
+        "average exposure with the rest in T-bills (rebalanced monthly), with a max drawdown no deeper than "
+        "that mix's. The asset held and T-bills are reported beside it. Judged on the 1.0 runs (1.1 changes "
+        "the trade log only, not the equity): Gold-Silver-GMI FAILS -- -0.81% CAGR, drawdown -40.5%, Sharpe "
+        "0.02, against 26% GDX / 74% T-bills at +0.86%, -25.3%, 0.07; GDX returned -3.72% a year in the weeks "
+        "it held it and -3.35% in the weeks it did not, so its 1.0 'pass' over GDX (-3.45%) was the 74% of "
+        "the time in T-bills. Bond-Bill-Utility FAILS -- 3.88%, -15.7%, Sharpe 0.36, against 50% TLT / 50% "
+        "T-bills at 2.91%, -11.1%, 0.36 (TLT held 4.88%, -21.3%, 0.37): the same Sharpe at a deeper drawdown, "
+        "so no timing edge. Heine (3.69%, -19.4%, 54 trades) trails Bond-Bill-Utility on every measure; its "
+        "exposure-matched mix is printed by its run. Each run now prints its own verdict under this rule. "
+        "Context, full stage 1980-2012 (never a verdict): bbu 4.68% against 8.82% for long bonds held, heine "
+        "1.65%, gold -7.87%. The models' intended use, as sleeves of one book with Boucher's stock timing, is "
+        "tested as boucher_book. No verify run."
     ),
     "thesis": (
         "The same liquidity cycle as his stock timing, applied to the assets it moves first. Bonds rally "
@@ -235,6 +271,9 @@ BG_DOC = {
         "(GLD) above its {GOLD_WEEKS}-week and silver (SLV) above its {SILVER_WEEKS}-week.",
         "Out of the asset the money earns the 13-week T-bill rate. `--mode hold_bonds` and `--mode hold_gold` "
         "hold the asset throughout, for comparison; every run's benchmark is its asset's buy-and-hold.",
+        "The verdict (1.1): each model run also builds its asset held at the model's own average exposure, "
+        "the rest in T-bills, rebalanced at each month's last session, and prints the pass rule against it: "
+        "Sharpe over T-bills at least {MATCH_SHARPE_MARGIN} higher, and a drawdown no deeper.",
     ),
     "caveats": (
         "**His figures are not comparable as printed.** He reported price-plus-coupon index returns (bonds) "
@@ -258,6 +297,12 @@ BG_DOC = {
         "the run's notes say so. The 1980-2012 context runs therefore cover 1992-2012 (bbu) and 2006-2012 "
         "(heine, gold).",
         "**Fills.** Signals on each week's last close fill at the close {FILL_DELAY_SESSIONS} session later.",
+        "**The trade log.** The book earns the total-return series (TLT's chained onto the synthetic, base "
+        "100; GDX's dividend-adjusted), so `entry_price` / `exit_price` are the fund's own close (blank "
+        "before it lists) and the series levels are logged as `entry_tr_level` / `exit_tr_level`. `costs` "
+        "is both fees (1.0 logged only the exit fee); `r_multiple` is the trade's fractional return.",
+        "**The exposure-matched yardstick uses the run's own exposure,** known only after the run. It is a "
+        "comparison that asks whether the timing chose better weeks than chance, never a tradable book.",
     ),
     "entry_rules": (
         "At each week's last close, every condition of the chosen model holds (bbu, gold) or enough of them "
@@ -288,8 +333,17 @@ class BoucherBondsGoldStrategy(PortfolioStrategy):
     key = BG_DOC["key"]
     doc = BG_DOC
     family = "boucher_bonds_gold"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-11-14",
+         "Review 2026-11-14 (tracker #76). (1) The shared trade log (boucher_stocks.simulate): `costs` holds "
+         "the entry plus the exit fee (it held only the exit fee); `entry_price` / `exit_price` are TLT's or "
+         "GDX's own close, the total-return levels moved to `entry_tr_level` / `exit_tr_level`. Equity "
+         "unchanged. (2) The pass rule re-stated: Sharpe over T-bills at least MATCH_SHARPE_MARGIN = 0.10 "
+         "above the asset held at the model's own average exposure (rest in T-bills, monthly), and a max "
+         "drawdown no deeper; each model run prints that verdict. The 1.0 rule (excess over the asset held) "
+         "read 74% of the time in T-bills while GDX fell as a pass. Gold-Silver-GMI marked failing. No rule "
+         "of any model changes; bumped by hand because simulate is shared and the fingerprint cannot see it."),
         ("1.0", "2026-11-13",
          "First version, from Mark Boucher's The Hedge Fund Edge (1999), chapter 8. Settings his published "
          "ones, FIXED BEFORE THE FIRST RUN, weekly closes: Bond-Bill-Utility -- 30-year yield < 10-week SMA "
@@ -331,6 +385,7 @@ class BoucherBondsGoldStrategy(PortfolioStrategy):
         ("Gold miners", "GMI_WEEKS", "Weeks in GDX's average."),
         ("Gold", "GOLD_WEEKS", "Weeks in GLD's average."),
         ("Silver", "SILVER_WEEKS", "Weeks in SLV's average."),
+        ("Pass margin", "MATCH_SHARPE_MARGIN", "Sharpe over T-bills a model must add over its asset held at its own exposure, the rest in T-bills."),
         ("Synthetic bond", "SYN_BOND_YEARS", "Maturity of the constant-maturity Treasury that stands in before TLT."),
         ("Cost per side", "cost_bps", "Basis points per side."),
     )
@@ -352,10 +407,14 @@ def main(argv: list[str] | None = None) -> dict | None:
 
     with context_boundary(a.end):
         tdf, eq, held, csh, costs, bench, bench_name, _r, used = run(a.start, a.mode, a.cost_bps)
+        verdict = ""
+        if not a.mode.startswith("hold"):
+            verdict = " " + pass_verdict(matched(eq, held, bench, a.cost_bps))[1]
+            print(verdict.strip())
         what = {"bbu": "Bond-Bill-Utility model, long Treasuries.", "heine": "Heine model, long Treasuries.",
                 "gold": "Gold-Silver-GMI model, gold miners (GDX).",
                 "hold_bonds": "Comparison: long Treasuries held throughout.",
-                "hold_gold": "Comparison: GDX held throughout."}[a.mode]
+                "hold_gold": "Comparison: GDX held throughout."}[a.mode] + verdict
         note = ("" if used <= pd.Timestamp(a.start) else
                 f"Start moved from {a.start} to {used.date()}: the first week every input of the model has a reading.")
         return finish(a, argv, BoucherBondsGoldStrategy, tdf, eq, held, csh, costs, bench, bench_name, what, a.mode,

@@ -1,7 +1,7 @@
 {
   "boucher_bonds_gold": {
     "family": "boucher_bonds_gold",
-    "fingerprint": "7efc3234",
+    "fingerprint": "23b6ad68",
     "params": {
       "BBU_BILL_WEEKS": 38,
       "BBU_LONG_WEEKS": 10,
@@ -16,17 +16,36 @@
       "HEINE_LONG_WEEKS": 6,
       "HEINE_MIN_POINTS": 3,
       "HEINE_UTIL_WEEKS": 10,
+      "MATCH_SHARPE_MARGIN": 0.1,
       "SILVER_WEEKS": 12,
       "SYN_BOND_YEARS": 25,
       "SYN_EXPENSE": 0.0015,
       "_key": "boucher_bonds_gold",
       "cost_bps": 5.0
     },
+    "version": "1.1"
+  },
+  "boucher_book": {
+    "family": "boucher_book",
+    "fingerprint": "8d78b4ed",
+    "params": {
+      "BOOK_BONDS_PCT": 30,
+      "BOOK_GOLD_PCT": 20,
+      "BOOK_STOCKS_PCT": 50,
+      "FILL_DELAY_SESSIONS": 1,
+      "NEIGHBOUR_STEP_PCT": 10,
+      "PASS_DD_SHALLOWER_PCT": 25,
+      "PASS_MAX_CAGR_SHORTFALL": 2.0,
+      "PASS_SHARPE_MARGIN": 0.1,
+      "SIXTY_FORTY_STOCKS_PCT": 60,
+      "_key": "boucher_book",
+      "cost_bps": 5.0
+    },
     "version": "1.0"
   },
   "boucher_stocks": {
     "family": "boucher_stocks",
-    "fingerprint": "1954638b",
+    "fingerprint": "bb8da7bf",
     "params": {
       "BAA_LAG_DAYS": 32,
       "BOND_PROXY_YEARS": 20,
@@ -51,6 +70,7 @@
       "ROC_MONTHS": 12,
       "SENTIMENT_LAG_DAYS": 35,
       "SENTIMENT_MAX": 99.5,
+      "TBILL_FLOOR_PCT": 0.5,
       "TBILL_ROC_MAX_PCT": 6.0,
       "TREND_WEEKS": 40,
       "UNEMP_LAG_DAYS": 40,
@@ -58,7 +78,7 @@
       "_key": "boucher_stocks",
       "cost_bps": 5.0
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "breakout": {
     "family": "breakout",
