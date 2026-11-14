@@ -5,16 +5,22 @@ so a run on a new version scans afresh and leaves the old version's rows behind.
 them: by 2026-10-27 the table held 172 GB across 90 spec ids, only ~13% of it for the current rules,
 and the disk filled -- every queued job then failed at start writing its log.
 
-`prune` keeps, per strategy, the rows of its CURRENT version and the one BEFORE it (KEEP_VERSIONS),
-every spec id of those versions included -- `--const` variants and the cached rows a `signal_version`
-pin carries forward. A pin can point further back than that (rs_leaders 1.4 reads 1.2's signals): when an
-older spec id holds a market's only copy of a strategy's current signal id, it is kept too
-(`pinned_sources`). So is an older spec id with a backtest run whose CAGR beats every kept one in the same
-strategy, market and stage (`better_runs`) -- a rule set worth returning to. The version before is kept because the next run of a post-scan-only bump copies
-from it (backtest.seed_signal_cache). Rows of an older version, or of a strategy no longer registered,
-are deleted. What that costs: the trade-anatomy chart of a run made on a pruned version can no longer
-draw the structure the strategy saw (its trades, P&L and report are untouched), and a backtest of a
-pruned version would rescan.
+`prune` keeps, per strategy, only the rows of its CURRENT version -- every spec id of it, `--const`
+variants included. The cache is for speed, and speed only ever comes from the current rules: a row is
+reused only under the same signal id (version or `signal_version` pin, plus every constant the scan
+reads), and a run copies the rows it reuses under its own spec id (backtest.seed_signal_cache), so once
+the current version has run in a market nothing older is read for speed again. The one exception is
+kept too: an older spec id that holds a market's only copy of the current signal id (`pinned_sources`)
+-- a `signal_version` pin whose new version has not run there yet (rs_leaders 1.4 reads 1.2's
+signals).
+
+What a prune costs: the record of what an older version's runs saw. The trade-anatomy chart, the
+Minervini trade review (`trade_review.py`) and `explain.py` read a run's own rows, so for a pruned
+version's runs they come back empty; the runs' trades, P&L and reports are untouched, and re-running
+that version (a full rescan) brings the rows back. Until 2026-11-14 the previous version, and any older
+one whose run beat the current one's CAGR, were kept as well; with versions bumped every few days and a
+dozen `--const` variants per version, that was 135 GB of a 256 GB cache read by nothing but charts of
+superseded runs. Rows of a strategy no longer registered go too.
 
 The table is partitioned by strategy, then spec id (marketdata/db.py `ensure_signal_partition`), so a
 pruned spec id is a dropped table and the disk gets its space back at once. A DELETE would not: Postgres
@@ -34,7 +40,7 @@ from ..marketdata import db
 
 logger = logging.getLogger(__name__)
 
-KEEP_VERSIONS = 2     # the current version and the one before it
+KEEP_VERSIONS = 1     # the current version only (see the module docstring)
 
 
 def kept_versions() -> dict[str, set[str]]:
@@ -76,34 +82,6 @@ def pinned_sources(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> 
     return out
 
 
-def _cagr(summary) -> float | None:
-    try:
-        return float(str((summary or {}).get("cagr")).replace("%", "").replace(",", ""))
-    except ValueError:
-        return None
-
-
-def better_runs(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> set[tuple[str, str]]:
-    """Spec ids outside the kept versions with a backtest run (report_runs) whose CAGR beats every kept
-    spec id's in the same strategy, market and stage -- a rule set worth going back to, so its rows stay.
-    Registered strategies only: an unregistered one has no kept spec id to beat, so every old run of it
-    "won" and its rows were never pruned (17 GB of ema_pullback, supertrend and delivery_breakout by
-    2026-11-14) -- and there is no current rule set to go back from."""
-    from ..strategies import list_strategies
-    registered = set(list_strategies())
-    with db.get_connection().cursor() as cur:
-        cur.execute("SELECT strategy, market, coalesce(stage, 'legacy'), spec_id, summary FROM report_runs "
-                    "WHERE kind='backtest' AND spec_id IS NOT NULL")
-        runs = [(s, m, st, sp, _cagr(summ)) for s, m, st, sp, summ in cur.fetchall()]
-    best_kept: dict[tuple, float] = {}
-    for s, m, st, sp, c in runs:
-        if c is not None and (s, sp) in kept:
-            best_kept[(s, m, st)] = max(c, best_kept.get((s, m, st), c))
-    return {(s, sp) for s, m, st, sp, c in runs
-            if s in registered and c is not None and (s, sp) in stored and (s, sp) not in kept
-            and c > best_kept.get((s, m, st), float("-inf"))}
-
-
 def _stored(table: str) -> list[tuple[str, str]]:
     """(strategy, spec_id) of every rule set stored: the partitions, or the distinct keys unpartitioned."""
     with db.get_connection().cursor() as cur:
@@ -119,7 +97,6 @@ def plan(table: str = db.SIGNALS) -> list[tuple[str, str, bool]]:
     rows = _stored(table)
     kept = {(s, sp) for s, sp in rows if s in keep and _version_of(sp or "") in keep[s]}
     kept |= pinned_sources(set(rows), kept)
-    kept |= better_runs(set(rows), kept)
     return [(s, sp, (s, sp) in kept) for s, sp in rows]
 
 

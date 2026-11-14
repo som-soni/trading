@@ -8,8 +8,7 @@ hold back -- a weekly prune running beside the test would otherwise stop the mig
     one table per (strategy, spec id), and drops the emptied legacy table;
   - ensure_signal_partition is idempotent, and a write to a new rule set lands in its own table;
   - signal_cache.prune drops the tables of rule sets it does not keep (an unregistered strategy's,
-    with the strategy's own table) and leaves the kept ones' rows untouched -- an unregistered strategy's
-    old runs never keep its rows as a "better run";
+    with the strategy's own table) and leaves the kept ones' rows untouched;
   - on a table not yet partitioned, prune still deletes the rows.
 
 Run:  PYTHONPATH=. .venv/bin/python -m tests.test_signal_partitions
@@ -87,14 +86,6 @@ def run() -> list[str]:
     mids = _q(f"SELECT pg_get_expr(c.relpartbound, c.oid) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid "
               f"WHERE i.inhparent = '{T}'::regclass")
     check(not any(OLD[0] in m for (m,) in mids), f"the unregistered strategy's table is left: {mids}")
-
-    # --- an unregistered strategy's old runs never count as "better" (it has no kept rule set to beat) ---
-    from swing_screener.strategies import list_strategies
-    gone = {(s, sp) for s, sp in _q("SELECT DISTINCT strategy, spec_id FROM report_runs "
-                                    "WHERE kind = 'backtest' AND spec_id IS NOT NULL")
-            if s not in set(list_strategies())}
-    kept_gone = signal_cache.better_runs(gone, set())
-    check(not kept_gone, f"better_runs keeps an unregistered strategy's rule sets: {sorted(kept_gone)[:3]}")
 
     # --- an unpartitioned table still prunes by DELETE ---
     U = "pg_temp.zz_unpartitioned"

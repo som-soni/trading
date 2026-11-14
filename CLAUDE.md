@@ -219,8 +219,10 @@ rows forward (`backtest._signal_peers`, `backtest_signal_specs`) instead of
 rescanning for hours. Never pin it across a change to `build_context()`, `evaluate()`
 or a detector — the carried rows would replay the old detections. Leave it unset
 otherwise (it defaults to `version`, so a bump rescans). The cache keeps only each
-strategy's current and previous version: the weekly `prune_signals` job
-(`backtesting/signal_cache.py`) drops older ones, because left alone they filled the disk. The table
+strategy's current version (plus an older spec id a pin still reads, until the new version has run):
+the weekly `prune_signals` job (`backtesting/signal_cache.py`) drops the rest, because left alone they
+filled the disk. So a superseded version's runs lose their trade-anatomy chart and trade review at the
+next prune — review a run before bumping past it, or re-run it. The table
 is partitioned, one table per (strategy, spec id), so a prune is a dropped table that gives the disk its
 space back (a DELETE would not); a writer calls `db.ensure_signal_partition` before inserting a new spec
 id's rows — every write path in `backtest.py` does — or Postgres refuses them.
