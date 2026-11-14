@@ -43,6 +43,12 @@ HISTORY_START = "2009-01-01"   # before the 2010-onward backtests start: the min
 MIN_HISTORY_BARS = 200    # a 52-week high/low needs roughly a year of bars behind it
 BIG_MOVE = 0.04           # "up/down 4%+" on the day
 MONTH_BARS = 21
+# The day's turnover is a sum of 20-day averages, so a real session moves it by a few percent: a full day's
+# volume dropping to zero moves each average by 1/20. A move beyond this share from the last good day is a
+# partial load (a session's prices stored for only part of the market, or with a short-history average), not
+# the market: 2026-11-12's US row read $128 billion between $696 and $686 billion, and for a day it cut every
+# turnover floor scaled on it (minervini's, the RS rating's universe) about fivefold.
+MAX_TURNOVER_JUMP = 0.25
 
 # index series this page needs, stored in index_series (key, yfinance ticker); price indices, not total return
 INDEXES = {
@@ -190,6 +196,28 @@ GROUP BY date ORDER BY date
 """
 
 
+def plausible(rows: list, prev_turnover: float | None) -> tuple[list, list]:
+    """(kept, held back): rows (date first, turnover last, in date order) whose turnover is within
+    MAX_TURNOVER_JUMP of the last good day's. A jump the NEXT row confirms (within the same share of the jumped
+    level) is a real change of level -- the universe or the classification changed -- and is kept; a lone jump,
+    or one on the last row with nothing yet to confirm it, is held back. A held-back day is not stored, so the
+    next run (which recomputes the last week) tries it again on complete prices."""
+    kept, held = [], []
+    prev = prev_turnover
+    for i, r in enumerate(rows):
+        t = r[-1]
+        jump = bool(prev and t is not None and abs(t / prev - 1) > MAX_TURNOVER_JUMP)
+        if jump:
+            nxt = rows[i + 1][-1] if i + 1 < len(rows) else None
+            if not (nxt is not None and t and abs(nxt / t - 1) <= MAX_TURNOVER_JUMP):
+                held.append(r)
+                continue
+        kept.append(r)
+        if t:
+            prev = t
+    return kept, held
+
+
 def compute(market: str, start: str | None = None) -> int:
     """(Re)compute breadth from `start` (default: a week before the last stored day) to the latest prices."""
     init_schema()
@@ -214,6 +242,17 @@ def compute(market: str, start: str | None = None) -> int:
     # ...and on a real session most stocks move: a holiday whose stray rows all repeat the previous close
     # shows ~no advancers or decliners
     rows = [r for r in rows if r[1] >= BREADTH_N * 0.5 and (r[2] or 0) + (r[3] or 0) >= 0.5 * r[1]]
+    # ...and a day whose turnover jumps away from the last good day's is a partial load (MAX_TURNOVER_JUMP)
+    if rows:
+        with db.get_connection().cursor() as cur:
+            cur.execute("SELECT turnover FROM breadth_daily WHERE market=%s AND date < %s AND turnover > 0 "
+                        "ORDER BY date DESC LIMIT 1", (market, rows[0][0]))
+            got = cur.fetchone()
+        rows, held = plausible(rows, float(got[0]) if got else None)
+        for r in held:
+            logger.warning("breadth %s %s: turnover %.4g is more than %d%% from the previous day's -- a partial "
+                           "price load; not stored, the next run tries it again", market, r[0], r[-1] or 0,
+                           round(MAX_TURNOVER_JUMP * 100))
     db.execute_values("""INSERT INTO breadth_daily (market, date, n, adv, dec, up4, dn4, highs, lows, above5, above50, up25m, dn25m, up50m, dn50m, turnover)
                          VALUES %s ON CONFLICT (market, date) DO UPDATE SET n=EXCLUDED.n, adv=EXCLUDED.adv, dec=EXCLUDED.dec,
                          up4=EXCLUDED.up4, dn4=EXCLUDED.dn4, highs=EXCLUDED.highs, lows=EXCLUDED.lows, above5=EXCLUDED.above5,
