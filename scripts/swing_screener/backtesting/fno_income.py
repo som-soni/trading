@@ -14,7 +14,7 @@ this is the weakest assumption in the whole result.
 
 GREEKS ARE COMPUTED, NOT STORED. The guide selects the short strike by delta (0.15-0.30), so delta
 has to come from somewhere. Rather than feed one index-level volatility to every strike, this
-inverts Black-Scholes on each leg's own settle price to get that leg's implied volatility, then
+inverts Black-Scholes on each leg's own price (its close when it traded; see `option_price`) to get that leg's implied volatility, then
 takes delta from it. The inversion validates against an independent series: on 2024-06-03 the
 recovered at-the-money IVs were 21.2% (call) and 19.4% (put) against a published India VIX of
 20.9, with puts above calls at equal delta -- the volatility skew, which a single-vol model cannot
@@ -40,11 +40,18 @@ from . import metrics
 logger = logging.getLogger("backtest")
 
 UNDERLYING = "NIFTY"
+#: India only: `derivatives_bhav` is NSE's bhavcopy. A module-level MARKET is how the Strategy page
+#: knows this runner takes one market (strategies/docs.py), so it offers no US commands.
+MARKET = "india"
 
 # ---- when to sell at all (guide §3)
 VIX_PERCENTILE = 40.0        # India VIX at or above this percentile of the trailing year
 VIX_WINDOW = 252
-MIN_OPEN_INTEREST = 500      # contracts, per leg
+MIN_OPEN_INTEREST = 500      # index units (a few lots), per leg -- considered for strike choice
+#: Both legs must have TRADED at least this many contracts on the entry day. The open-interest floor
+#: is a loose one: it admitted a 10050 CE that traded 35 contracts and whose settle (224.45) sat far
+#: above its whole day's range (54.00-78.80). A credit is only as real as the prints it comes from.
+MIN_CONTRACTS = 100
 DTE_MIN, DTE_MAX = 20, 45    # days to expiry at entry
 
 # ---- the structure
@@ -138,12 +145,33 @@ def load_context(market: str = "india") -> dict:
     return out
 
 
+def option_price(close, settle, low, high, contracts) -> pd.Series:
+    """The price an option is valued at: its CLOSE when it traded, its settle only when it did not.
+
+    v1.0 used the settle for every strike. For a strike that traded, NSE's settle is not always a
+    traded price: across traded NIFTY option rows it sits outside that day's low-high range on
+    ~2% of rows in 2013-2018 and 13-21% in 2019-2021. Worse, the strike picker SELECTS those rows
+    -- a stale high settle on the sold leg lifts its delta toward the target and its credit past
+    the credit test -- so three bad prints carried the whole v1.0 result. So: a traded strike is
+    priced at its close, held inside the day's [low, high]; an untraded strike (where close is a
+    stale last-trade price) at its settle; a traded strike with no close at its settle clipped to
+    the day's range, so a settle outside the bar is never used.
+    """
+    traded = contracts.fillna(0) > 0
+    lo, hi = low.where(low > 0), high.where(high > 0)
+    in_bar = lambda x: x.clip(lower=lo, upper=hi)   # noqa: E731 -- NaN bounds leave x as is
+    px = settle.where(settle > 0)
+    px = px.mask(traded, in_bar(settle.where(settle > 0)))
+    px = px.mask(traded & (close > 0), in_bar(close))
+    return px
+
+
 def chain(trade_date, expiry=None) -> pd.DataFrame:
-    """One day's NIFTY option chain, optionally one expiry. `settle` is preferred over `close`:
-    the bhavcopy's settle is the exchange's own end-of-day mark and is populated for strikes that
-    did not trade, where `close` is zero."""
+    """One day's NIFTY option chain, optionally one expiry, priced by `option_price` (the close
+    for a traded strike, the settle only for an untraded one)."""
     con = db.get_connection()
-    sql = """select trade_date, expiry, strike, option_type, close, settle, open_interest, contracts
+    sql = """select trade_date, expiry, strike, option_type, close, settle, low, high,
+                    open_interest, contracts
                from derivatives_bhav
               where instrument='OPTIDX' and symbol=%s and trade_date=%s"""
     params: list = [UNDERLYING, pd.Timestamp(trade_date).date()]
@@ -153,8 +181,8 @@ def chain(trade_date, expiry=None) -> pd.DataFrame:
     df = pd.read_sql(sql, con, params=tuple(params), parse_dates=["trade_date", "expiry"])
     if df.empty:
         return df
-    df["price"] = df["settle"].where(df["settle"] > 0, df["close"])
-    return df
+    df["price"] = option_price(df["close"], df["settle"], df["low"], df["high"], df["contracts"])
+    return df[df["price"] > 0]
 
 
 def enrich(ch: pd.DataFrame, S: float, T: float, r: float) -> pd.DataFrame:
@@ -201,6 +229,10 @@ def pick_spread(legs: pd.DataFrame, kind: str, S: float, width_pct: float,
     if beyond.empty:
         return None
     long_ = beyond.iloc[-1] if kind == "PE" else beyond.iloc[0]
+    # Both legs must have traded properly today: the credit is built from their closes.
+    traded = [float(x) if pd.notna(x) else 0.0 for x in (short["contracts"], long_["contracts"])]
+    if min(traded) < MIN_CONTRACTS:
+        return None
     credit = float(short["price"]) - float(long_["price"])
     gap = abs(float(long_["strike"]) - float(short["strike"]))
     if credit <= 0 or gap <= 0:
@@ -209,30 +241,49 @@ def pick_spread(legs: pd.DataFrame, kind: str, S: float, width_pct: float,
         return None
     return {"kind": kind, "short_strike": float(short["strike"]), "long_strike": float(long_["strike"]),
             "credit": credit, "width": gap, "max_loss": gap - credit,
-            "short_delta": float(short["delta"]), "short_iv": float(short["iv"])}
+            "short_delta": float(short["delta"]), "short_iv": float(short["iv"]),
+            "short_price": float(short["price"]), "long_price": float(long_["price"])}
 
 
-def mark(trade_date, expiry, legs: list, S: float) -> float:
-    """What it costs to close the structure now, in index points.
+def mark(trade_date, expiry, legs: list, width: float, stats: dict | None = None) -> tuple[float, bool]:
+    """What it costs to close the structure now, in index points, and whether any leg is STALE.
 
     Priced off the stored chain for the SAME strikes, never re-modelled: a Black-Scholes mark
     would quietly replace the market's own skew with the model's and flatter a short-vol strategy
     exactly when it matters, which is when the skew steepens.
+
+    A leg with no price today (or no chain at all) keeps its LAST stored price, carried in
+    `leg["last"]` -- set at entry, updated every day it is priced -- and the mark is flagged stale,
+    so the caller does not fire a target or stop on it. v1.0 valued a missing leg at intrinsic,
+    which drops the sold leg's time value and so UNDERSTATES the cost to close (a false target);
+    and on a time-exit day with no chain it booked |index - short strike|, a loss for a spread
+    still out of the money.
+
+    Each spread costs between 0 and its strike gap to close, and the structure between 0 and its
+    width: anything outside is a bad print, not a price, so it is clamped (and counted in `stats`).
+    v1.0 accepted a mark of -127.75, which booked 53% of its whole net P&L on one trade.
     """
     ch = chain(trade_date, expiry)
-    if ch.empty:
-        return float("nan")
-    idx = {(float(k), t): float(p) for k, t, p in
-           zip(ch["strike"], ch["option_type"], ch["price"])}
-    total = 0.0
+    idx = ({} if ch.empty else
+           {(float(k), t): float(p) for k, t, p in zip(ch["strike"], ch["option_type"], ch["price"])})
+    stale = False
     for leg in legs:
         px = idx.get((leg["strike"], leg["kind"]))
         if px is None:
-            # Not quoted today: fall back to intrinsic, which is what it is worth at expiry and a
-            # CONSERVATIVE mark for a short leg (it ignores remaining time value we would pay).
-            px = max(0.0, (S - leg["strike"]) if leg["kind"] == "CE" else (leg["strike"] - S))
-        total += px * (1 if leg["sign"] > 0 else -1)
-    return total
+            stale = True
+            if stats is not None:
+                stats["stale_legs"] = stats.get("stale_legs", 0) + 1
+        else:
+            leg["last"] = px
+    total = 0.0
+    for short, long_ in zip(legs[0::2], legs[1::2]):   # legs come as (sold, bought) pairs
+        gap = abs(short["strike"] - long_["strike"])
+        raw = short["last"] - long_["last"]
+        cost = min(max(raw, 0.0), gap)
+        if cost != raw and stats is not None:
+            stats["clamped"] = stats.get("clamped", 0) + 1
+        total += cost
+    return min(total, width), stale
 
 
 def run(market: str, start: str, structure: str = "put_spread", short_delta: float = SHORT_DELTA,
@@ -261,6 +312,7 @@ def run(market: str, start: str, structure: str = "put_spread", short_delta: flo
     equity_pts = float(cfg.account_size)
     open_trade: dict | None = None
     trades, equity, held_log, risk_log, costs_total = [], [], [], [], 0.0
+    stats: dict = {}   # how often a mark was clamped or a leg carried forward -- reported in the notes
 
     for d in cal:
         S = float(spot.loc[d])
@@ -269,10 +321,10 @@ def run(market: str, start: str, structure: str = "put_spread", short_delta: flo
         # ---- manage an open structure
         if open_trade is not None:
             t = open_trade
-            cost_now = mark(d, t["expiry"], t["legs"], S)
+            cost_now, stale = mark(d, t["expiry"], t["legs"], t["width"], stats)
             dte = (t["expiry"] - d).days
             reason = None
-            if cost_now == cost_now:
+            if not stale:   # never fire a target or a stop on a carried-forward price
                 if cost_now <= t["credit"] * (1 - PROFIT_TARGET_FRAC):
                     reason = "PROFIT_TARGET"
                 elif cost_now >= t["credit"] * STOP_CREDIT_MULT:
@@ -280,8 +332,7 @@ def run(market: str, start: str, structure: str = "put_spread", short_delta: flo
             if reason is None and dte <= CLOSE_DAYS_BEFORE:
                 reason = "TIME_EXIT"
             if reason is not None:
-                exit_cost = cost_now if cost_now == cost_now else max(
-                    0.0, min(t["width"], abs(S - t["short_strike"])))
+                exit_cost = cost_now   # on a stale time-exit day: the last stored mark
                 slip = cost_points * len(t["legs"])
                 pnl_pts = (t["credit"] - exit_cost) * t["lots"] - slip * t["lots"]
                 equity_pts += pnl_pts
@@ -333,9 +384,11 @@ def run(market: str, start: str, structure: str = "put_spread", short_delta: flo
                                 if max_loss > 0:
                                     lots = (equity_pts * risk_pct / 100) / max_loss
                                     legs = []
-                                    for p in picks:
-                                        legs.append({"strike": p["short_strike"], "kind": p["kind"], "sign": 1})
-                                        legs.append({"strike": p["long_strike"], "kind": p["kind"], "sign": -1})
+                                    for p in picks:   # (sold, bought) pairs; "last" = last stored price
+                                        legs.append({"strike": p["short_strike"], "kind": p["kind"], "sign": 1,
+                                                     "last": p["short_price"]})
+                                        legs.append({"strike": p["long_strike"], "kind": p["kind"], "sign": -1,
+                                                     "last": p["long_price"]})
                                     open_trade = {
                                         "date": d, "expiry": e, "legs": legs, "credit": credit,
                                         "width": max(p["width"] for p in picks), "max_loss": max_loss,
@@ -356,6 +409,9 @@ def run(market: str, start: str, structure: str = "put_spread", short_delta: flo
     # to compete with a fully invested index on return. The SELECTION line is the fair comparison.
     at_risk = pd.Series(dict(risk_log)).sort_index().reindex(eq.index).fillna(0.0)
     cash = (eq - at_risk).clip(lower=0.0)
+    if stats:
+        logger.info("fno_income marks: %s", stats)
+    run.stats = stats
     return pd.DataFrame(trades), eq, held, cash, costs_total
 
 
@@ -368,28 +424,21 @@ FNO_DOC = {
                    "call spread below a falling one. Take half the credit, stop at "
                    "{STOP_CREDIT_MULT}x it, or close {CLOSE_DAYS_BEFORE} days before expiry.",
     "status": (
-        "THE RESULT IS THE COST ASSUMPTION, AND THE DATA CANNOT SUPPLY IT. LEGACY figures (before stages, a "
-        "sweep over the full period, which includes the verify years; context, never a verdict). Swept 24 "
-        "configurations on NIFTY from 2012 -- 2 structures x 3 short deltas x 4 slippage "
-        "assumptions -- and ALL 24 cross from positive to negative between 2 and 4 index points of "
-        "assumed slippage per leg. Not most of them: all of them. A short-premium strategy's "
-        "verdict here is a number nobody measured, because `derivatives_bhav` is NSE's bhavcopy "
-        "and carries no bid or ask. "
-        "Best case, put spreads at a 0.35 delta with 1 point per leg: CAGR 1.06%, SELECTION +0.97, "
-        "71.6% win rate over 264 trades, max drawdown -4.4%. Worst case, condors at 0.35 delta with "
-        "6 points: CAGR -3.06%, selection -3.20, 48.4% win rate, max drawdown -37.2%. "
-        "EVEN THE BEST CASE CANNOT COMPOUND, which is the more useful finding. At the guide's own "
-        "sizing -- {RISK_PCT}% of capital at risk, one structure at a time -- the strategy has 0.6% "
-        "of the book at risk on an average day. A genuine +1 CAGR point of selection on a 0.6% risk "
-        "budget is not a strategy, it is a rounding error with excellent risk control. To matter it "
-        "would have to be run at many multiples of this size, and the loss distribution (see the "
-        "caveats) is the reason that is how option sellers go broke. "
-        "The win rates are the textbook shape and decay the right way: 71-77% at 1-2 points, "
-        "falling to 48-50% at 6 points, because slippage eats the many small wins first while the "
-        "few large losses were never small. "
-        "Condors are worse than single spreads at every delta, and the gap widens with delta "
-        "(-0.07 vs +0.97 at 0.35 delta, 1 point). Selling both sides doubles the chance of a "
-        "breach for premium that does not double."
+        "NO EDGE AS BUILT, ON CLEAN PRICES. Version 1.1 fixes the option prices (see the changelog); every "
+        "earlier figure rested on bad settle prints. OPTIMISE stage (2013-2021, in-sample), default rules, "
+        "2 points per leg: 128 structures, net P&L -Rs 42,177 on a Rs 20 lakh book (CAGR -0.24%), net mean "
+        "R -0.011 (t -0.63), gross mean R +0.021 (t 1.22). The break-even cost is 1.28 index points per "
+        "leg, below the 2 assumed. 2020 is the only good year (+Rs 48.7k); 6 of 9 years lose. "
+        "Version 1.0's optimise run (+Rs 75,157, gross t 2.49, break-even 3.1 points) is void: three "
+        "settles outside their day's range made 102% of its net P&L, one of them a mark of -127.75 "
+        "points that booked 53% on its own. "
+        "What the 2026-11-14 review's clean-price replays point to (in-sample, found in this window, so a "
+        "hypothesis to run, not a result): call spreads lose before costs, and put spreads alone with no "
+        "VIX gate carry a small gross edge whose break-even was about 3.6 points per leg. "
+        "EVEN A REAL EDGE COULD NOT COMPOUND at this size: at {RISK_PCT}% of capital at maximum loss, one "
+        "structure at a time, under 1% of the book is at risk on an average day, and the idle collateral "
+        "earns nothing here (see Caveats). LEGACY figures (a 2012-to-date sweep of 24 configurations under "
+        "version 1.0's prices, all changing sign between 2 and 4 points per leg) are superseded."
     ),
     "thesis": "Index options usually price more movement than arrives, so a seller who stays far "
               "enough from the money collects the difference. This is the only CARRY mechanism in the "
@@ -407,10 +456,12 @@ FNO_DOC = {
         "if an exit applies (see Exit); then, if flat, check the volatility gate, pick the expiry, "
         "the side and the strikes, and sell (see Entry). One structure at a time; a new one can "
         "open on the session the previous one closed.",
-        "Data and timing. {UNDERLYING} index options from NSE's daily bhavcopy, India only. Option "
-        "prices are the day's exchange settlement price (its close where no settle is given), the "
-        "index level is the Nifty 50 close, and the volatility gate reads India VIX. Everything is "
-        "end of day. The data has no bid or ask (see Caveats).",
+        "Data and timing. {UNDERLYING} index options from NSE's daily bhavcopy, India only. An option "
+        "that traded that day is priced at its close, held inside the day's low-high range; one that "
+        "did not trade, at the exchange's settlement price. A settle is never used for a strike that "
+        "traded, because on traded strikes it fell outside the day's whole range on 13-21% of rows in "
+        "2019-2021. The index level is the Nifty 50 close, and the volatility gate reads India VIX. "
+        "Everything is end of day. The data has no bid or ask (see Caveats).",
         "Where the rules come from. The Learn guide's income chapter; the credit test departs from "
         "it (see Entry). There is no written spec with row ids for this strategy.",
     ),
@@ -432,12 +483,16 @@ FNO_DOC = {
         "- **`both_sides`:** currently behaves exactly like the default.",
         "Open interest. Only strikes with open interest of at least {MIN_OPEN_INTEREST} are "
         "considered, for both legs. The bhavcopy counts open interest in units of the index, not in "
-        "contracts, so this is a floor of a few lots — a loose one.",
+        "contracts, so this is a floor of a few lots — a loose one. The long strike is the nearest "
+        "one past the width among these, so the actual width can be wider than {width_pct}%.",
+        "Traded volume. Both chosen legs must have traded at least {MIN_CONTRACTS} contracts that "
+        "day, or no trade: the credit is built from their closes, and a thinly traded strike's print "
+        "is not a price anyone could have dealt at. The next strike is not substituted.",
         "Short strike. The strike whose delta, ignoring sign, is nearest {short_delta}, accepted "
         "only within {DELTA_TOL} of it. Otherwise no trade: the nearest available strike is never "
         "substituted.\n\n"
-        "- **Implied volatility:** found per option by inverting Black-Scholes on its own settle "
-        "price, searched between 1% and 300%. A price below 98% of intrinsic value is treated as "
+        "- **Implied volatility:** found per option by inverting Black-Scholes on its own price "
+        "(see Data and timing), searched between 1% and 300%. A price below 98% of intrinsic value is treated as "
         "stale and the strike dropped.\n"
         "- **Delta:** Black-Scholes delta from that volatility. Time to expiry is calendar days ÷ "
         "365.25, the rate is the RBI repo rate on the day, dividends are left out.\n"
@@ -446,15 +501,15 @@ FNO_DOC = {
         "Long (protective) strike. The nearest listed strike at least {width_pct}% of the index level "
         "further out of the money: below the sold put, above the sold call. The width is the actual "
         "gap between the two strikes.",
-        "Credit test. Credit is the sold leg's settle minus the bought leg's settle, in index "
+        "Credit test. Credit is the sold leg's close minus the bought leg's close, in index "
         "points. It must be positive, and credit ÷ width at least {MIN_CREDIT_VS_DELTA} times the "
         "sold leg's delta — with a {SHORT_DELTA}-delta short, at least {MIN_CREDIT_VS_DELTA} × "
         "{SHORT_DELTA} of the width.\n\n"
         "- **Differs from the guide:** the guide asks for a credit of at least 25% of the width. "
         "Credit ÷ width runs at roughly 0.73 times the short delta, so that rule and the guide's "
         "delta range cannot both hold; the flat rule admits only 1-7% of chains.",
-        "Fill. Both legs trade at that session's settle prices — the prices the decision was made "
-        "on. No slippage is charged at entry; the whole round trip's cost is charged at the exit.",
+        "Fill. Both legs trade at that session's closes — the prices the decision was made on. No "
+        "slippage is charged at entry; the whole round trip's cost is charged at the exit.",
         "Position size. The quantity is set so that the maximum loss is {risk_pct}% of the current "
         "equity.\n\n"
         "- **Maximum loss:** the width minus the credit, in index points. A condor's is the wider "
@@ -468,23 +523,28 @@ FNO_DOC = {
     ),
     "exit_rules": (
         "Daily mark. Each session after the entry, the structure is priced at what it costs to buy "
-        "back: the sold legs' settle minus the bought legs' settle, for the same strikes, from that "
-        "day's stored chain — never a model price, which would replace the market's own skew with "
-        "the model's and flatter the seller exactly when the skew steepens. A leg with no stored "
-        "price that day is valued at its intrinsic value. The first rule below that applies closes "
-        "the whole structure at that day's mark.",
+        "back: the sold legs' price minus the bought legs' price, for the same strikes, from that "
+        "day's stored chain, priced as at entry (close if traded, settle if not) — never a model "
+        "price, which would replace the market's own skew with the model's and flatter the seller "
+        "exactly when the skew steepens. Each spread's mark is held between 0 and its strike gap "
+        "(a spread cannot cost less than nothing or more than its width to close); a print outside "
+        "that is a bad print. The first rule below that applies closes the whole structure at that "
+        "day's mark.",
+        "Missing prices. A leg with no stored price that day, or a day with no stored chain, keeps "
+        "its last stored price, and the profit target and the stop are not tested that day: a stale "
+        "mark cannot trigger an exit. The time exit still acts, at that last stored mark.",
         "Profit target. The mark is at or below (1 − {PROFIT_TARGET_FRAC}) times the credit, so at "
         "least {PROFIT_TARGET_FRAC} of the maximum profit is kept. There is no resting order: it is "
-        "checked on the day's settle, and the exit is at that settle, which can be better than the "
+        "checked on the day's prices, and the exit is at that mark, which can be better than the "
         "target. The rest of the credit takes longest to earn and carries the most gamma.",
         "Stop. The mark is at or above {STOP_CREDIT_MULT} times the credit received, which is a loss "
-        "of about one credit plus costs. It is checked only on the day's settle, so a gap can carry "
+        "of about one credit plus costs. It is checked only on the day's end-of-day prices, so a gap can carry "
         "the mark well past {STOP_CREDIT_MULT} times the credit before it is seen. The loss is then "
         "limited only by the spread's maximum loss (width minus credit).",
         "Time exit. With {CLOSE_DAYS_BEFORE} calendar days or fewer to expiry the structure is "
         "closed regardless, so nothing is held into expiry-week gamma and nothing is held to expiry.",
-        "Order. The profit target is tested first, then the stop, then the time exit. On a day with "
-        "no stored chain for the expiry, the target and the stop are skipped; only the time exit "
+        "Order. The profit target is tested first, then the stop, then the time exit. On a day when "
+        "any leg's price is carried forward, the target and the stop are skipped; only the time exit "
         "can act.",
         "Cost. {cost_points} index points per leg for the round trip (2 legs for a spread, 4 for a "
         "condor), times the quantity, charged at the exit. It stands in for the bid-ask spread and "
@@ -493,10 +553,16 @@ FNO_DOC = {
     "caveats": (
         "**NO BID/ASK EXISTS IN THE DATA, and it decides the answer.** The bhavcopy carries settle, "
         "close, volume and open interest, not quotes. Sellers pay the spread twice per leg, four "
-        "times for a condor, and that cost is assumed here rather than measured. Since all 24 swept "
-        "configurations change sign between 2 and 4 points per leg, no configuration of this "
-        "strategy can be called profitable or unprofitable from stored data alone. Live quote "
-        "capture is the only thing that would settle it.",
+        "times for a condor, and that cost is assumed here rather than measured. The edge, where there "
+        "is one, is a few points per leg, the same size as the cost, so no configuration of this "
+        "strategy can be called profitable or unprofitable from stored data alone. On clean prices the "
+        "default rules break even at about 1.3 points per leg (optimise stage). Live quote capture is "
+        "the only thing that would settle it.",
+        "**An end-of-day close is not a fill.** Entry and exit are both at the close of the session the "
+        "decision is made on. An end-of-day trader can deal near the close, but the bhavcopy's close is "
+        "not a quote, and a thinly traded strike's close can be far from where it could be dealt (the "
+        "{MIN_CONTRACTS}-contract floor guards only the entry). The 2026-11-14 review re-priced every "
+        "trade at the next session's mark and found the effect small, about -0.005R a trade.",
         "**The loss distribution is the real risk and a daily backtest understates it.** Marks come "
         "from daily settle prices, so a gap that opens through both strikes is scored at the day's "
         "settle rather than at what it would have cost to get out during the day. Short premium "
@@ -504,14 +570,21 @@ FNO_DOC = {
         "**The equity curve counts only closed structures.** An open structure is not marked into "
         "the curve, so a loss that builds and then recovers before the exit never shows as a "
         "drawdown. The measured drawdown is a floor.",
-        "**A missing chain on a time-exit day is priced wrongly (a code flaw, noted not fixed).** "
-        "If no chain is stored for the expiry on that day, the exit price is the distance from the "
-        "index to the first sold strike, capped at the width. That is backwards for a spread still "
-        "out of the money: it books a winning spread as a loss of up to the full width. It needs a "
-        "day with no stored chain, so it is rare.",
+        "**A missing price is carried forward, not modelled.** A leg with no stored price keeps its last "
+        "one, so an exit forced on such a day (only the time exit can fire then) is at a stale mark that "
+        "can be off in either direction. It is rare: 2 leg-days in the 2013-2021 optimise run.",
+        "**Idle collateral earns 0%.** The account is almost all cash, and the cash earns nothing here. "
+        "In practice it could sit in liquid funds or T-bills pledged as margin and earn the cash rate. "
+        "The 2026-11-14 review put that at about 7 CAGR points (2013-2021), more than the strategy's own "
+        "P&L. So the CAGR and the comparison with the index both understate a real book by that much, "
+        "and say nothing about the options.",
+        "**Margin is not modelled, and size is in index units.** Risk uses the width minus the credit; a "
+        "broker blocks SPAN plus exposure margin, usually more. Quantity is a fractional number of index "
+        "units, not whole lots; at today's lot of 75 a Rs 20 lakh book trades one lot and cannot size "
+        "finer than that.",
         "**It risks under 1% of the book, so it cannot be compared with a fully invested index on "
-        "return.** The headline excess is about -11 CAGR points in every cell and that number is "
-        "meaningless; SELECTION is the fair comparison and it ranges +0.97 to -3.20.",
+        "return.** The headline excess against the index (about -12 CAGR points) is meaningless; "
+        "read it as carry income: P&L against the margin used, and against cash.",
         "**Index options only.** The stored derivatives data is NSE's, so the guide's covered calls "
         "and cash-secured puts on individual stocks are not tested, and there are no US chains. The "
         "stored S&P500 OPTIDX rows are NSE's cross-listed contract, which stopped trading in 2017.",
@@ -534,8 +607,22 @@ class FnoIncomeStrategy(PortfolioStrategy):
     key = FNO_DOC["key"]
     doc = FNO_DOC
     family = "fno_income"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-18",
+    version = "1.1"
+    changelog = (("1.1", "2026-11-14",
+                  "Option prices fixed; every v1.0 figure is void. (1) A strike that traded is priced at "
+                  "its close, held inside the day's low-high; the settle only for an untraded strike. "
+                  "v1.0 used the settle for every strike, and on traded strikes it fell outside the "
+                  "day's whole range on 13-21% of rows in 2019-2021 -- which the strike picker selected, "
+                  "because a stale high settle lifts the sold leg's delta and credit. (2) Each spread's "
+                  "mark is clamped to [0, strike gap]; v1.0 marked one trade at -127.75 and booked 53% of "
+                  "its net P&L on it. (3) Both legs must trade at least MIN_CONTRACTS (100) contracts on "
+                  "the entry day. (4) A leg with no stored price keeps its last stored price and the "
+                  "target and stop are skipped that day; v1.0 valued it at intrinsic, which understates "
+                  "the cost to close a short leg. (5) A time exit on a day with no stored chain is at "
+                  "the last stored mark, not |index - short strike|. Optimise (2013-2021): net "
+                  "+Rs 75,157 -> -Rs 42,177, break-even 3.1 -> 1.3 points per leg. Found by the "
+                  "2026-11-14 backtest review."),
+                 ("1.0", "2026-10-18",
                   "First version. Implied volatility and delta are recovered per leg by inverting "
                   "Black-Scholes on its own settle price; validated against an independent series -- "
                   "on 2024-06-03 the recovered at-the-money IVs were 21.2% (call) and 19.4% (put) "
@@ -572,8 +659,8 @@ class FnoIncomeStrategy(PortfolioStrategy):
         ("Spread width", "width_pct", "Strike gap as a percent of the index."),
         ("Risk per trade", "risk_pct", "Percent of capital at MAXIMUM LOSS, never at margin."),
         ("VIX percentile", "vix_percentile", "India VIX must be at least this percentile of the trailing year."),
-        ("Slippage per leg", "cost_points", "Index points assumed per leg. THE load-bearing assumption -- "
-                                            "every swept configuration changes sign between 2 and 4."),
+        ("Slippage per leg", "cost_points", "Index points assumed per leg, round trip. THE load-bearing "
+                                            "assumption: the default rules break even near 1.3 on clean prices."),
     )
 
 
@@ -605,13 +692,18 @@ def main(argv: list[str] | None = None) -> dict | None:
         f"{len(tdf):,} structures over the window, one at a time. Marked daily off the stored chain "
         "for the same strikes, never re-modelled.",
         f"THE SIGN OF THIS RESULT IS THE SLIPPAGE ASSUMPTION ({a.cost_points:g} index points per leg). "
-        "The bhavcopy carries no bid or ask, and all 24 swept configurations change sign between 2 and "
-        "4 points per leg. Treat the headline as conditional on that number.",
+        "The bhavcopy carries no bid or ask. Treat the headline as conditional on that number.",
         f"Risk is {a.risk_pct:g}% of capital at MAXIMUM LOSS per structure, so under 1% of the book is "
         "at risk on an average day. The headline excess against a fully invested index is therefore "
         "meaningless; read SELECTION.",
-        "Each leg's implied volatility and delta come from inverting Black-Scholes on its own settle "
-        "price, with the day's repo rate. Dividends are omitted (NIFTY yields ~1.2%).",
+        "Options are priced at their close when they traded (held inside the day's low-high), at the "
+        "settle only when they did not; both legs must trade at least "
+        f"{MIN_CONTRACTS} contracts at entry. Each leg's implied volatility and delta come from "
+        "inverting Black-Scholes on that price, with the day's repo rate. Dividends are omitted.",
+        f"Marks clamped to [0, strike gap]: {getattr(run, 'stats', {}).get('clamped', 0)} times. Leg-days "
+        f"priced at a carried-forward last price (no target or stop tested): "
+        f"{getattr(run, 'stats', {}).get('stale_legs', 0)}.",
+        "Idle collateral earns 0% here; a real book would earn the cash rate on it.",
         "No event filter: RBI policy and Budget dates are not stored, so the guide's rule to avoid "
         "them before expiry is absent. That makes this slightly worse than a faithful implementation.",
     ]
