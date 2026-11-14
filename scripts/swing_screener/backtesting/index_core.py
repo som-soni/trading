@@ -380,7 +380,7 @@ def align(series: dict[str, pd.Series], start: str | None = None,
 class Context:
     """Everything a run needs: a calendar, holdable series, a cash rate.
 
-    `prices` are TOTAL-RETURN levels with expense ratios already deducted,
+    `prices` are TOTAL-RETURN levels net of each fund's expense ratio (inside its price),
     so a strategy never has to remember to add dividends — getting that
     wrong once would silently bias every timing result in the suite.
     """

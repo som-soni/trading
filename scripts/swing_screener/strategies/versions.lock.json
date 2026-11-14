@@ -643,7 +643,7 @@
       "cost_bps": 10.0,
       "max_names": 50
     },
-    "version": "2.4"
+    "version": "2.5"
   },
   "masonson_tqqq": {
     "family": "masonson_tqqq",

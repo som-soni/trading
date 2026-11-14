@@ -65,7 +65,13 @@ class Series:
     total_return: bool
     label: str
     div_yield: float = 0.0      # annual, ADDED to price-only equity series
-    expense_ratio: float = 0.0  # annual drag applied when held
+    # The fund's published annual fee. A fund's stored price -- an ETF's adjusted close, a NAV -- is
+    # already net of it, so total_return_index never charges it again (it once did: every ETF here
+    # paid its fee twice, SPY 0.09%/yr extra, GDX 0.51%). It is kept as a record, and for a FEE GAP
+    # between two funds (_derived: an Indian fund of funds pays more than QQQ, whose fee is inside
+    # QQQ's price). A synthetic series built from an index or from yields charges its fund's fee where
+    # it is built (boucher_bonds_gold.SYN_EXPENSE, masonson_tqqq.EXPENSE_RATIO), not here.
+    expense_ratio: float = 0.0
     note: str = ""
     amfi: tuple[int, int] | None = None   # (fund house, scheme code): a mutual fund NAV from AMFI, not Yahoo
 
@@ -144,7 +150,7 @@ _INDIA = [
     # guessed — see calibrate_dividend_yield().
     Series("NIFTY50_TR", "NIFTYBEES.NS", "india", "equity", True,
            "Nifty 50 total return (NIFTYBEES)", expense_ratio=0.0005,
-           note="2009-01 onward; ER already in NAV"),
+           note="2009-01 onward; ER already in the price"),
     Series("NIFTY50", "^NSEI", "india", "equity", False,
            "Nifty 50 price index (^NSEI)", div_yield=INDIA_DIV_YIELD,
            note="2007-09 onward; PRICE ONLY"),
@@ -529,14 +535,18 @@ def refresh(market: str | None = None, keys: list[str] | None = None) -> None:
 
 def total_return_index(
     market: str, key: str, div_yield: float | None = None,
-    apply_expense: bool = True,
 ) -> tuple[pd.Series, list[str]]:
-    """A series that can be HELD: dividends in, expense ratio out.
+    """A series that can be HELD: dividends in, the fund's fee out -- once.
 
     Returns (index, caveats). For a price-only series a flat dividend
     accrual is added at `div_yield` (annual, 252-day accrual) — an
     approximation that smooths real lumpy ex-dates, which is harmless for
     horizon returns and slightly wrong for any single week.
+
+    A fund's fee is NOT charged here: every series with an `expense_ratio` is a fund's own traded
+    price or NAV, which the fee has already reduced. Measured on SPY, 2013-2021: the adjusted close
+    trails the gross S&P 500 total return index (^SP500TR) by 0.12 points of CAGR -- its 0.09% fee
+    plus cash drag -- and charging the fee again had taken it to 0.22 behind.
     """
     spec = get(market, key)
     px = load(market, key)
@@ -555,9 +565,9 @@ def total_return_index(
             f"{key} is a PRICE index with NO dividend added — returns understate "
             f"holding it by roughly 1-2%/yr."
         )
-    if apply_expense and spec.expense_ratio:
-        rets = rets - spec.expense_ratio / 252.0
-        caveats.append(f"{key}: {spec.expense_ratio * 100:.2f}%/yr expense ratio charged daily.")
+    if spec.expense_ratio:
+        caveats.append(f"{key}: its {spec.expense_ratio * 100:.2f}%/yr expense ratio is inside the "
+                       f"fund's price, not charged again.")
 
     idx = (1.0 + rets).cumprod() * float(px.iloc[0])
     idx.name = key

@@ -55,10 +55,11 @@ REBALANCE = "ME"
 
 
 def holdable(market: str, series: str | None = None) -> tuple[pd.Series, list[str]]:
-    """The benchmark as something that can be HELD: dividends in, expense ratio out.
+    """The benchmark as something that can be HELD: dividends in, the fund's fee out once.
 
     Through index_data.total_return_index, so this rule and every index strategy make a price index
-    holdable the same way -- in the US the adjusted SPY net of its expense ratio, in India the Nifty
+    holdable the same way -- in the US the adjusted SPY (its expense ratio is already inside the
+    fund's price, so nothing more is charged), in India the Nifty
     500 price index plus the calibrated dividend accrual (a lower bound; see INDIA_DIV_YIELD).
     """
     return index_data.total_return_index(market, series or MARKETS[market].benchmark_symbol)
@@ -282,12 +283,16 @@ MA_DOC = {
         "1981 (US) and 2010 (both markets) through October 2026, which covers this window and the "
         "verify window alike. The verify run (2022 onward) is therefore not a clean hold-out "
         "either; the only clean test left is forward data. "
-        "Against buy-and-hold total return in that window -- 16.08% US and 14.46% India, maximum "
+        "Against buy-and-hold total return in that window -- 16.18% US and 14.46% India, maximum "
         "drawdown -33.7% and -38.2%, Sharpe 0.95 and 0.48: "
         "1.0 (one 10-month rule, cash earning nothing, prices on both sides) made 10.11% and 9.21%. "
         "The cash and dividend corrections alone, still on one 10-month rule, make 11.33% and "
-        "12.66%. 2.0's four lookbacks make 11.71% and 12.71%, with maximum drawdown -17.1% and "
+        "12.66%. 2.0's four lookbacks make 11.80% and 12.71%, with maximum drawdown -17.1% and "
         "-16.9% and Sharpe 0.92 and 0.50. "
+        "(US figures before 2.5 -- 11.71% for the rule, 16.08% for buy-and-hold, and the 11.33% above -- "
+        "carried SPY's 0.09% expense ratio twice; 2.5's replay of the same window gives 11.80% and "
+        "16.18%. India's benchmark is an index with no fund fee and is unchanged. Sharpe figures are "
+        "from the earlier runs, moved by at most 0.01.) "
         "SO THE CORRECTIONS DO MOST OF THE WORK ON RETURN, AND THE FOUR LOOKBACKS MOSTLY CUT THE "
         "DRAWDOWN. It trails buy-and-hold's return in both markets -- a timing rule on the index "
         "can win only by being out during declines -- and buys roughly buy-and-hold's "
@@ -327,7 +332,7 @@ MA_DOC = {
         "{FABER_LOOKBACK_MIN} to {FABER_LOOKBACK_MAX}, each starting with an equal share of the "
         "book. They are not rebalanced back to equal weight afterwards; each compounds on its own.\n"
         "- **Series:** the market's benchmark from its config, made holdable -- in the US the SPY "
-        "fund with dividends reinvested and its expense ratio charged, in India the Nifty 500 index "
+        "fund with dividends reinvested (its expense ratio is already inside the fund's price), in India the Nifty 500 index "
         "plus a calibrated dividend accrual, since no Nifty 500 total-return series is stored.\n"
         "- **The average:** the simple mean of the sleeve's last N month-end closes, this month's "
         "included. Not a daily average sampled monthly: an average of month-ends is smoother, which "
@@ -436,8 +441,10 @@ class MaTrendStrategy(PortfolioStrategy):
     key = MA_DOC["key"]
     doc = MA_DOC
     family = "ma_trend"
-    version = "2.4"
+    version = "2.5"
     changelog = (
+        ("2.5", "2026-11-14",
+         "Backtest mechanics, no rule changed (review 2026-11-14, B3): the held series charged the fund's expense ratio a second time. index_data.total_return_index subtracted it daily from SPY's adjusted close, which the fee has already reduced -- over 2013-2021 the adjusted SPY trails the gross S&P 500 total return index by 0.12 points of CAGR, and the extra charge took it to 0.22. It is no longer charged. US index mode, optimise stage 2013-2021 (in-sample), replayed: the rule 11.71% -> 11.80%, buy-and-hold 16.08% -> 16.18%, drawdowns unchanged. India's benchmark (the Nifty 500 index plus a dividend accrual) has no fund fee and is unchanged; so is stocks mode. Stored US runs before 2.5 carry the double fee on both sides."),
         ("2.4", "2026-10-31",
          "Stocks mode only (index mode has its own loop and is unchanged): rotation.simulate, the engine it runs on, had two accounting errors. Its positions series was the final holding count repeated for every session, so exposure read 100% invested through every stretch in cash; it is now the count per session. And trade rows were built from each holding's first fill, ignoring the month-end resizes; a row is now the whole holding period -- every buy, trim and sale with costs, the entry price the average paid. Equity, CAGR and drawdown are unchanged; stored runs' exposure and trade statistics are stale."),
         ("2.3", "2026-10-29",
@@ -545,8 +552,8 @@ def main(argv: list[str] | None = None) -> dict | None:
                  if cap > 1 else
                  f"Faber's original rule on {cfg.benchmark_symbol}: one position or none, decided on "
                  f"the last trading session of each month against the {months}-month average.")
-        # the benchmark is held the same way the strategy holds the index -- dividends in, expense
-        # out -- or the comparison credits one side with income the other is denied
+        # the benchmark is held the same way the strategy holds the index -- dividends in, the fund's
+        # fee out once -- or the comparison credits one side with income the other is denied
         bc = holdable(a.market)[0].reindex(eq.index).ffill()
         notes_cost = (f"Costs: {a.cost_bps:g}bps per side. Out of the market each sleeve earns the "
                       "cash rate; both the strategy and the benchmark are total return.")

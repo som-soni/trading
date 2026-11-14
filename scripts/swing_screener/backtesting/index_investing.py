@@ -94,7 +94,8 @@ class _Decomposition:
 
 # Index funds and ETFs, not single stocks: the cost is the bid-ask spread
 # plus (in India) brokerage, NOT the 25bps/side the stock strategies pay.
-# Expense ratios are already inside the series.
+# Expense ratios are already inside the series: each is a fund's own price or NAV, and
+# index_data.total_return_index does not charge the fee again.
 DEFAULT_COST_BPS = {"us": 2.0, "india": 10.0}
 
 # Contribution size for Family A. Arbitrary and irrelevant to the ranking —
@@ -732,7 +733,7 @@ def write_report(
     md: list[str] = [
         f"# {cfg.name} — index investing backtests",
         "",
-        f"Cost {cost_bps:g}bps per side on top of each series' expense ratio. "
+        f"Cost {cost_bps:g}bps per side on top of each fund's expense ratio (already inside its price). "
         f"Tax: **{'on' if taxed else 'off'}**"
         + (f" ({_tax(market, True).label})." if taxed else " (pre-tax only).")
         + " Dividends are INCLUDED throughout (total-return series).",
@@ -795,8 +796,10 @@ def write_report(
         "for India). Every waiting strategy is credited with that interest.",
         "- **Loss carry-forward is not modelled**, so taxed runs overstate the bill "
         "for strategies that book losses and gains in different years.",
-        "- **Expense ratios are charged daily**; fund-level tracking error is not "
-        "modelled beyond what the ETF series already contain.",
+        "- **Expense ratios are inside the fund prices** (each ETF's adjusted close or NAV is "
+        "already net of its fee), so none is charged again; fund-level tracking error is not "
+        "modelled beyond what the ETF series already contain. Runs before 2026-11-14 charged "
+        "each fund's fee twice (SPY 0.09%/yr extra, GLD 0.40%, GOLDBEES 0.55%).",
         "- **One path.** Even 46 years is a single realisation. Sub-period tables are "
         "there because a ranking that only holds on the full window is a fit to it.",
         "",
@@ -822,7 +825,7 @@ def main() -> None:
     ap.add_argument("--family", nargs="*", default=list(FAMILIES),
                     choices=list(FAMILIES), help="which families to run")
     ap.add_argument("--cost-bps", type=float, default=None,
-                    help="per side, on top of each series' expense ratio")
+                    help="per side, on top of each fund's expense ratio (already inside its price)")
     ap.add_argument("--no-tax", action="store_true",
                     help="pre-tax only (default reports both pre- and after-tax)")
     ap.add_argument("--quick", action="store_true",
