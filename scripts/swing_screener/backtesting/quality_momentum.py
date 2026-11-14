@@ -231,6 +231,10 @@ DOC = {
                    "rebalance date show ROE of at least {QM_ROE_MIN_PCT}% and no shrinking sales; top "
                    "{top_n}, rebalanced every month-end.",
     "status": (
+        "v1.7 (2026-11-14) changed only how the turnover floor reads trading after a special dividend or "
+        "demerger, and moved nothing here: re-run on the optimise stage it gives US 15.30%, -42.7%, 444 trades "
+        "and India from 2013 8.53%, -30.9%, 151 trades, the same as v1.6, so the v1.6 figures below describe "
+        "the current rules. "
         "v1.6 (filings_only, ROE AND SALES ONLY, THE DEFAULT) RE-RUN ON 2026-11-11 AFTER THE FILINGS GAPS "
         "WERE FILLED -- STILL PASSES ITS VERIFY RUN IN BOTH MARKETS; IN THE US STILL ON ONE YEAR. The rules "
         "did not change; the data did: US quarters of 16-17 weeks, utility, REIT and refiner revenue, and "
