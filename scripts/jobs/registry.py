@@ -725,7 +725,24 @@ def _backtest_steps(ctx: Ctx) -> list:
             # verify in, and a read boundary between them, so an optimise run cannot see the years
             # kept back to judge it. The stage decides the dates; the body below only runs the strategy.
             if key in portfolio_strategies():
-                return body(c, portfolio_strategies()[key].spec_id())
+                # A portfolio runner has no --const flag of its own, so the constants are applied HERE, around
+                # the whole run: the spec id the verify gate keys on, the runner's run name (which carries
+                # spec_id()) and the run itself all see them, and they are restored before the next strategy.
+                # Until 2026-11-14 they were not passed at all: such a run executed the shipped rules while
+                # overrides.json labelled it the variant. An override that cannot reach the rules (unknown,
+                # a class attribute, baked in at import) fails the step instead of running.
+                from swing_screener.strategies.variants import overridden
+                consts = dict(str(kv).partition("=")[::2] for kv in (c.opt("const") or []))
+                import contextlib
+                with contextlib.ExitStack() as stack:
+                    try:
+                        applied = stack.enter_context(overridden(key, consts))
+                    except ValueError as e:
+                        raise ValueError(f"--const for {key}: {e}") from None
+                    if applied:
+                        logger.info("%s const override %s -> spec %s", key, applied,
+                                    portfolio_strategies()[key].spec_id())
+                    return body(c, portfolio_strategies()[key].spec_id())
             # The market's own rules (market_consts) are part of what is verified, so the gate keys on the spec id
             # the run will carry. backtest.main applies them itself (after its version gate, which reads the
             # shipped rules); the block restores the shared rules after it, because this process goes on to the

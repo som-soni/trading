@@ -107,11 +107,27 @@ def _refusal(mod, name: str) -> str | None:
     return None
 
 
+def strategy_class(strategy_key: str):
+    """The class of a per-symbol OR a portfolio strategy. A portfolio strategy is not in get_strategy's
+    registry (it has no evaluate()), and asking only that one is how `--const` came to be dropped for
+    portfolio runs instead of applied or refused."""
+    from . import _REGISTRY, get_strategy, portfolio_strategies
+    # a per-symbol key never imports the portfolio runners: _refusal scans every loaded module, and loading
+    # them only for this lookup would change what a per-symbol override is checked against
+    if strategy_key in _REGISTRY:
+        return type(get_strategy(strategy_key))
+    p = portfolio_strategies()
+    return p[strategy_key] if strategy_key in p else type(get_strategy(strategy_key))
+
+
 def apply_consts(strategy_key: str, consts: dict) -> dict:
     """Set numeric module constants of a strategy for this process. Returns {NAME: new value}.
-    Raises ValueError for an unknown or non-numeric constant, or one the override cannot reach."""
-    from . import get_strategy
-    mod = importlib.import_module(type(get_strategy(strategy_key)).__module__)
+    Raises ValueError for an unknown or non-numeric constant, or one the override cannot reach.
+    A portfolio strategy's constants are those of the module that defines its class -- its runner
+    (backtesting/<runner>.py) -- which both its fingerprint and its run read. Its lower-case class
+    attributes (top_n, cost_bps ...) are not constants: they are refused, and their runner flags
+    (`--bt`) are the override that reaches them."""
+    mod = importlib.import_module(strategy_class(strategy_key).__module__)
     applied = {}
     for k, v in consts.items():
         k = str(k).strip()
@@ -157,6 +173,22 @@ def apply_market_consts(strategy_key: str, market: str, skip=()) -> dict:
     skip = {str(k).strip() for k in skip}
     consts = {k: v for k, v in (mc.get("const") or {}).items() if k not in skip}
     return apply_consts(strategy_key, consts) if consts else {}
+
+
+@contextlib.contextmanager
+def overridden(strategy_key: str, consts: dict | None):
+    """`apply_consts` for the duration of the block, then the module's constants restored. For a caller
+    that runs one strategy after another in ONE process (the job runner's portfolio backtests), so a
+    variant's constants cannot leak into the next run. Yields {NAME: value} applied ({} for none);
+    raises ValueError, before anything runs, for an override it cannot apply."""
+    mod = importlib.import_module(strategy_class(strategy_key).__module__)
+    saved = {k: v for k, v in vars(mod).items()
+             if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
+    try:
+        yield apply_consts(strategy_key, consts) if consts else {}
+    finally:
+        for k, v in saved.items():
+            setattr(mod, k, v)
 
 
 @contextlib.contextmanager

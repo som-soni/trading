@@ -253,7 +253,9 @@ def _run_args(r) -> None:
                         "that have no dedicated option here; they are appended last, so they win.")
     r.add_argument("--const", action="append", default=None, metavar="NAME=VALUE",
                    help="`backtest`: override a numeric module constant, e.g. --const MIN_STRUCTURAL_R=0. "
-                        "Repeatable. The variant gets its own fingerprint, cache and run directory.")
+                        "Repeatable. The variant gets its own fingerprint, cache and run directory. A portfolio "
+                        "strategy takes its runner module's constants; one it cannot reach (a class attribute -- "
+                        "use --bt) is refused.")
     r.add_argument("--vcp", action="append", default=None, metavar="KEY=VALUE",
                    help="`backtest`: override a VcpParams field, e.g. --vcp base_min_days=5. "
                         "Repeatable. The variant gets its own fingerprint, cache and run directory.")
