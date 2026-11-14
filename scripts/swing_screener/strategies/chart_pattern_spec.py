@@ -252,8 +252,13 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.21"
+    version = "1.22"
+    # 1.22 changes only the portfolio simulator's order mechanics, never the scan
+    # (CLAUDE.md, signal_version).
+    signal_version = "1.21"
     changelog = (
+        ("1.22", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; it used to buy whatever was left, and on the 1.21 optimise runs 125 US positions (22 India) were under 0.5% of equity, holding 25.2% of US slot-days (7.8% India). The other problem, late fills from orders that waited for a slot, needs no change here: every fill already re-tests MAX_CHASE_PCT, MAX_RISK_PCT and MIN_R against the price paid. signal_version pinned to 1.21: the scan is unchanged, so the cached rows carry forward. Results move."),
         ("1.21", "2026-11-04",
          "Six more research switches, all ON, so a default run trades exactly as 1.20: TRADE_CUP, "
          "TRADE_HTF, TRADE_FLAG, TRADE_SYMM, TRADE_RECT and TRADE_FBASE. Every pattern but the ascending "
@@ -511,6 +516,7 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
+        "v1.22 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.21's, not comparable. "
         "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.18, measured 2026-11-02); verify "
         "not run. US 4.79% CAGR, excess -9.22 points a year over the benchmark, max drawdown -29.6%, Sharpe 0.40, "
         "497 trades at +0.07R, profit factor 1.15; India 2.43% CAGR, excess -11.10, max drawdown -31.5%, Sharpe "
@@ -1125,7 +1131,9 @@ class ChartPatternSpecStrategy(Strategy):
         "Risk per trade: shares = the market's risk per trade (cfg.risk_pct, 1% of equity) ÷ (entry − "
         "stop), so a stop-out costs about the same whatever the stop's width.",
         "Caps: no position over cfg.max_position_pct (25%) of equity, and never more than the cash "
-        "available — a short fill is bought smaller, not skipped.",
+        "available — a short fill is bought smaller, but only if the cash buys at least half the planned "
+        "shares (`--min-fill 0.5`); less is skipped (\"cash buys under 50% of the planned size\"). Before "
+        "1.22 any sliver was bought and held a slot.",
         "Slots: at most cfg.max_open_positions (10) at once. An order that triggers with every slot full "
         "keeps resting until one frees or it expires.",
         "Same-day ranking: when more orders fill than slots are free, the higher setup quality goes first.\n\n"
@@ -1308,7 +1316,7 @@ class ChartPatternSpecStrategy(Strategy):
          "Fraction of equity risked between entry and stop, which sets "
          "position size."),
     )
-    backtest_args = ""
+    backtest_args = "--min-fill 0.5"
 
     # ---------- screen ----------
 

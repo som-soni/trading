@@ -150,10 +150,15 @@ EG02 = "S2"   # 1.8: the break of the flag that follows the reaction (FLAG_*)
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.10"
-    # 1.7 adds gates to evaluate(), so signal_version is NOT pinned: a pin across a scan change would
-    # replay old detections (CLAUDE.md). It defaults to `version`, which rescans.
+    version = "1.11"
+    # 1.11 changes only the portfolio simulator's order mechanics, never the scan
+    # (CLAUDE.md, signal_version).
+    signal_version = "1.10"
+    # 1.7 added gates to evaluate() and was not pinned: a pin across a scan change would replay old
+    # detections (CLAUDE.md). 1.11 changes only the simulator's order mechanics, so it carries 1.10's rows.
     changelog = (
+        ("1.11", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.10 US optimise run 43 positions were under 0.5% of equity, holding 7.1% of slot-days. The other problem, late fills from orders that waited for a slot, needs no change: the resting orders already expire after ENTRY_EXPIRY_BDAYS and every fill re-tests MAX_STOP_PCT against the price paid. signal_version pinned to 1.10: the scan is unchanged. Results move."),
         ("1.10", "2026-11-10",
          "CATALYST_GATE, a research switch for G3 (on by default, so a default run trades exactly as 1.9). "
          "Off, a move qualifies without a results announcement: Pradeep Bonde's episodic pivot is any big "
@@ -282,7 +287,7 @@ class EarningsGapStrategy(Strategy):
                      "reaction_rel_volume", "reaction_close_pos")
     extra_numeric_columns = ("reaction_high", "reaction_low", "reaction_move_pct",
                              "reaction_rel_volume", "reaction_close_pos")
-    backtest_args = "--exit-mode ma --no-target --ma-col sma20 --accept-labels 'TRADE ON TRIGGER'"
+    backtest_args = "--exit-mode ma --no-target --ma-col sma20 --accept-labels 'TRADE ON TRIGGER' --min-fill 0.5"
 
     thesis = (
         "A large surprise changes what a business is worth, but investors do not all act on the "
@@ -380,6 +385,7 @@ class EarningsGapStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.11 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.10's, not comparable. "
         "INDIA: TOO FEW TRADES TO JUDGE. In-sample (optimise, 2013-2021) at v1.4, with board-meeting "
         "dates linking results to their reaction day, India makes 9 trades from 41 signals across 452 "
         "eligible stocks, against v1.3's 3 trades from 15: 0.35% CAGR at 5.8% exposure, max drawdown "
@@ -605,7 +611,8 @@ class EarningsGapStrategy(Strategy):
         "paid − stop), so a stop-out without a gap loses about that share of the account. Equity "
         "is cash plus open positions at the latest close.",
         "Caps. No position may be worth more than the market's largest-position share of equity "
-        "(see Parameters). If cash is short, fewer shares are bought rather than none.",
+        "(see Parameters). If cash is short, fewer shares are bought rather than none, but only if the "
+        "cash buys at least half the planned shares (`--min-fill 0.5`); less is skipped.",
         "Positions at once. At most the market's position limit (see Parameters). An order that "
         "triggers with no slot free keeps waiting until it expires, and fills if a slot frees "
         "first.",

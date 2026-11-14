@@ -66,8 +66,13 @@ W1 = "W1"   # the burst's volume is below its 50-day average
 
 class MomentumBurstStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 changes only the portfolio simulator's order mechanics, never the scan
+    # (CLAUDE.md, signal_version).
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.0 optimise runs 347 US positions (70 India) were under 0.5% of equity, holding 13.6% of US slot-days (6.3% India). Orders buy the signal close and are dropped when no slot is free, so the late-fill problem does not arise. signal_version pinned to 1.0: the scan is unchanged. Results move."),
         ("1.0", "2026-10-31",
          "v1: the Learn guide's daily-bar version of Bonde's momentum burst. An uptrend near the highs (Near "
          "highs screen), a quiet yesterday (up at most {PRIOR_MAX_GAIN_PCT}%, narrow ranges), then a close "
@@ -160,6 +165,7 @@ class MomentumBurstStrategy(Strategy):
     )
 
     status = (
+        "v1.1 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.0's, not comparable. "
         "MEASURED, OPTIMISE STAGE ONLY (2013-2021, IN-SAMPLE) -- AND IT FAILS ITS OWN TEST IN BOTH MARKETS. The "
         "rules were fixed from the Learn guide's definition before its event study was run, and not changed "
         "after it. Pass criterion, set before any backtest result, judged per market: in the optimise stage the "
@@ -261,7 +267,7 @@ class MomentumBurstStrategy(Strategy):
     sizing_rules = (
         "Risk-based. Shares = (equity × Risk per trade) ÷ (price paid − stop), rounded down, capped at Max position "
         "size × equity.",
-        "Cash. When cash cannot buy the full size, the backtest buys what it can.",
+        "Cash. When cash cannot buy the full size, the backtest buys what it can, but only if that is at least half the planned shares (`--min-fill 0.5`); less is skipped, counted under \"cash buys under 50% of the planned size\". Before 1.1 it bought whatever was left, often a sliver of equity that held a slot for weeks.",
         "Slots. At most Position cap positions at once. A close order with no free slot is dropped.",
     )
     filter_rules = (
@@ -308,7 +314,7 @@ class MomentumBurstStrategy(Strategy):
         ("Tick size", "cfg.tick_size", "The stop is rounded down to this increment."),
         ("Slippage", "cfg.slippage_bps", "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = f"--no-target --time-stop-bars {HOLD_BARS} --rank-by setup_momentum"
+    backtest_args = f"--no-target --time-stop-bars {HOLD_BARS} --rank-by setup_momentum --min-fill 0.5"
 
     # ---------- market ----------
 

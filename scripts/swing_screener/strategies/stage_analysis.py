@@ -406,9 +406,13 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.12"
-    # 2.12 adds G10 to evaluate(), so the scan reruns: no signal_version pin (CLAUDE.md).
+    version = "2.13"
+    # 2.12 added G10 to evaluate() and rescanned; 2.13 changes only the simulator's order mechanics and
+    # signal_meta, never the scan, so it carries 2.12's cached rows forward (CLAUDE.md, signal_version).
+    signal_version = "2.12"
     changelog = (
+        ("2.13", "2026-11-14",
+         "Backtest mechanics, no rule changed, from the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. (1) The stop limit MAX_STOP_PCT is re-tested against the price paid (signal_meta max_risk_pct): an order that waited for a slot, or gapped, and would now carry a stop further than that below the fill is skipped. On the 2.12 optimise runs 23 US and 13 Indian trades had such a stop. An order that waits for a slot still may: Weinstein's answer to a missed breakout is to buy the pullback toward it, which is what a later fill near the plan is, and the re-test now refuses the chased ones. (2) No crumb fills (`--min-fill 0.5`); the 2.12 runs had none, so this only guards. signal_version pinned to 2.12: the scan is unchanged. Results move."),
         ("2.12", "2026-11-11",
          "G10, Stage 2's age, OFF by default (MAX_STAGE2_WEEKS = 0), so this version trades exactly as 2.11: with "
          "MAX_STAGE2_WEEKS above 0 it refuses a breakout made more than that many weeks after the stock's current "
@@ -710,6 +714,7 @@ class StageAnalysisStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v2.13 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v2.12's, not comparable. "
         "FAILED VERIFY in both markets (v2.11, out-of-sample 2022-01-03 to 2026-11-06, criteria fixed before the run "
         "in research/stage-analysis-verify-plan.md: drawdown at least 5 points shallower than the index's, Sharpe not "
         "lower, at least 30 closed trades). US: 2.84% CAGR against SPY's 9.32%, max drawdown -13.0% against -25.4% "
@@ -891,8 +896,12 @@ class StageAnalysisStrategy(Strategy):
         "Buy-stop at the signal close. The backtest places a buy-stop at the signal session's close, from the next "
         "session on. It fills on the first session whose high reaches it, at that price, or at the open if the "
         "stock opens above it.",
-        "How long it waits. The order rests up to 10 business days. It is cancelled if a session's low reaches "
-        "the stop first, and skipped if the fill would be at or above the plan's target.",
+        "How long it waits. The order rests up to 10 business days, also while every slot is full, so it can "
+        "fill later on a pullback toward the plan. It is cancelled if a session's low reaches the stop first, "
+        "and skipped if the fill would be at or above the plan's target.",
+        "Re-tested at the fill (backtest). The stop must be within {MAX_STOP_PCT}% of the price actually paid, "
+        "or the trade is skipped: a gap, or an order that waited for a slot while the stock ran, cannot buy a "
+        "wider stop than the plan allowed.",
         "Live. The plan's entry is the signal close for a completed breakout, or one tick above resistance for an "
         "armed base. Live decisions follow the same rules, but nothing is filled automatically.",
         "One entry at a time. No pyramiding and no half-now-half-on-the-pullback variant, which the guide offers.",
@@ -933,7 +942,7 @@ class StageAnalysisStrategy(Strategy):
         "per trade (1% of current equity in both markets today).",
         "Caps. No position larger than the market config's maximum share of equity (25% today); at most the "
         "config's number of open positions (10 today); a buy is scaled down to the cash available rather than "
-        "skipped.",
+        "skipped, unless the cash buys less than half the planned shares (`--min-fill 0.5`): then it is skipped.",
     )
     filter_rules = (
         "Market in Stage 4 (G7). No new buy while the market index reads Stage 4.",
@@ -1002,7 +1011,7 @@ class StageAnalysisStrategy(Strategy):
                                                         "Only that stage is refused, so at 3 a Stage 4 market "
                                                         "passes."),
     )
-    backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target --rank-by setup_momentum"
+    backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target --rank-by setup_momentum --min-fill 0.5"
 
     # ---------- screen ----------
 
@@ -1403,4 +1412,6 @@ class StageAnalysisStrategy(Strategy):
             "vol_ratio": e.get("vol_ratio"), "ma30": e.get("ma30"),
             "base_depth_pct": e.get("base_depth_pct"),
             "structural_r": e.get("structural_r"),
+            # 2.13: the stop limit, re-tested by the simulator against the price actually paid
+            "max_risk_pct": MAX_STOP_PCT / 100,
         }

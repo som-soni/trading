@@ -82,8 +82,13 @@ def buy_above(top: float, tick: float) -> float:
 
 class DarvasStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 changes only the portfolio simulator's order mechanics, never the scan
+    # (CLAUDE.md, signal_version).
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.0 optimise runs 115 US positions (33 India) were under 0.5% of equity, holding 15.2% of US slot-days (4.8% India). The other problem, orders that wait for a slot, is left as it is: a Darvas buy-stop stays over the top of a live box and is renewed every session it stays live, so dropping it on a full book would only have it placed again the next session, and the method has no anti-chase limit of its own to re-test. signal_version pinned to 1.0: the scan is unchanged. Results move."),
         ("1.0", "2026-11-03",
          "v1 baseline: Darvas boxes to research/learn-strat-darvas.md sections 3-4. A 250-session-high "
          "top held 3 sessions, a bottom held 3 sessions, at most 15% deep; a buy-stop 0.1% over the top, "
@@ -168,6 +173,7 @@ class DarvasStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.1 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.0's, not comparable. "
         "FAILS ITS IN-SAMPLE CRITERION in both markets. Pass criterion, written before the runs: excess "
         "CAGR over the market's benchmark above 0 in-sample, on more than 50 trades. v1.0, optimise stage "
         "(2013-2021, in-sample), as configured (every switch off), measured 2026-11-05: US 6.76% CAGR, "
@@ -287,9 +293,11 @@ class DarvasStrategy(Strategy):
     )
     sizing_rules = (
         "Risk-based. Shares = (equity × Risk per trade) ÷ (price paid − stop), rounded down, capped at "
-        "Max position size × equity; when cash cannot buy the full size, it buys what it can.",
+        "Max position size × equity; when cash cannot buy the full size, it buys what it can, but only "
+        "if that is at least half the planned shares (`--min-fill 0.5`); less is skipped.",
         "Slots. At most Position cap positions at once. A triggered order with no free slot keeps "
-        "resting until it lapses.",
+        "resting until it lapses, and can fill later above the top; it is renewed while the box is live, "
+        "so a full book delays the buy rather than cancelling it.",
     )
     filter_rules = (
         "Thin stocks. The 20-day average of close × volume must be at least the Minimum liquidity, "
@@ -329,7 +337,7 @@ class DarvasStrategy(Strategy):
         ("Tick size", "cfg.tick_size", "The entry is rounded up to it; the stop sits one tick under the bottom."),
         ("Slippage", "cfg.slippage_bps", "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = "--exit-mode darvas --no-target"
+    backtest_args = "--exit-mode darvas --no-target --min-fill 0.5"
 
     # ---------- the boxes ----------
 

@@ -82,10 +82,12 @@ def cycle_frame(df: pd.DataFrame) -> pd.DataFrame:
 class KellCycleStrategy(Strategy):
     key = "kell_cycle"
     name = "Kell cycle of price action"
-    version = "1.2"
+    version = "1.3"
     # 1.1 changes only the market filter, 1.2 only the stop: both after the scan.
     signal_version = "1.0"
     changelog = (
+        ("1.3", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.2 optimise runs 52 US positions (15 India) were under 0.5% of equity, about 4-5% of slot-days. Orders are bought at the signal close and dropped when no slot is free, so the late-fill problem does not arise. signal_version stays 1.0: the scan is unchanged. Results move."),
         ("1.2", "2026-11-11",
          "A research switch, off by default: MIN_STOP_ATR (now {MIN_STOP_ATR}) moves a one-bar stop (S1, S2, S4) "
          "down to at least that many ATR under the entry when the bar's low is closer. The 1.1 optimise runs "
@@ -200,6 +202,7 @@ class KellCycleStrategy(Strategy):
         "page's backtest command adds them).",
     )
     status = (
+        "v1.3 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.2's, not comparable. "
         "Draft 1, built 2026-11-10. First optimise-stage runs of 1.0 (2013-2021, in-sample): India 15.3% CAGR, "
         "-35.2% max drawdown, +0.27R a trade; US 2.3%, -24.1%, +0.00R; neither market passed all three criteria. "
         "The US stopped out 49% of trades (India 37%); the MIN_STOP_ATR variant is queued. Pass "
@@ -283,7 +286,7 @@ class KellCycleStrategy(Strategy):
     sizing_rules = (
         "Risk-based, per tranche. Shares = (equity × Risk per trade) ÷ (price paid − that tranche's stop), rounded "
         "down, and the whole position capped at Max position size × equity.",
-        "Cash. When cash cannot buy the full size, the backtest buys what it can.",
+        "Cash. When cash cannot buy the full size, the backtest buys what it can, but only if that is at least half the planned shares (`--min-fill 0.5`); less is skipped, counted under \"cash buys under 50% of the planned size\". Before 1.3 it bought whatever was left, often a sliver of equity that held a slot for weeks.",
         "Slots and caps. The minervini strategy's position count and open-risk cap (`--spec`); an add that would breach "
         "the open-risk cap is skipped.",
     )
@@ -320,7 +323,7 @@ class KellCycleStrategy(Strategy):
         ("Max position size", "cfg.max_position_pct", "A position's full size, as a fraction of equity."),
         ("Tick size", "cfg.tick_size", "Stops are rounded down to this increment."),
     )
-    backtest_args = "--spec --exit-mode kell --no-target --market-filter --results-blackout 0"
+    backtest_args = "--spec --exit-mode kell --no-target --market-filter --results-blackout 0 --min-fill 0.5"
 
     # ---------- screen ----------
 

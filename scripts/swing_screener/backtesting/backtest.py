@@ -1325,6 +1325,8 @@ def run_portfolio_backtest(
     segment_filter_days: int | None = None,
     tf_align: bool = False,
     equal_alloc_pct: float | None = None,
+    min_fill_frac: float | None = None,
+    slot_wait_bdays: int | None = None,
     exposure: "portfolio_sim.Exposure | None" = None,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
@@ -1535,6 +1537,22 @@ def run_portfolio_backtest(
                       "Group RS is rebuilt point in time from prices; the industry classification is today's.")
 
     sim_kw = {}
+    from . import portfolio_sim
+    if min_fill_frac is not None:
+        sim_kw["min_fill_frac"] = float(min_fill_frac)
+        spec_notes.append(
+            f"Minimum fill (--min-fill {min_fill_frac:g}): a fill the cash allows less than {min_fill_frac:.0%} of its "
+            "planned shares is skipped rather than bought as a crumb that holds a slot (counted under "
+            f"\"{portfolio_sim.MIN_FILL_SKIP.format(pct=round(min_fill_frac * 100, 4))}\").")
+    if slot_wait_bdays is not None:
+        sim_kw["slot_wait_bdays"] = int(slot_wait_bdays)
+        spec_notes.append(
+            f"Slot wait (--slot-wait {slot_wait_bdays}): " + (
+                "a resting order that triggers with every slot full is dropped; it is taken on the session it "
+                "triggers or not at all." if not slot_wait_bdays else
+                f"a resting order that triggers with every slot full rests at most {slot_wait_bdays} more business "
+                f"days, then lapses (\"{portfolio_sim.SLOT_WAIT_LAPSE}\").")
+            + " A strategy's own signals may set their own window (meta slot_wait_bdays).")
     if spec_costs:
         sim_kw.update(cost_bps=spec_mod.COST_BPS[market_key], slippage_bps=spec_mod.SLIPPAGE_BPS[market_key])
     credits = corporate_actions.Credits.for_market(market_key, list(prices))
@@ -1886,6 +1904,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--equal-alloc", type=float, default=None, metavar="PCT",
                         help="size every position at PCT%% of equity (e.g. 20 with --max-positions 5) instead of from the "
                              "stop and --risk-pct; the stop still decides the exit")
+    parser.add_argument("--min-fill", type=float, default=None, metavar="FRAC",
+                        help="skip a fill the cash allows less than FRAC of its planned shares (e.g. 0.5), instead "
+                             "of buying a crumb that holds a slot; default: buy whatever the cash allows")
+    parser.add_argument("--slot-wait", type=int, default=None, metavar="BDAYS",
+                        help="a resting order that triggers with every slot full rests at most BDAYS more business "
+                             "days (0 = taken when it triggers or not at all); default: until its own expiry")
     parser.add_argument("--segment-filter", type=int, default=None, metavar="DAYS",
                         help="skip signals while the stock's own market-cap segment index (by traded-value rank that day: "
                              "large / mid / small) is at or below its DAYS-session average (e.g. 21 or 50)")
@@ -2005,6 +2029,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     signal_source = None   # a run whose cached signal rows this one would write too (seed_signal_cache)
     # The version gate reads the SHIPPED rules, so it runs before any override -- the market's own rules
     # (market_consts, below) move the fingerprint on purpose and are part of the version, not an experiment.
+    if args.min_fill is not None and not 0 < args.min_fill <= 1:
+        parser.error("--min-fill is a fraction of the planned shares, above 0 and at most 1, e.g. 0.5")
+    if args.slot_wait is not None and args.slot_wait < 0:
+        parser.error("--slot-wait is a number of business days, 0 or more")
     _stale = None
     if not args.vcp and not args.const and not args.pp:
         from ..strategies import versions as _versions
@@ -2185,6 +2213,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             results_strict=bool(ms.RESULTS_BLACKOUT_STRICT) if args.spec else False,
             segment_filter_days=args.segment_filter, tf_align=args.tf_align,
             equal_alloc_pct=args.equal_alloc / 100 if args.equal_alloc else None,
+            min_fill_frac=args.min_fill, slot_wait_bdays=args.slot_wait,
             top_dollar_volume=args.top_dollar_volume,
             exposure=_exposure_from(args),
             spec_costs=args.spec,
@@ -2252,6 +2281,10 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += "_tfa"
     if args.equal_alloc:
         run += f"_eq{args.equal_alloc:g}"
+    if args.min_fill is not None:
+        run += f"_mf{args.min_fill:g}"
+    if args.slot_wait is not None:
+        run += f"_sw{args.slot_wait}"
     if args.pyramid:
         run += (f"_pyr{args.pyramid:g}atbox" if args.pyramid_at == "box"
                 else f"_pyr{args.pyramid:g}at{args.pyramid_add_pct:g}pct")
@@ -2312,6 +2345,8 @@ def main(argv: list[str] | None = None) -> dict | None:
                 + (" --pe-no-streak" if args.pe_no_streak else "")) if args.pe else "")
             + (f" --trail-pct {args.trail_pct:g}" if args.exit_mode == "trail_pct" else "")
             + (f" --equal-alloc {args.equal_alloc:g}" if args.equal_alloc else "")
+            + (f" --min-fill {args.min_fill:g}" if args.min_fill is not None else "")
+            + (f" --slot-wait {args.slot_wait}" if args.slot_wait is not None else "")
             + (f" --segment-filter {args.segment_filter}" if args.segment_filter else "")
             + (" --tf-align" if args.tf_align else "")
             + (f" --accept-labels '{args.accept_labels}'" if args.accept_labels != "TRADE - HIGH CONFIDENCE" else "")

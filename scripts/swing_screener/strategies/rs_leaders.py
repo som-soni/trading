@@ -96,11 +96,13 @@ class RsLeadersStrategy(Strategy):
 
     selection = "time_series"
     family = "rs_leaders"
-    version = "1.4"
+    version = "1.5"
     # 1.3 changes only the RS filter applied to the collected signals, never the scan, so the cached
     # signal rows of 1.2 still describe this version's scan (CLAUDE.md, signal_version).
     signal_version = "1.2"
     changelog = (
+        ("1.5", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.4 US optimise run 14 positions were under 0.5% of equity, holding 11.3% of slot-days. Orders buy the next open and are dropped when no slot is free, so the late-fill problem does not arise. signal_version stays 1.2: the scan is unchanged. Results move."),
         ("1.4", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -215,6 +217,7 @@ class RsLeadersStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.5 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.4's, not comparable. "
         "MEASURED in the optimise stage (2013-2021), v1.2. US: 115 trades, profit factor 2.18, an average "
         "+0.59R, CAGR 5.26% at 23% invested -- and against the index held at that exposure, +2.32, with a "
         "-13.9% maximum drawdown and the gain spread across 2013, 2018, 2019 and 2020 (no year more than 42% "
@@ -351,7 +354,7 @@ class RsLeadersStrategy(Strategy):
         "whatever the stop's width, unless it gaps.",
         "Caps. No position larger than the market config's maximum share of equity (25% today); at most the "
         "config's number of open positions (10 today); a buy is scaled down to the cash available rather than "
-        "skipped.",
+        "skipped, unless the cash buys less than half the planned shares (`--min-fill 0.5`): then it is skipped.",
         "Not modelled. The guide's limit of two positions per industry group and its advice to start with a few "
         "positions after the confirmation day.",
     )
@@ -408,7 +411,7 @@ class RsLeadersStrategy(Strategy):
         ("Group rank", "GROUP_MIN_RANK", "Minimum industry-group rating; applied by the backtest's --min-group-rs."),
     )
     backtest_args = (f"--min-rs {RS_MIN_RANK} --min-group-rs {GROUP_MIN_RANK} --exit-mode ma --no-target "
-                     "--rank-by rs")
+                     "--rank-by rs --min-fill 0.5")
 
     # ---------- screen ----------
 

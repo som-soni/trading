@@ -49,16 +49,33 @@ from .base import (
 )
 from .trend_pullback import round_tick
 
+# A plan whose stop is further than this below the entry is WATCH - WAIT; the backtest re-tests it
+# against the price actually paid (signal_meta max_risk_pct), so a gap cannot buy a wider stop.
+MAX_STOP_PCT = 15.0
+
 DC01 = "S1"   # DC-01  # breakout of the entry channel
 DC02 = "S2"   # DC-02  # coiled just under the channel high
 
 
 class DonchianStrategy(Strategy):
     selection = "time_series"
-    version = "1.5"
-    # 1.5 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
-    signal_version = "1.4"
+    version = "1.6"
+    # 1.6 changes evaluate() (the live exit channel, channel_low, is now 50 sessions), so the scan
+    # reruns: no signal_version pin (CLAUDE.md).
     changelog = (
+        ("1.6", "2026-11-14",
+         "Backtest mechanics and the live exit, from the 2026-11-14 backtest review (B1-B3). (1) One-session "
+         "orders (`--slot-wait 0`): an order that triggers with every slot full is dropped, as the Turtles took "
+         "a breakout when it happened or not at all. Before, it rested up to 10 business days and filled when a "
+         "slot freed, after the breakout had faded or run on, with the stop planned at the signal: 62% of US "
+         "trades in the v1.5 optimise run, at +0.03R against +0.77R for next-session fills. (2) The 15% stop cap "
+         "(now MAX_STOP_PCT) is re-tested against the price paid (signal_meta max_risk_pct); 19 Indian and 28 US "
+         "trades had a stop further than that below what they paid. (3) No crumbs (`--min-fill 0.5`): a fill the "
+         "cash allows less than half its planned shares is skipped, where it used to buy whatever was left, often "
+         "~0.02% of equity, holding a slot for weeks (11.8% India / 17.1% US of slot-days). (4) The live exit "
+         "channel (exit_channel) is the 50-day low the backtest has always used, where the screen showed a "
+         "20-day low that was never tested; backtest_args reads --donchian-bars from it. That last change moves "
+         "evaluate()'s channel_low, so the scan reruns. Results move: earlier versions' runs are not comparable."),
         ("1.5", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -138,7 +155,7 @@ class DonchianStrategy(Strategy):
 
     # --- the only real parameters ---
     entry_channel: int = 55      # Turtle "System 2" entry; Donchian's 4-week rule is 20
-    exit_channel: int = 20       # exit on a 20-day low
+    exit_channel: int = 50       # exit on a close below the 50-day low (live and backtest, 1.6)
     stop_atr_mult: float = 2.0   # the Turtles' 2N stop
     min_stop_pct: float = 2.0    # floor: never risk a stop tighter than this
     nominal_target_atr: float = 10.0  # far target — the real exit is the channel
@@ -163,11 +180,11 @@ class DonchianStrategy(Strategy):
         "fills at the next session's open. See Entry.",
         "**Stop.** {stop_atr_mult} ATR under the entry, never closer than {min_stop_pct}%, and it "
         "never moves. See Stop.",
-        "**Sell.** The backtest sells at the first close below the lowest low of the prior 50 "
-        "sessions; live, the screen shows the {exit_channel}-day low. There is no real target. See "
-        "Target and Exit.",
+        "**Sell.** At the first close below the lowest low of the prior {exit_channel} sessions, live "
+        "and in the backtest. There is no real target. See Target and Exit.",
         "**What the backtest buys.** Only TRADE - HIGH CONFIDENCE: S1 with both gates, neither watch "
-        "flag, and a stop no more than 15% below the entry.",
+        "flag, and a stop no more than {MAX_STOP_PCT}% below the entry -- re-tested on the price paid. "
+        "An order that finds every slot full is dropped, not kept waiting. See Entry.",
         "**Where the rules come from.** Richard Donchian's channel rule and the Turtles' System 2 "
         "(55-day entry, 2N stop). There is no written spec with row ids: DC-01 and DC-02 are the "
         "setups' names from before the S1/S2 codes.",
@@ -184,8 +201,13 @@ class DonchianStrategy(Strategy):
         "**Run it with its exit flags.** `--exit-mode donchian --no-target --donchian-bars 50` (the "
         "page's backtest command adds them). Without them the default bracket sells everything at "
         "the nominal target, which caps exactly the winners the strategy exists to keep.",
-        "**Live and backtest exits differ.** The screen reports the {exit_channel}-day low as the exit "
-        "level, but every recorded backtest exits on the 50-day low.",
+        "**The exit channel was chosen on the same signals.** {exit_channel} sessions was picked among eight "
+        "exit policies tested on one set of signals, so it is in-sample. The Turtles' System 2 exits on a "
+        "20-day low. Before 1.6 the live screen showed that 20-day low while every backtest exited on the "
+        "50-day low; they now agree.",
+        "**A breakout is taken when it happens, or not at all.** With every slot full the order is dropped "
+        "(`--slot-wait 0`); the next close above the channel, if G2 still passes, places a fresh one. Before "
+        "1.6 the order waited up to 10 business days for a slot, and most US trades were such late fills.",
         "**The strongest breakout gets the slot.** Every signal the backtest accepts scores the same "
         "setup quality, 2, and the book is full most of the time -- on the 1.1 runs slots were full on "
         "82% (India) and 88% (US) of days, and 62,379 / 374,334 signal-days were turned away for it. "
@@ -210,6 +232,8 @@ class DonchianStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the numeric class attributes (entry_channel, ...), which
     # render_doc fills with the live values. A literal is written where the code uses a literal.
     status = (
+        "v1.6 NOT YET RUN: one-session orders, the stop cap re-tested at the fill, no crumb fills and a 50-day "
+        "live exit (changelog); its optimise runs are queued. Every figure below is v1.5 and not comparable. "
         "IN-SAMPLE ONLY -- NO RETURN EDGE IN EITHER MARKET. v1.5, optimise stage (2013-2021, in-sample), with "
         "its own backtest_args: India 11.85% CAGR, excess -1.69 points a year over its benchmark (-2.74 at the "
         "standard India cost), max drawdown -29.4% against -38.3%, Sharpe 0.69, 269 trades; US 3.61% CAGR, "
@@ -255,8 +279,8 @@ class DonchianStrategy(Strategy):
             "- **Test:** {stop_atr_mult} × ATR14 ÷ today's close × 100 > 12, on any day, setup or not.\n"
             "- **Effect:** caps the decision at TRADE ON TRIGGER, so the backtest never trades it. No "
             "effect on setup quality.\n\n"
-            "A separate test in the decision is on the plan's real stop: more than 15% below the entry "
-            "is WATCH - WAIT (see Stop)."
+            "A separate test in the decision is on the plan's real stop: more than {MAX_STOP_PCT}% below the "
+            "entry is WATCH - WAIT (see Stop)."
         ),
     }
     setup_docs = {
@@ -291,13 +315,19 @@ class DonchianStrategy(Strategy):
         "session's open. In the backtest it fills on the first later session whose high reaches the "
         "entry, at the higher of the entry and that session's open, plus slippage. It never fills on "
         "the signal session itself.",
-        "Expiry and cancel (backtest). An unfilled order rests for up to 10 business days. It is "
-        "cancelled if a session's low reaches the stop while its high stays under the entry, and "
+        "No free slot (backtest, `--slot-wait 0`). An order that triggers while every position slot is "
+        "full is dropped that session: the breakout is taken when it happens or not at all, as the "
+        "Turtles did. A later close above the channel that still passes G2 is a new signal with its own "
+        "order. Before 1.6 it kept resting and filled whenever a slot freed, with the stop planned at "
+        "the signal.",
+        "Expiry and cancel (backtest). An order that has not triggered rests for up to 10 business days. "
+        "It is cancelled if a session's low reaches the stop while its high stays under the entry, and "
         "skipped if the fill would be at or above the nominal target.",
         "One position per stock (backtest). A signal in a stock already held, or with an order "
         "already resting, is ignored.",
-        "No re-test at the fill. The 15% stop test uses the planned entry. A gap up at the open raises "
-        "the price paid but not the stop, so the real risk is wider than planned.",
+        "Re-tested at the fill (backtest). The stop cap is checked again against the price actually paid: "
+        "a gap that puts the stop more than {MAX_STOP_PCT}% below the fill skips the trade. The stop "
+        "itself stays where it was planned.",
     )
     stop_rules = (
         "Where it goes. The lower of entry − {stop_atr_mult} × ATR14 (the Turtles' 2N) and entry × "
@@ -306,9 +336,9 @@ class DonchianStrategy(Strategy):
         "would be a stop that ordinary daily noise takes out.",
         "It defines 1R. The distance from the price paid to the stop is the trade's risk, 1R. Results "
         "are counted in R.",
-        "How far is too far. If entry − stop is more than 15% of the entry, the plan is WATCH - WAIT "
-        "and is not bought. W2 already caps any stock whose {stop_atr_mult}-ATR stop is more than 12% "
-        "of the close.",
+        "How far is too far. If entry − stop is more than {MAX_STOP_PCT}% of the entry, the plan is WATCH - "
+        "WAIT and is not bought; the backtest tests it again against the price paid (see Entry). W2 "
+        "already caps any stock whose {stop_atr_mult}-ATR stop is more than 12% of the close.",
         "How it sells (backtest). A standing sell order: the first session whose low touches the stop "
         "sells at the stop, or at the open if it opened below it. A gap can therefore lose more than "
         "1R, and slippage is charged on top.",
@@ -329,14 +359,15 @@ class DonchianStrategy(Strategy):
     )
     exit_rules = (
         "The channel exit (backtest). Each session after the fill, the stop is checked first (see "
-        "Stop). If it did not sell, a close below the lowest low of the prior 50 sessions "
-        "(`--donchian-bars 50`, today excluded) sells the whole position at that close.",
-        "Early on, the stop decides. Right after a {entry_channel}-day breakout the 50-day low usually "
-        "sits below the stop, so a failed breakout ends at the stop. The channel exit takes over once "
-        "the 50-day low has risen above the stop.",
-        "Live, the exit level shown is the {exit_channel}-day low: the lowest low of the "
+        "Stop). If it did not sell, a close below the lowest low of the prior {exit_channel} sessions "
+        "(`--donchian-bars {exit_channel}`, today excluded) sells the whole position at that close.",
+        "Early on, the stop decides. Right after a {entry_channel}-day breakout the {exit_channel}-day "
+        "low usually sits below the stop, so a failed breakout ends at the stop. The channel exit takes "
+        "over once the {exit_channel}-day low has risen above the stop.",
+        "Live, the exit level shown is the same {exit_channel}-day low: the lowest low of the "
         "{exit_channel} sessions before today (channel_low), also drawn on the chart. Nothing manages "
-        "an open position; the trader applies the exit.",
+        "an open position; the trader applies the exit. Before 1.6 the screen showed a 20-day low "
+        "that no backtest used.",
         "No other exits. No target, time stop, breakeven or partial sale. A position still open when "
         "the backtest ends is marked at the last close.",
     )
@@ -346,13 +377,16 @@ class DonchianStrategy(Strategy):
         "Capped. The position may not be worth more than Max position size × equity. With 1% risk and "
         "a 25% cap, any stop closer than 4% below the price paid hits the cap, and the trade then "
         "risks less than 1%.",
-        "Cash. When cash cannot buy the full size, the backtest buys what it can instead of skipping.",
+        "Cash. When cash cannot buy the full size, the backtest buys what it can, but only if that is at "
+        "least half the planned shares (`--min-fill 0.5`); less is skipped, counted under \"cash buys "
+        "under 50% of the planned size\". Before 1.6 it bought whatever was left, often a position of "
+        "~0.02% of equity that held a slot for weeks.",
         "Backtest and live. The backtest sizes from equity at the fill: cash plus the other positions at the "
         "previous session's close (an exit later that session has not happened yet). The live screen sizes "
         "from the configured account size, at the lower high-volatility risk when the volatility "
         "index is above the market's threshold. A plan that cannot buy even one share is WATCH - WAIT.",
-        "Slots. At most Position cap positions at once. A triggered order with no free slot keeps "
-        "resting until it expires, and may fill later at a higher open.",
+        "Slots. At most Position cap positions at once. A triggered order with no free slot is dropped "
+        "(see Entry).",
     )
     filter_rules = (
         "Thin stocks. The 20-day average of close × volume must be at least the Minimum liquidity, "
@@ -369,13 +403,13 @@ class DonchianStrategy(Strategy):
     )
     decision_docs = {
         "TRADE_HIGH_CONFIDENCE": "Both gates pass, today's close is above the {entry_channel}-day channel "
-                                 "high (S1), neither watch flag is raised, the stop is no more than 15% "
-                                 "below the entry and one share fits the account. The only tier the "
+                                 "high (S1), neither watch flag is raised, the stop is no more than "
+                                 "{MAX_STOP_PCT}% below the entry and one share fits the account. The only tier the "
                                  "backtest buys.",
         "TRADE_ON_TRIGGER": "An S2 coil (the close within 1 ATR under the channel high: buy only on the "
                             "break), or an S1 breakout capped by W1 or W2, or a HIGH CONFIDENCE "
                             "lowered by a risk-off market.",
-        "WATCH_WAIT": "The stop would be more than 15% below the entry, or not even one share fits the "
+        "WATCH_WAIT": "The stop would be more than {MAX_STOP_PCT}% below the entry, or not even one share fits the "
                       "account's risk budget and position cap, or a TRADE ON TRIGGER lowered by a "
                       "risk-off market.",
         "AVOID": "G1 or G2 failed, or the plan's risk is not a positive number. A stock that passes both "
@@ -391,9 +425,12 @@ class DonchianStrategy(Strategy):
         ("Entry channel", "entry_channel",
          "Sessions before today whose highest high is the channel high (S1, S2, G2). The Turtles' "
          "System 2 uses 55; Donchian's original 4-week rule is 20."),
-        ("Exit channel (live)", "exit_channel",
-         "Sessions before today whose lowest low the screen reports as the exit level. The backtest "
-         "exits on --donchian-bars 50 instead."),
+        ("Exit channel", "exit_channel",
+         "Sessions before today whose lowest low is the exit: a close below it sells. The screen reports "
+         "it and the backtest exits on it (`--donchian-bars`, set from this)."),
+        ("Maximum stop", "MAX_STOP_PCT",
+         "A stop further than this % below the entry is WATCH - WAIT; the backtest re-tests it against "
+         "the price paid."),
         ("Stop distance", "stop_atr_mult",
          "Stop = entry − this × ATR14 (the Turtles' 2N), unless the minimum stop is wider."),
         ("Minimum stop", "min_stop_pct",
@@ -413,13 +450,18 @@ class DonchianStrategy(Strategy):
         ("Max position size", "cfg.max_position_pct",
          "Cap on one position's value as a fraction of equity."),
         ("Position cap", "cfg.max_open_positions",
-         "Backtest slots. With many tied breakouts this is the binding limit."),
+         "Backtest slots. With many tied breakouts this is the binding limit; a triggered order with no "
+         "free slot is dropped (`--slot-wait 0`)."),
         ("Tick size", "cfg.tick_size",
          "The entry is rounded up and the stop rounded down to this increment."),
         ("Slippage", "cfg.slippage_bps",
          "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = "--exit-mode donchian --no-target --donchian-bars 50 --rank-by setup_momentum"
+    backtest_args = (f"--exit-mode donchian --no-target --donchian-bars {exit_channel} --rank-by setup_momentum "
+                     "--min-fill 0.5 --slot-wait 0")
+    # MAX_STOP_PCT is read by classify() and signal_meta(), after evaluate(): a --const variant of it
+    # re-uses the shipped run's cached signal rows (base.Strategy.signal_exempt_consts).
+    signal_exempt_consts = ("MAX_STOP_PCT",)
 
     # ---------- screen ----------
 
@@ -575,9 +617,9 @@ class DonchianStrategy(Strategy):
         if sizing_result.too_large:
             label = "WATCH_WAIT"
             reasons.append("too large for account")
-        elif risk_pct > 15:
+        elif risk_pct > MAX_STOP_PCT:
             label = "WATCH_WAIT"
-            reasons.append(f"2 ATR stop is {risk_pct:.1f}% of price (> 15%)")
+            reasons.append(f"2 ATR stop is {risk_pct:.1f}% of price (> {MAX_STOP_PCT:g}%)")
         elif not fired:
             label = "TRADE_ON_TRIGGER"
             reasons.append("coiled under the channel, breakout not yet confirmed")
@@ -599,6 +641,10 @@ class DonchianStrategy(Strategy):
             LABELS[before], LABELS[label], "; ".join(reasons),
             risk_pct, plan.r_multiple, self.setup_quality(result),
         )
+
+    def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
+        """The stop cap, re-tested by the simulator against the price actually paid (1.6)."""
+        return {"max_risk_pct": MAX_STOP_PCT / 100}
 
     def report_extras(
         self, ctx: StockContext, result: StrategyResult, plan: TradePlan | None

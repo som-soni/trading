@@ -74,10 +74,12 @@ S1 = "S1"   # today's close is above the rest's high
 
 class KullamagiStrategy(Strategy):
     selection = "time_series"
-    version = "1.4"
+    version = "1.5"
     # 1.4 adds an entry-time ADR floor read only by classify() (off by default), so it keeps 1.3's signal scan
     signal_version = "1.3"
     changelog = (
+        ("1.5", "2026-11-14",
+         "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.3 optimise runs 118 US positions (14 India) were under 0.5% of equity, holding 12.1% of US slot-days. Orders buy the signal close and are dropped when no slot is free, so the late-fill problem does not arise. signal_version stays 1.3: the scan is unchanged. Results move."),
         ("1.4", "2026-11-10",
          "An optional entry floor on the average daily range, ENTRY_MIN_ADR_PCT, applied when the trade is "
          "decided rather than in the scan, so a variant reuses the cached signals. Off by default (0), so the "
@@ -206,6 +208,7 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
+        "v1.5 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.4's, not comparable. "
         "v1.4 is v1.3's rules plus an entry ADR floor that is off by default; v1.3's results below stand for it. "
         "v1.4 variants (optimise, 2013-2021, in-sample: all were chosen from v1.3's US optimise trades) all FAIL the "
         "criterion. Quarter size while the last 20 closed trades lose (--pe --pe-window 20 --pe-pilot 0.25 "
@@ -344,7 +347,7 @@ class KullamagiStrategy(Strategy):
     sizing_rules = (
         "Risk-based. Shares = (equity × Risk per trade) ÷ (price paid − stop), rounded down, capped at Max position "
         "size × equity.",
-        "Cash. When cash cannot buy the full size, the backtest buys what it can.",
+        "Cash. When cash cannot buy the full size, the backtest buys what it can, but only if that is at least half the planned shares (`--min-fill 0.5`); less is skipped, counted under \"cash buys under 50% of the planned size\". Before 1.5 it bought whatever was left, often a sliver of equity that held a slot for weeks.",
         "Slots. At most Position cap positions at once. A close order with no free slot is dropped.",
     )
     filter_rules = (
@@ -402,7 +405,7 @@ class KullamagiStrategy(Strategy):
         ("Tick size", "cfg.tick_size", "The stop is rounded down to this increment."),
         ("Slippage", "cfg.slippage_bps", "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = "--exit-mode kullamagi --no-target --rank-by setup_momentum"
+    backtest_args = "--exit-mode kullamagi --no-target --rank-by setup_momentum --min-fill 0.5"
 
     # ---------- market ----------
 

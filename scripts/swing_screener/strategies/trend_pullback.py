@@ -65,12 +65,14 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.5"
+    version = "1.6"
     # 1.4 changed only the portfolio simulator and 1.5 only adds plan-level switches, never the scan
     # (CLAUDE.md, signal_version).
     signal_version = "1.3"
     signal_exempt_consts = ("REQUIRE_NEAR_HIGHS", "SKIP_FALLING_ADX")
     changelog = (
+        ("1.6", "2026-11-14",
+         "Backtest mechanics, no rule changed: the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. (1) No crumbs (`--min-fill 0.5`): a fill the cash allows less than half its planned shares is skipped; on the 1.5 US optimise run 106 of 554 trades were under 0.5% of equity, holding 18.3% of slot-days. (2) A triggered order is taken that session or not at all (`--slot-wait 0`): the pullback's low-risk entry is the session price resumes, so an order that found every slot full is dropped instead of waiting up to 10 business days and filling at a later, higher open with the stop planned at the signal (at least 87 US trades, +0.15R against +0.28R for the rest). (3) The HIGH CONFIDENCE stop limit (max_stop_pct_trade) is re-tested against the price paid (signal_meta max_risk_pct). signal_version stays 1.3: the scan is unchanged. Results move."),
         ("1.5", "2026-11-11",
          "Two entry filters added as switches, both off, so the shipped rules trade exactly as 1.4 did. "
          "REQUIRE_NEAR_HIGHS=1 places a plan only when {TC04} is present with the entry setup; "
@@ -213,6 +215,7 @@ class TrendPullbackStrategy(Strategy):
     # attributes (max_stop_*), not constants of this module, so most are written out as numbers.
     # Keep them in sync by hand; adding a module constant here would move the fingerprint.
     status = (
+        "v1.6 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.5's, not comparable. "
         "THE US IDLE-CASH VARIANT FAILED ITS VERIFY RUN (2026-11-10, run once). Out-of-sample, 2022-01-03 to "
         "2026-11-09, with idle cash held in the index (`--idle-index`): -3.05% CAGR against SPY's 9.30%, max "
         "drawdown -23.3% against -25.4%. The criterion, written before the run, was CAGR at least 1 point above "
@@ -422,8 +425,9 @@ class TrendPullbackStrategy(Strategy):
         "**How it fills.** By buy-stop, never on the signal session. From the next session the order "
         "fills on the first session whose high reaches it, at the buy-stop price, or at that session's "
         "open if the stock opens above it (a gap fills worse). Slippage is added to the fill.",
-        "**How long it waits.** Up to 10 business days after the signal. In the backtest the order is "
-        "cancelled sooner if a session's low reaches the stop while its high stays under the buy level, "
+        "**How long it waits.** Up to 10 business days after the signal, for price to reach it; once it "
+        "triggers it fills that session or not at all (backtest, `--slot-wait 0`; see No free slot). In the "
+        "backtest the order is also cancelled sooner if a session's low reaches the stop while its high stays under the buy level, "
         "and skipped if the fill would be at or above the target. Live, the screen only lists the level; "
         "placing and cancelling the order is the trader's.",
         "**One at a time.** While an order rests or a position is open in a stock, new signals in that "
@@ -482,7 +486,9 @@ class TrendPullbackStrategy(Strategy):
         "account\") and is not traded.",
         "**Backtest size.** The same arithmetic on equity at the fill (cash plus open positions at the previous "
         "session's close; an exit later that session has not happened yet) and on the actual fill price including slippage, always at the normal risk rate. If cash is "
-        "short it buys what cash allows rather than skipping.",
+        "short it buys what cash allows rather than skipping, but only if that is at least half the "
+        "planned shares (`--min-fill 0.5`); less is skipped. The stop must still be within "
+        "{max_stop_pct_trade}% of the actual fill, or the trade is skipped.",
         "**Costs.** Slippage per side, in basis points, is built into every fill price; the commission per "
         "order is charged on the buy and on the sell (Parameters).",
     )
@@ -503,9 +509,10 @@ class TrendPullbackStrategy(Strategy):
         "**Sector limit (live only).** At most the per-sector limit of TRADE and TRADE ON TRIGGER names per "
         "sector, ranked by setup quality, then R, then relative strength; the rest become WATCH - SECTOR "
         "LIMIT.",
-        "**No free slot (backtest).** With the max open positions held, a triggered order does not fill; it "
-        "keeps resting until a slot frees or it expires. When several orders trigger on one session, the "
-        "higher setup quality fills first.\n\n"
+        "**No free slot (backtest).** With the max open positions held, a triggered order does not fill and "
+        "is dropped that session (`--slot-wait 0`); before 1.6 it kept resting and filled when a slot freed, "
+        "at a later, higher open with the stop planned at the signal. When several orders trigger on one "
+        "session, the higher setup quality fills first.\n\n"
         "- **Setup quality:** 2 for {TC01} (else 1 for {TC02}), +0.5 for {TC04}, +1 for W3, and −1 each "
         "for W4 drift, W5 drift and W6 momentum fading.",
         "**Pre-screen.** A stock that fails the pre-screen on a session (How it works, step 1) is not "
@@ -560,8 +567,8 @@ class TrendPullbackStrategy(Strategy):
         ("Max position size", "cfg.max_position_pct",
          "Notional cap per position as a fraction of the account (backtest: of equity); can shrink the size."),
         ("Max open positions", "cfg.max_open_positions",
-         "Backtest: at most this many positions at once; an order that triggers with no free slot keeps "
-         "waiting until it expires."),
+         "Backtest: at most this many positions at once; an order that triggers with no free slot is "
+         "dropped (`--slot-wait 0`)."),
         ("Per-sector limit", "cfg.sector_limit_per_sector",
          "Live: at most this many tradeable names kept per sector (ranked by setup quality); the rest become WATCH - SECTOR LIMIT."),
         ("Slippage", "cfg.slippage_bps",
@@ -569,7 +576,7 @@ class TrendPullbackStrategy(Strategy):
         ("Commission", "cfg.commission_per_order",
          "Backtest: charged per order, on the buy and on the sell, in the market's currency."),
     )
-    backtest_args = ""
+    backtest_args = "--min-fill 0.5 --slot-wait 0"
 
     # ---------- pre-filter ----------
 
@@ -965,6 +972,10 @@ class TrendPullbackStrategy(Strategy):
             risk_per_share=risk_per_share, reward_per_share=reward_per_share,
             r_multiple=r_multiple, nearest_overhead_above_entry=nearest_above,
         )
+
+    def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
+        """1.6: the HIGH CONFIDENCE stop limit, re-tested by the simulator against the price actually paid."""
+        return {"max_risk_pct": self.max_stop_pct_trade / 100}
 
     def build_plans(
         self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig

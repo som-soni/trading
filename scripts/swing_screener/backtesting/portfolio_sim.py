@@ -338,6 +338,11 @@ class PortfolioTrade:
     # of capital: every price level the trade carries -- entry_price included -- is lowered by the
     # payout per share on the ex-date, so pnl and R already contain it; this field only reports it.
     credited: float = 0.0
+    # When the order was placed (its signal session), and on how many sessions it triggered with no
+    # slot free before it filled. Reporting only: they let a stored run tell a next-session fill from
+    # a late one without a replay (the donchian review, 2026-11-14, had to rebuild them by hand).
+    signal_date: pd.Timestamp | None = None
+    slot_waits: int = 0
 
     @property
     def held(self) -> int:
@@ -387,6 +392,22 @@ class PortfolioResult:
 
 
 PENDING_EXPIRY_BDAYS = 10
+
+# The two order mechanics the donchian review (2026-11-14) found reshaping every per-symbol book. Both
+# are OFF by default (None), which is the simulator as it was; a strategy turns them on through its
+# backtest_args (`--min-fill`, `--slot-wait`) or, for the slot wait, per signal (meta["slot_wait_bdays"]).
+#
+# min_fill_frac: a fill the cash allows less than this fraction of its planned shares is skipped. Without
+#   it a full book bought whatever the cash left -- often ~0.02% of equity -- and that "crumb" held a slot
+#   for weeks: 12-18% of slot-days in donchian, 18% in trend_pullback US.
+# slot_wait_bdays: an order that triggers with every slot full may keep resting this many business days
+#   more, then lapses; 0 = taken on the session it triggers or not at all (the Turtles' practice). Without
+#   it the order rested to its own expiry (PENDING_EXPIRY_BDAYS) and filled whenever a slot freed, still
+#   carrying the stop planned at the signal -- past the strategy's own anti-chase and stop-cap tests.
+#   The per-fill re-tests (meta["max_fill"], meta["max_risk_pct"], meta["min_structural_r"]) apply to
+#   every fill, late ones included, whatever this is.
+MIN_FILL_SKIP = "cash buys under {pct:g}% of the planned size"
+SLOT_WAIT_LAPSE = "waited past its slot window"
 
 # When in its session an exit or a fill happens, in order. A fill counts only the exits at or before
 # its own moment (step 2 of `simulate`). Two INTRADAY events keep the old convention: the exit counts,
@@ -552,6 +573,8 @@ def simulate(
     pyramid_at: str = "pct",
     credits=None,
     equal_alloc_pct: float | None = None,
+    min_fill_frac: float | None = None,
+    slot_wait_bdays: int | None = None,
 ) -> PortfolioResult:
     """Walk every trading day once, with one shared pool of capital.
 
@@ -578,7 +601,14 @@ def simulate(
 
     `credits` (marketdata.corporate_actions.Credits): on a special dividend's or demerger's ex-date a
     held position receives the cash and its levels move down by it (`credit_action`); an order
-    still resting in that symbol is cancelled, its levels set against the pre-payout price."""
+    still resting in that symbol is cancelled, its levels set against the pre-payout price.
+
+    `min_fill_frac` and `slot_wait_bdays`: see the comment at MIN_FILL_SKIP. None (the default) keeps
+    each as it always was."""
+    if min_fill_frac is not None and not 0 < min_fill_frac <= 1:
+        raise ValueError(f"min_fill_frac is a fraction of the planned size in (0, 1], not {min_fill_frac!r}")
+    if slot_wait_bdays is not None and slot_wait_bdays < 0:
+        raise ValueError(f"slot_wait_bdays is a number of business days, 0 or more, not {slot_wait_bdays!r}")
     cap = max_positions if max_positions is not None else cfg.max_open_positions
     policy = exit_policy or ExitPolicy()
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
@@ -822,7 +852,7 @@ def simulate(
             pending[s.symbol] = {
                 "entry": s.entry, "stop": s.stop, "target": s.target,
                 "setup": s.setup, "decision": s.decision, "quality": s.quality,
-                "expires": today, "meta": s.meta,
+                "expires": today, "meta": s.meta, "placed": today,
             }
 
         # Rank the ones that triggered today, because slots are scarce.
@@ -854,7 +884,8 @@ def simulate(
                     triggered.append((sym, order, bar))
                 continue
             if today > order["expires"]:
-                skip("the resting order expired unfilled", sym, today)
+                skip(SLOT_WAIT_LAPSE if order.get("slot_capped") else "the resting order expired unfilled",
+                     sym, today)
                 del pending[sym]
                 continue
             if bar["high"] >= order["entry"]:
@@ -910,8 +941,20 @@ def simulate(
             if slots_used >= slots_today:
                 missed_slot += 1
                 missed_slot_at.append((sym, today))
+                order["slot_waits"] = order.get("slot_waits", 0) + 1
                 if meta.get("order") in ("open", "close"):
                     del pending[sym]
+                    continue
+                wait = meta.get("slot_wait_bdays", slot_wait_bdays)
+                if wait is not None:
+                    if int(wait) <= 0:
+                        del pending[sym]     # taken when it triggers or not at all
+                        continue
+                    if not order.get("slot_capped"):
+                        # the window runs from the first session it was refused a slot
+                        lapse = today + pd.tseries.offsets.BDay(int(wait))
+                        if lapse < order["expires"]:
+                            order["expires"], order["slot_capped"] = lapse, True
                 continue  # keep it resting; a slot may free up before it expires
 
             if "max_fill" in meta:
@@ -1010,6 +1053,11 @@ def simulate(
                     shares = full_shares          # too small to split meaningfully
             affordable = int((cash_at - cfg.commission_per_order) // (entry * (1 + fee_rate)))
             if affordable < shares:
+                if min_fill_frac is not None and affordable >= 1 and affordable < min_fill_frac * shares:
+                    # a crumb: too small to matter, big enough to hold a slot for weeks
+                    skip(MIN_FILL_SKIP.format(pct=round(min_fill_frac * 100, 4)), sym, today)
+                    del pending[sym]
+                    continue
                 shares = affordable
                 partial_fills += 1
             # computed after the final share count, not before
@@ -1033,6 +1081,7 @@ def simulate(
                 # box: nothing rests until a higher box completes (`_box_add_level`)
                 add_price=((math.inf if pyramid_at == "box" else entry * (1 + pyramid_add_pct / 100))
                            if pyramid_frac and shares < full_shares else float("nan")),
+                signal_date=order.get("placed"), slot_waits=int(order.get("slot_waits", 0)),
             )
             if meta.get("base_id") is not None:
                 _k = (sym, meta["base_id"])
@@ -1077,7 +1126,7 @@ def simulate(
                 # stale after a few sessions, because the move it was chasing has gone without it
                 "expires": today + pd.tseries.offsets.BDay(
                     int(s.meta.get("expiry_bdays") or PENDING_EXPIRY_BDAYS)),
-                "meta": s.meta,
+                "meta": s.meta, "placed": today,
             }
 
         # ---- 4. mark to market -------------------------------------------
@@ -1832,6 +1881,8 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
             "notional": round(t.notional, 2), "costs": round(t.costs, 2),
             "pnl": round(t.pnl, 2), "r_multiple": round(t.r_multiple, 3),
             "holding_days": t.holding_days, "credited": round(t.credited, 2),
+            "signal_date": t.signal_date.date() if t.signal_date is not None else None,
+            "slot_waits": t.slot_waits,
             **({"partial_shares": t.partial_shares, "pivot": t.meta.get("pivot"), "base_id": t.meta.get("base_id"),
                 "base_no": t.meta.get("base_no"), "rs": t.meta.get("rs"), "sepa": t.meta.get("sepa")} if t.meta else {}),
             **({"mkt_pilot": 1} if t.meta and t.meta.get("mkt_pilot") else {}),
@@ -1843,7 +1894,7 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
         "symbol", "setup", "decision", "entry_date", "entry_price", "stop",
         "initial_stop", "target",
         "shares", "exit_date", "exit_reason", "exit_price", "notional", "costs",
-        "pnl", "r_multiple", "holding_days", "credited",
+        "pnl", "r_multiple", "holding_days", "credited", "signal_date", "slot_waits",
     ]
     if any(t.meta for t in trades):
         cols += ["partial_shares", "pivot", "base_id", "base_no", "rs", "sepa"]

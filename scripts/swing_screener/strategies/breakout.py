@@ -48,10 +48,12 @@ MAX_STOP_PCT = 8.0             # beyond this the plan is WATCH - WAIT
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
-    version = "1.6"
+    version = "1.7"
     # 1.6 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
     signal_version = "1.5"
     changelog = (
+        ("1.7", "2026-11-14",
+         "Backtest mechanics, no rule changed: the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. (1) No crumbs (`--min-fill 0.5`): a fill the cash allows less than half its planned shares is skipped; it used to buy whatever was left (US v1.6 optimise: 38 positions under 0.5% of equity, 7.9% of slot-days). (2) A breakout is taken when it triggers or not at all (`--slot-wait 0`): an order that triggers with every slot full is dropped instead of resting up to 10 business days and filling at a later, higher open with the stop planned at the signal. (3) The HIGH CONFIDENCE stop limit (HIGH_CONF_MAX_STOP_PCT) is re-tested against the price paid (signal_meta max_risk_pct), so a gap cannot buy a wider stop than the rule allows. signal_version stays 1.5: the scan is unchanged. Results move."),
         ("1.6", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -206,6 +208,7 @@ class BreakoutStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the module constants and `min_structural_r`; a literal is
     # written where the code uses a literal.
     status = (
+        "v1.7 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.6's, not comparable. "
         "Not validated, no demonstrated edge: thresholds are untuned defaults. LEGACY (before stages, "
         "never a verdict): full US backtest from 2013 (v1.1, bracket exits, measured 2026-10-12 after the "
         "cost fix): 2.15% CAGR against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."
@@ -292,8 +295,11 @@ class BreakoutStrategy(Strategy):
         "skipped if the fill would be at or above the target.",
         "One position per stock (backtest). A signal in a stock already held, or with an order "
         "already resting, is ignored.",
-        "No re-test at the fill. The stop-distance and reward tests use the planned entry. A gap up at "
-        "the open raises the price paid but moves neither the stop nor the target.",
+        "No free slot (backtest, `--slot-wait 0`). An order that triggers while every slot is full is "
+        "dropped that session; the breakout is taken when it happens or not at all.",
+        "Re-tested at the fill (backtest). The stop must still be within {HIGH_CONF_MAX_STOP_PCT}% of the "
+        "price actually paid, or the trade is skipped. The reward test still uses the planned entry: a gap "
+        "up raises the price paid but moves neither the stop nor the target.",
     )
     stop_rules = (
         "Where it goes. The higher of two prices, rounded down to the tick: 0.1 ATR under the lowest "
@@ -340,13 +346,13 @@ class BreakoutStrategy(Strategy):
         "Capped. The position may not be worth more than Max position size × equity. With 1% risk and "
         "a 25% cap, any stop closer than 4% below the price paid hits the cap, and the trade then "
         "risks less than 1%.",
-        "Cash. When cash cannot buy the full size, the backtest buys what it can instead of skipping.",
+        "Cash. When cash cannot buy the full size, the backtest buys what it can, but only if that is at least half the planned shares (`--min-fill 0.5`); less is skipped, counted under \"cash buys under 50% of the planned size\". Before 1.7 it bought whatever was left, often a sliver of equity that held a slot for weeks.",
         "Backtest and live. The backtest sizes from equity at the fill: cash plus the other positions at the "
         "previous session's close (an exit later that session has not happened yet). The live screen sizes "
         "from the configured account size, at the lower high-volatility risk when the volatility "
         "index is above the market's threshold. A plan that cannot buy even one share is WATCH - WAIT.",
-        "Slots. At most Max open positions at once. A triggered order with no free slot keeps resting "
-        "until it expires, and may fill later at a higher open.",
+        "Slots. At most Max open positions at once. A triggered order with no free slot is dropped "
+        "(see Entry).",
     )
     filter_rules = (
         "Pre-filter. A stock is evaluated only if the 20-day average of close × volume is at least "
@@ -410,11 +416,11 @@ class BreakoutStrategy(Strategy):
         ("Tick size", "cfg.tick_size",
          "The entry is rounded up and the stop rounded down to this increment."),
         ("Max open positions", "cfg.max_open_positions",
-         "Backtest slots; a triggered order with no free slot keeps resting until it expires."),
+         "Backtest slots; a triggered order with no free slot is dropped (`--slot-wait 0`)."),
         ("Slippage", "cfg.slippage_bps",
          "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = "--rank-by setup_momentum"
+    backtest_args = "--rank-by setup_momentum --min-fill 0.5 --slot-wait 0"
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
         ok, why = tradable_point_in_time(cfg, last)
@@ -664,6 +670,10 @@ class BreakoutStrategy(Strategy):
             r_multiple=r_mult,
             setup_quality=self.setup_quality(result),
         )
+
+    def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
+        """1.7: the HIGH CONFIDENCE stop limit, re-tested by the simulator against the price actually paid."""
+        return {"max_risk_pct": HIGH_CONF_MAX_STOP_PCT / 100}
 
     def report_extras(
         self, ctx: StockContext, result: StrategyResult, plan: TradePlan | None
