@@ -23,6 +23,8 @@ import pandas as pd
 from swing_screener.config import MARKETS
 from swing_screener.marketdata import cache
 
+from _common import bench_ticker, date_index
+
 SEED = 20261114
 BLOCK_DAYS = 20               # stationary bootstrap: mean block length, keeps volatility clusters together
 ROLL_SHORT, ROLL_LONG = 252, 756   # rolling one-year and three-year windows, in sessions
@@ -213,6 +215,7 @@ def main() -> None:
     ap.add_argument("--run", type=int, required=True)
     ap.add_argument("--host", default="http://127.0.0.1:8000")
     ap.add_argument("--reps", type=int, default=1000)
+    ap.add_argument("--benchmark", default=None, help="index ticker to judge against (default: the one the run reports against)")
     a = ap.parse_args()
     rep = get(a.host, f"/api/reports/{a.run}")
     if (rep.get("stage") or "") == "verify":
@@ -221,10 +224,12 @@ def main() -> None:
     eqt = table(a.host, a.run, "equity")
     if eqt is None:
         raise SystemExit("No equity table: robustness needs the daily equity.")
-    eq = eqt.set_index(pd.to_datetime(eqt["date"]))["equity"].astype(float)
+    eq = eqt.set_index(date_index(eqt))["equity"].astype(float)
     eq = eq[eq.index <= end]
     tr = table(a.host, a.run, "trades")
-    px = cache.load_cached(market, MARKETS[market].benchmark_ticker)
+    btk, bname = bench_ticker(rep.get("strategy"), market, a.benchmark)
+    print(f"Benchmark: {bname} ({btk}), the series the run reports against.")
+    px = cache.load_cached(market, btk)
     bench = None
     if px is not None:
         bench = px["close"].astype(float).reindex(eq.index).ffill()

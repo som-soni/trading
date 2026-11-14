@@ -21,6 +21,8 @@ import pandas as pd
 from swing_screener.config import MARKETS
 from swing_screener.marketdata import cache, db, index_data
 
+from _common import bench_ticker, date_index
+
 Z95 = NormalDist().inv_cdf(0.975)
 # tax rates: TODAY's statutory rates, applied to the whole window (they changed over it -- say so)
 TAX = {"india": (0.20, 0.125),   # STCG 20%, LTCG 12.5% on listed equity (from July 2024); exemption ignored
@@ -71,14 +73,24 @@ def series(market, key, idx):
     return s.reindex(idx.union(s.index)).ffill().reindex(idx)
 
 
-def benchmarks(market, idx, div_yield=None):
+def benchmarks(market, idx, div_yield=None, bench=None):
     """(price benchmark, total-return benchmark, cash daily return, notes)."""
     notes = []
-    px = cache.load_cached(market, MARKETS[market].benchmark_ticker)
+    btk, bname = bench or (MARKETS[market].benchmark_ticker, MARKETS[market].benchmark_symbol)
+    px = cache.load_cached(market, btk)
+    notes.append(f"Benchmark: {bname} ({btk}), the series the run reports against.")
     price = px["close"].astype(float).reindex(idx.union(px.index)).ffill().reindex(idx)
     if market == "us":
-        tr = series("us", "SPY", idx)
-        notes.append("Total return: SPY with dividends reinvested (stored series SPY).")
+        if btk == MARKETS["us"].benchmark_ticker:
+            tr = series("us", "SPY", idx)
+            notes.append("Total return: SPY with dividends reinvested (stored series SPY).")
+        elif div_yield is not None:
+            tr = price.iloc[0] * (1 + price.pct_change().fillna(0) + div_yield / 252).cumprod()
+            notes.append(f"Total return: {bname} price plus an ASSUMED {div_yield:.2%} a year dividend yield (--div-yield).")
+        else:
+            tr = None
+            notes.append(f"Total return: none stored for {bname}; figures are against its price. Pass --div-yield "
+                         "to bound the dividends.")
         y = series("us", "CASH_YIELD", idx)
         cash = (y / 100 / 252).fillna(0) if y is not None else pd.Series(0.0, index=idx)
         notes.append("Cash: 3-month T-bill yield (^IRX), accrued daily.")
@@ -88,12 +100,12 @@ def benchmarks(market, idx, div_yield=None):
         if div_yield is not None:
             div = pd.Series(div_yield / 252, index=idx)
             tr = price.iloc[0] * (1 + price.pct_change().fillna(0) + div).cumprod()
-            notes.append(f"Total return: Nifty 500 price plus an ASSUMED {div_yield:.2%} a year dividend yield (--div-yield).")
+            notes.append(f"Total return: {bname} price plus an ASSUMED {div_yield:.2%} a year dividend yield (--div-yield).")
         elif n50 is not None and n50tr is not None:
             div = (n50tr.pct_change() - n50.pct_change()).fillna(0).clip(lower=-0.02, upper=0.02)
             tr = price.iloc[0] * (1 + price.pct_change().fillna(0) + div).cumprod()
-            notes.append("Total return: Nifty 500 price plus the Nifty 50's measured dividend return (NIFTYBEES "
-                         "against ^NSEI, so net of the ETF's small fee) -- a proxy; Nifty 500 TR is not stored.")
+            notes.append(f"Total return: {bname} price plus the Nifty 50's measured dividend return (NIFTYBEES "
+                         "against ^NSEI, so net of the ETF's small fee) -- a proxy; the index's own TR is not stored.")
             got = div.mean() * 252
             if got < 0.01:
                 notes.append(f"**Check:** the measured yield is {got:.2%} a year, low against the index dividend yields "
@@ -163,9 +175,9 @@ def alpha_beta(r, rb, rf, expo) -> list[str]:
     return out
 
 
-def alternatives(market, start, end, rf_daily, strat_r) -> list[str]:
+def alternatives(market, start, end, rf_daily, strat_r, floor=None) -> list[str]:
     out = ["## 3. Simpler alternatives on the same universe"]
-    floor = MARKETS[market].screener.min_dollar_volume
+    floor = floor if floor is not None else MARKETS[market].screener.min_dollar_volume
     cur = db.get_connection().cursor()
     cur.execute("""WITH me AS (SELECT max(date) d FROM prices WHERE market=%s AND date BETWEEN %s::date - 400 AND %s
                                GROUP BY date_trunc('month', date))
@@ -341,6 +353,8 @@ def main() -> None:
     ap.add_argument("--div-yield", type=float, default=None,
                     help="India: an annual dividend yield to add to the Nifty 500 price index instead of the measured proxy")
     ap.add_argument("--no-capacity", action="store_true", help="skip the per-trade liquidity lookups")
+    ap.add_argument("--benchmark", default=None, help="index ticker to judge against (default: the one the run reports against)")
+    ap.add_argument("--floor", type=float, default=None, help="the strategy's own liquidity floor in traded value a day (default: the market's screener floor); set it when the strategy uses another, e.g. 1e8 for a 10 crore floor")
     a = ap.parse_args()
     rep = get(a.host, f"/api/reports/{a.run}")
     if (rep.get("stage") or "") == "verify":
@@ -348,12 +362,12 @@ def main() -> None:
     market = rep["market"]
     end = pd.Timestamp(str(rep.get("window_end") or "2100-01-01"))
     e = table(a.host, a.run, "equity")
-    e = e.set_index(pd.to_datetime(e["date"]))
+    e = e.set_index(date_index(e))
     e = e[e.index <= end]
     eq = e["equity"].astype(float)
     cash_tbl = e["cash"].astype(float) if "cash" in e else None
     trades = table(a.host, a.run, "trades")
-    price, tr, cash_r, notes = benchmarks(market, eq.index, a.div_yield)
+    price, tr, cash_r, notes = benchmarks(market, eq.index, a.div_yield, bench_ticker(rep.get("strategy"), market, a.benchmark))
     st, lt = a.st_tax or TAX[market][0], a.lt_tax or TAX[market][1]
     print(f"# Against buy-and-hold, fairly: run {a.run}, {rep.get('strategy')} {market}, stage "
           f"{rep.get('stage') or 'legacy'}, {eq.index[0].date()} to {eq.index[-1].date()}\n")
@@ -361,7 +375,7 @@ def main() -> None:
     print("\n".join(lines) + "\n")
     rb = (tr if tr is not None else price).pct_change().fillna(0)
     print("\n".join(alpha_beta(r_cash, rb, cash_r, expo)) + "\n")
-    print("\n".join(alternatives(market, str(eq.index[0].date()), str(eq.index[-1].date()), cash_r, r_cash)) + "\n")
+    print("\n".join(alternatives(market, str(eq.index[0].date()), str(eq.index[-1].date()), cash_r, r_cash, a.floor)) + "\n")
     eq_cash = eq.iloc[0] * (1 + r_cash).cumprod()   # the same basis as section 1: idle cash earns the cash rate
     interest = eq_cash.shift().fillna(eq.iloc[0]) * (r_cash - eq.pct_change().fillna(0))
     print("\n".join(after_tax(eq_cash, trades, tr, market, st, lt, interest)) + "\n")

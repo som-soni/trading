@@ -206,6 +206,11 @@ cd scripts && PYTHONPATH=. .venv/bin/python ../.claude/skills/backtest-review/sc
     --run <id> --host <the URL's host>
 ```
 
+Both judge against the benchmark the run itself reports (a strategy's own `benchmark_key`, e.g. the Smallcap
+250 for momentum_vol_scaled in India); `--benchmark <ticker>` overrides it. `benchmark_check.py`'s simpler
+alternatives use the market's liquidity floor unless you pass the strategy's own with `--floor` (traded value
+a day, e.g. `--floor 1e8` for a ₹10 cr floor) — do so whenever the strategy's universe uses another.
+
 - **A fair benchmark.** Buy-and-hold with dividends (total return), the strategy's idle cash earning
   the cash rate, and an optimistic dividend credit on what it holds: the fair excess is a range. In
   India the total-return index is a proxy; when the script says the measured dividend yield looks low,
@@ -411,6 +416,8 @@ marks reviews made before it as "skill updated".
 
 - **5** (2026-11-14) Does it really beat buy-and-hold (step 6): a fair total-return benchmark, beta and alpha,
   simpler alternatives, after tax, capacity, power, luck across strategies, book contribution. The tracker.
+  Fix (no new check): the scripts read portfolio runs' `Date` column, judge against the run's own benchmark,
+  and take `--floor`.
 - **4** (2026-11-14) Is it robust (step 5): outliers, years and halves, rolling excess, bootstrap, neighbourhood.
 - **3** (2026-11-14) Implementation audit (step 3, with fill timing), position sizing and risk, the trade
   sample, fidelity statuses, market regimes (step 8).

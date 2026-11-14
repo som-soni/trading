@@ -22,6 +22,10 @@ import pandas as pd
 from swing_screener.config import MARKETS
 from swing_screener.marketdata import cache
 
+from _common import bench_ticker, date_index
+
+BENCH = (None, None)   # (ticker, name), set in main from the run's strategy
+
 FILL_TOL = 0.005        # a fill this far outside the bar's low-high range is flagged (adjustment noise below it)
 GAP_TOL = 0.005         # a stop exit this far below the stop is a gap-through
 TREND_DAYS = 200        # index trend: prior close above its 200-day average
@@ -72,7 +76,7 @@ def accounting(tr: pd.DataFrame | None, eq: pd.DataFrame | None, start: str, end
     out = ["## Accounting"]
     if eq is None:
         return out + ["No equity table: cannot reconcile."]
-    e = eq.set_index(pd.to_datetime(eq["date"]))
+    e = eq.set_index(date_index(eq))
     out.append(f"- Equity {e['equity'].iloc[0]:,.0f} -> {e['equity'].iloc[-1]:,.0f}, "
                f"{e.index[0].date()} to {e.index[-1].date()} (window {start} to {end}).")
     if e.index[-1] > pd.Timestamp(end):
@@ -159,7 +163,7 @@ def stops_and_sizing(tr: pd.DataFrame, eq: pd.DataFrame | None, risk_pct: float 
     out.append("## Sizing and risk")
     if eq is None:
         return out + ["No equity table: cannot express risk as a share of equity."]
-    e = eq.set_index(pd.to_datetime(eq["date"]))["equity"]
+    e = eq.set_index(date_index(eq))["equity"]
     t["eq_before"] = [e[e.index < pd.Timestamp(d)].iloc[-1] if (e.index < pd.Timestamp(d)).any() else e.iloc[0]
                       for d in t["entry_date"]]
     t["risk_eq"] = t["shares"] * t["risk_ps"] / t["eq_before"] * 100
@@ -186,7 +190,7 @@ def stops_and_sizing(tr: pd.DataFrame, eq: pd.DataFrame | None, risk_pct: float 
 
 def regimes(market: str, eq: pd.DataFrame | None, tr: pd.DataFrame | None, start: str, end: str) -> list[str]:
     out = ["## Regimes (point in time: each day uses the PRIOR close)"]
-    tk = MARKETS[market].benchmark_ticker
+    tk = BENCH[0]
     px = cache.load_cached(market, tk)
     if px is None or eq is None:
         return out + [f"No index prices for {tk} or no equity table."]
@@ -195,7 +199,7 @@ def regimes(market: str, eq: pd.DataFrame | None, tr: pd.DataFrame | None, start
     vol = c.pct_change().rolling(VOL_DAYS).std() * math.sqrt(252)
     vmed = vol.rolling(VOL_RANK_DAYS).median()
     state = pd.DataFrame({"up": (c > sma), "hivol": (vol > vmed)}).shift(1)   # known at today's open
-    e = eq.set_index(pd.to_datetime(eq["date"]))["equity"]
+    e = eq.set_index(date_index(eq))["equity"]
     days = e.index[e.index >= pd.Timestamp(start)]
     s_ret = e.pct_change().reindex(days)
     i_ret = c.pct_change().reindex(days)
@@ -251,8 +255,11 @@ def main() -> None:
     ap.add_argument("--host", default="http://127.0.0.1:8000")
     ap.add_argument("--risk-pct", type=float, default=None, help="the strategy's risk per trade, %% of equity")
     ap.add_argument("--no-fills", action="store_true", help="skip the bar-range check (slow on many symbols)")
+    ap.add_argument("--benchmark", default=None, help="index ticker for the regime split (default: the one the run reports against)")
     a = ap.parse_args()
     rep = get(a.host, f"/api/reports/{a.run}")
+    global BENCH
+    BENCH = bench_ticker(rep.get("strategy"), rep["market"], a.benchmark)
     if (rep.get("stage") or "") == "verify":
         raise SystemExit("This is a verify-stage run: the review never reads one.")
     market, start, end = rep["market"], str(rep.get("window_start") or "1900-01-01"), str(rep.get("window_end") or "2100-01-01")
