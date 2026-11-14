@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from swing_screener.backtesting import boucher_bonds_gold as bg
+from swing_screener.backtesting import boucher_book as bb
 from swing_screener.backtesting import boucher_stocks as bs
 
 FAILS: list[str] = []
@@ -146,6 +147,61 @@ def bond_gold_rules() -> None:
     check("and a falling one below it", bool(bg.below(s[::-1].reset_index(drop=True), 10).iloc[-1]))
 
 
+def zero_bound() -> None:
+    print("the zero-bound floor: off by default (1.2), silences the bill below it with --zero-bound")
+    idx = pd.bdate_range("2018-01-01", periods=5 * 60)
+    up = pd.Series(np.linspace(100, 200, len(idx)), index=idx)
+    low_falling = pd.Series(np.linspace(0.45, 0.05, len(idx)), index=idx)      # under the floor, falling
+    rising = pd.Series(np.linspace(2, 5, len(idx)), index=idx)
+    falling = pd.Series(np.linspace(5, 2, len(idx)), index=idx)
+    st0, _ = bs.base_rule(up, low_falling, rising)
+    check("by default (1.0's rule) a falling bill under 0.5% still keeps the S&P in", bool(st0.iloc[-1]))
+    st, r = bs.base_rule(up, low_falling, rising, zero_bound=True)
+    check("a falling bill under the floor does not keep the S&P in when the long yield rises", not bool(st.iloc[-1]))
+    check("the readings say the bill was silent", not bool(r["tbill_live"].iloc[-1]))
+    st2, _ = bs.base_rule(up, low_falling, falling, zero_bound=True)
+    check("under the floor the long yield decides alone: falling long yield, in", bool(st2.iloc[-1]))
+    above_floor = pd.Series(np.linspace(3.0, bs.TBILL_FLOOR_PCT + 0.01, len(idx)), index=idx)
+    st3, _ = bs.base_rule(up, above_floor, rising, zero_bound=True)
+    check("a falling bill at or above the floor still counts", bool(st3.iloc[-1]))
+
+
+def trade_log() -> None:
+    print("the trade log: both fees in costs, the fund's own prices")
+    idx = pd.bdate_range("2020-01-06", periods=6)
+    level = pd.Series([1000, 1000, 1000, 1100, 1210, 1210], index=idx, dtype=float)
+    quote = pd.Series([50, 50, 50, 55, 60.5, 60.5], index=idx, dtype=float)
+    want = pd.Series([0, 1, 1, 1, 0, 0], index=idx)
+    t, _eq, _h, _c, costs, _p = bs.simulate(level, want, pd.Series(0.0, index=idx), "2020-01-06", 10.0, 1000.0,
+                                             "X", quote=quote)
+    row = t.iloc[0]
+    check("costs on the row are the entry fee plus the exit fee", abs(row["costs"] - costs) < 0.01)
+    check("entry and exit prices are the quote", row["entry_price"] == 50 and row["exit_price"] == 60.5)
+    check("the total-return levels are logged beside them", row["entry_tr_level"] == 1000 and row["exit_tr_level"] == 1210)
+    t2, *_ = bs.simulate(level, want, pd.Series(0.0, index=idx), "2020-01-06", 0.0, 1000.0, "X",
+                         quote=quote.iloc[:3])
+    check("a date with no quote leaves the price blank", t2["exit_price"].isna().iloc[0])
+
+
+def mixing() -> None:
+    print("the combined book: fixed weights, monthly rebalance, costs on what moves")
+    idx = pd.bdate_range("2020-01-01", "2020-03-31")
+    a = pd.Series(np.linspace(1.0, 2.0, len(idx)), index=idx)      # doubles over the quarter
+    c = pd.Series(1.0, index=idx)                                  # flat
+    eq, vals, paid = bb.mix({"a": a, "c": c}, {"a": 50, "c": 50}, 0.0)
+    jan = bs.month_ends(idx)[0]
+    check("weights are restored at a month-end", abs(vals.at[jan, "a"] - vals.at[jan, "c"]) < 1e-12)
+    check("between month-ends the weights drift", vals["a"].iloc[3] > vals["c"].iloc[3])
+    check("no cost at zero bps", paid == 0.0)
+    _e, _v, paid10 = bb.mix({"a": a, "c": c}, {"a": 50, "c": 50}, 10.0)
+    check("rebalancing pays on the value moved", paid10 > 0)
+    held, _v2, _p2 = bb.mix({"a": a, "c": c}, {"a": 100, "c": 0}, 0.0)
+    check("a 100% weight is the sleeve itself", abs(held.iloc[-1] - 2.0) < 1e-9)
+    rate = pd.Series(0.0, index=idx)
+    st = bb.book_stats(a, rate)
+    check("book stats: a rising line has no drawdown", st["max_dd_pct"] == 0.0)
+
+
 def main() -> int:
     release_lag()
     calendar()
@@ -156,6 +212,9 @@ def main() -> int:
     book()
     bonds()
     bond_gold_rules()
+    zero_bound()
+    trade_log()
+    mixing()
     print(f"\n{'FAIL' if FAILS else 'OK'} — {len(FAILS)} failure(s)")
     return 1 if FAILS else 0
 

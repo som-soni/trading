@@ -54,6 +54,17 @@ MODES = ("timing", "otc", "otc_long", "hold", "hold_otc")
 
 # ---- the base rule (pp. 56-57)
 TREND_WEEKS = 40
+# The zero bound: OFF BY DEFAULT since 1.2 (`--zero-bound` applies it; boucher_book 1.0 ran with it).
+# 1.1 made it the rule and it failed its pre-registered criteria (7.16% vs 1.0's 11.46%, optimise stage).
+# Below this 13-week T-bill yield the T-bill condition gives NO signal and the long
+# yield decides the rates leg alone. FIXED BEFORE ANY RUN, from the rule's intent, and never to be tuned:
+# the T-bill leg reads the direction of Fed policy, and with the Fed at its floor (funds target 0-0.25%)
+# a bill yield cannot fall because policy eases -- its 1-3bp moves are bill supply and money-market
+# technicals, not a liquidity cycle. 0.50% is the top of the first 25bp policy step above that floor, so
+# a bill must have cleared the zero-rate band and one hike before its trend counts as policy. Every
+# weekly ^IRX reading in the stored 1960-1997 history (his fitting period) is above 2%, so the floor
+# never touches the regime the rule was built on.
+TBILL_FLOOR_PCT = 0.50
 
 # ---- the switches, his published thresholds (fixed before the first run)
 ROC_MONTHS = 12
@@ -182,14 +193,19 @@ def to_sessions(state: pd.Series, sessions: pd.DatetimeIndex) -> pd.Series:
 
 # ------------------------------------------------------------------ the rules
 
-def base_rule(sp: pd.Series, tbill: pd.Series, lng: pd.Series) -> tuple[pd.Series, pd.DataFrame]:
-    """(state, readings) on each week's last session (pp. 56-57)."""
+def base_rule(sp: pd.Series, tbill: pd.Series, lng: pd.Series,
+              zero_bound: bool = False) -> tuple[pd.Series, pd.DataFrame]:
+    """(state, readings) on each week's last session (pp. 56-57). `zero_bound` silences the T-bill
+    condition below TBILL_FLOOR_PCT (1.1's rule; off by default since 1.2)."""
     wk = week_ends(sp.index)
     c, tb, lb = sp.reindex(wk), as_of(tbill, wk), as_of(lng, wk)
     r = pd.DataFrame({"sp": c, "sp_ma": c.rolling(TREND_WEEKS).mean(),
                       "tbill": tb, "tbill_ma": tb.rolling(TREND_WEEKS).mean(),
                       "long": lb, "long_ma": lb.rolling(TREND_WEEKS).mean()})
-    state = (r["sp"] > r["sp_ma"]) & ((r["tbill"] < r["tbill_ma"]) | (r["long"] < r["long_ma"]))
+    # at the zero bound the T-bill condition is silent (TBILL_FLOOR_PCT): it cannot vote either way
+    r["tbill_live"] = (r["tbill"] >= TBILL_FLOOR_PCT) if zero_bound else True
+    tbill_easing = r["tbill_live"] & (r["tbill"] < r["tbill_ma"])
+    state = (r["sp"] > r["sp_ma"]) & (tbill_easing | (r["long"] < r["long_ma"]))
     return state, r
 
 
@@ -252,7 +268,7 @@ def switch_states(r: pd.DataFrame) -> pd.DataFrame:
 
 
 def timing_target(sp: pd.Series, tbill: pd.Series, lng: pd.Series, *, base: bool = True,
-                  switches: tuple[str, ...] = ()) -> tuple[pd.Series, pd.DataFrame]:
+                  switches: tuple[str, ...] = (), zero_bound: bool = False) -> tuple[pd.Series, pd.DataFrame]:
     """(want, readings): want is the position (1 or 0) decided at each session's close."""
     if not base and not switches:
         raise SystemExit("--no-base needs at least one switch")
@@ -260,7 +276,7 @@ def timing_target(sp: pd.Series, tbill: pd.Series, lng: pd.Series, *, base: bool
     want = pd.Series(True, index=idx)
     readings = pd.DataFrame(index=idx)
     if base:
-        st, r = base_rule(sp, tbill, lng)
+        st, r = base_rule(sp, tbill, lng, zero_bound=zero_bound)
         want &= to_sessions(st, idx)
         readings = readings.join(r.add_prefix("w_"))
     if switches:
@@ -296,11 +312,19 @@ def otc_target(c: pd.Series, short: bool = True) -> pd.Series:
 # ------------------------------------------------------------------ the book
 
 def simulate(price: pd.Series, want: pd.Series, cash_rate: pd.Series, start: str, cost_bps: float,
-             capital: float, symbol: str, div_yield: float = 0.0, delay: int = FILL_DELAY_SESSIONS):
+             capital: float, symbol: str, div_yield: float = 0.0, delay: int = FILL_DELAY_SESSIONS,
+             quote: pd.Series | None = None):
     """Whole-book long (1), short (-1) or T-bills (0), switched at the close `delay` sessions after the
     close that decided it. A long earns the instrument's return (+ `div_yield` a year, for a price
     index); a short earns minus that plus the T-bill rate on its proceeds, rebalanced daily like an
     inverse fund; cash earns the T-bill rate per calendar day. `cost_bps` per side, on the book.
+
+    `price` is what the book earns (a total-return series, scaled to whatever level it was chained at);
+    `quote` is the instrument's own traded close, written to the trade log as `entry_price` /
+    `exit_price` (blank on a date it has none, e.g. SPY before 1993). Without a `quote` the log's prices
+    are `price` itself (right when `price` is the instrument, like the Nasdaq index). Either way the
+    total-return levels are logged as `entry_tr_level` / `exit_tr_level`, and `costs` holds the entry
+    fee plus the exit fee (both are inside `pnl`).
 
     -> (trades, equity, held, cash, costs, position)."""
     px = price.dropna()
@@ -318,6 +342,7 @@ def simulate(price: pd.Series, want: pd.Series, cash_rate: pd.Series, start: str
     ret.iloc[0] = 0.0                                    # the book opens in cash at the first close
     prev = pos.shift(1).fillna(0)
     prev.iloc[0] = 0
+    q = p if quote is None else quote.reindex(p.index)
     eq, cash_log, trades, costs = [], [], [], 0.0
     e, open_ = float(capital), None
     for d in pos.index:
@@ -326,32 +351,40 @@ def simulate(price: pd.Series, want: pd.Series, cash_rate: pd.Series, start: str
             if open_ is not None:
                 fee = e * cost_bps / 10_000
                 e, costs = e - fee, costs + fee
-                trades.append(_row(symbol, open_, d, float(p.at[d]), e, fee, "SIGNAL"))
+                trades.append(_row(symbol, open_, d, float(p.at[d]), float(q.at[d]), e, fee, "SIGNAL"))
                 open_ = None
             if pos.at[d] != 0:
                 fee = e * cost_bps / 10_000
-                open_ = (d, float(p.at[d]), e, int(pos.at[d]))
+                open_ = (d, float(p.at[d]), float(q.at[d]), e, int(pos.at[d]), fee)
                 e, costs = e - fee, costs + fee
         eq.append((d, e))
         cash_log.append((d, e if pos.at[d] == 0 else 0.0))
     equity = pd.Series(dict(eq)).sort_index()
     if open_ is not None:
         d = equity.index[-1]
-        trades.append(_row(symbol, open_, d, float(p.at[d]), e, 0.0, "OPEN"))
+        trades.append(_row(symbol, open_, d, float(p.at[d]), float(q.at[d]), e, 0.0, "OPEN"))
     return (pd.DataFrame(trades), equity, (pos != 0).astype(int), pd.Series(dict(cash_log)).sort_index(),
             costs, pos)
 
 
-def _row(symbol, entry, d, price, value, fee, why) -> dict:
-    ed, ep, paid, side = entry
+def _px(x: float):
+    return None if pd.isna(x) else round(x, 4)
+
+
+def _row(symbol, entry, d, level, price, value, fee, why) -> dict:
+    """One round trip. `paid` is the book before the entry fee, so `pnl` is net of both fees, and
+    `costs` is both fees. `r_multiple` is the trade's fractional return: there is no stop, so no true R."""
+    ed, el, ep, paid, side, entry_fee = entry
     return {"symbol": symbol, "side": "long" if side > 0 else "short", "entry_date": ed,
-            "entry_price": round(ep, 4), "exit_date": d, "exit_price": round(price, 4),
+            "entry_price": _px(ep), "exit_date": d, "exit_price": _px(price),
+            "entry_tr_level": round(el, 4), "exit_tr_level": round(level, 4),
             "exit_reason": why, "pnl": round(value - paid, 2), "notional": round(paid, 2),
-            "costs": round(fee, 2), "holding_days": (d - ed).days, "r_multiple": round(value / paid - 1, 4)}
+            "costs": round(entry_fee + fee, 2), "holding_days": (d - ed).days,
+            "r_multiple": round(value / paid - 1, 4)}
 
 
 def run(start: str, mode: str = "timing", cost_bps: float = 5.0, base: bool = True,
-        switches: tuple[str, ...] = ()):
+        switches: tuple[str, ...] = (), zero_bound: bool = False):
     cfg = MARKETS[MARKET]
     tbill = index_data.load(MARKET, TBILL)
     rate = (tbill / 100.0).clip(lower=0.0)
@@ -360,18 +393,19 @@ def run(start: str, mode: str = "timing", cost_bps: float = 5.0, base: bool = Tr
         c = closes(OTC_TICKER)
         bench = c * (1 + OTC_DIV_YIELD) ** ((c.index - c.index[0]).days / 365.0)
         want = pd.Series(1, index=c.index) if mode == "hold_otc" else otc_target(c, short=(mode == "otc"))
-        price, symbol, div = c, OTC_TICKER, OTC_DIV_YIELD
+        price, symbol, div, quote = c, OTC_TICKER, OTC_DIV_YIELD, None
         bench_name = f"Nasdaq Composite price + {OTC_DIV_YIELD * 100:g}%/yr dividends"
     else:
         price = sp_total_return()
-        bench, symbol, div = price, "SPY", 0.0
+        bench, symbol, div, quote = price, "SPY", 0.0, closes(SP_TR)
         if mode == "hold":
             want = pd.Series(1, index=price.index)
         else:
-            want, readings = timing_target(closes(SP_TICKER), tbill, long_yield(), base=base, switches=switches)
+            want, readings = timing_target(closes(SP_TICKER), tbill, long_yield(), base=base, switches=switches,
+                                             zero_bound=zero_bound)
         bench_name = "S&P 500 total return (SPY; VFINX before 1993)"
     tdf, eq, held, csh, costs, pos = simulate(price, want, rate, start, cost_bps, float(cfg.account_size),
-                                              symbol, div_yield=div)
+                                              symbol, div_yield=div, quote=quote)
     return tdf, eq, held, csh, costs, bench, bench_name, readings, pos
 
 
@@ -384,6 +418,32 @@ BS_DOC = {
                    "Treasury yield is below its own; T-bills otherwise. Mark Boucher's liquidity, economic and "
                    "sentiment models as monthly switches; his Nasdaq {OTC_REVERSAL_PCT}% reversal as a mode.",
     "status": (
+        "1.2 RESTORES THE 1.0 RULE AS THE DEFAULT (the base-rule figures under 1.0 below apply again; the "
+        "trade-log fix is reporting only). The zero-bound floor stays only as `--zero-bound`, off by "
+        "default, after it failed. The Boucher family gets no further trials (owner's decision, "
+        "2026-11-14). "
+        "1.1 FAILS ITS PASS CRITERIA (optimise stage 2013-2021, in-sample; worktree run, 2026-11-14): 7.16% "
+        "CAGR, max drawdown -12.4%, 18 trades, invested 48% of the time, excess -9.02 against S&P total return "
+        "16.18%. (a) 18 round trips against 20, not 15 or fewer: FAIL; (b) 7.16% against the 11.96% needed: "
+        "FAIL; (c) drawdown -12.4%: pass; (d) 6.53% at 20bps against 11.25% needed: FAIL; (e) no worse in 5 "
+        "of 9 years: pass, but four are years the floor never acted (2016-2019 identical); it lost 2013 (3.5% "
+        "against 18.6%), 2015, 2020 and 2021 (6.2% against 25.0%) and won only 2014. Why: under the floor "
+        "the 1.0 rule's falling bill had mostly kept the S&P IN while the long yield rose (2013 taper, 2021); "
+        "silencing it left the rising long yield to take the book out. So the 1bp noise cost round trips but "
+        "bought exposure, and removing it cost 4.3 points. The floor stays as fixed (no other value tried); "
+        "the result says the 1.0 rule's zero-bound exposure was luck of the noise, not that a different floor "
+        "would help. Context 1980-2012 (never a verdict): 8.44%, -39.4%, 71 trades, against 1.0's 9.00%, "
+        "-29.1% -- the floor, active from 2008-12, held the book out of the 2009 recovery. "
+        "1.1 (ZERO-BOUND RATES LEG) -- PASS CRITERIA FIXED 2026-11-14 BEFORE ANY 1.1 RUN, optimise stage "
+        "(2013-2021, in-sample), each against the 1.0 base-rule run 10876 (11.46%, -12.4%, 20 trades): "
+        "(a) round trips cut by at least 25% (15 or fewer); (b) CAGR up at least 0.5 point (11.96% or more); "
+        "(c) max drawdown no deeper than -15%; (d) at 20bps a side, CAGR at least 0.5 point above the 1.0 "
+        "rule at 20bps (10.75%, so 11.25% or more); (e) no worse than 10876 in at least 5 of the 9 calendar "
+        "years. All five must hold for the floor to count as a fix; a miss is reported, never tuned "
+        "({TBILL_FLOOR_PCT}% and the {TREND_WEEKS}-week length stay). The strategy's own pass rule against "
+        "buy-and-hold (below) is unchanged and is reported beside them. Context 1980-2012 is reported, never "
+        "a verdict (the floor is inert there until 2008-12). "
+        "1.0 FIGURES (behaviour unchanged by 1.1 except the floor): "
         "OPTIMISE STAGE (2013-2021, in-sample) -- THE BASE RULE FAILS THE PASS RULE; ONE SWITCH ON ITS OWN "
         "PASSES. Thresholds are his published ones, fixed before any run. The pass rule, written before "
         "reading a result: excess CAGR over S&P 500 total-return buy-and-hold above zero with a max drawdown "
@@ -413,6 +473,12 @@ BS_DOC = {
         "Base rule (pp. 56-57), on each week's last close: hold the S&P while the S&P 500 index closes above "
         "its {TREND_WEEKS}-week simple average AND either the 13-week T-bill yield or the 30-year Treasury "
         "yield is below its own {TREND_WEEKS}-week average. Otherwise hold T-bills.",
+        "`--zero-bound` (1.1's rule, failed, off by default since 1.2): while the T-bill yield is below "
+        "{TBILL_FLOOR_PCT}% the T-bill condition gives "
+        "no signal, so the 30-year yield against its average decides the rates leg alone. The rule reads the "
+        "bill as the direction of Fed policy; at the zero floor its basis-point moves are money-market "
+        "noise (1.0 left the S&P eight times for a week on 1bp crossings). The floor is the top of the first "
+        "25bp policy step above zero, fixed before any run; his own data never had a bill under 2%.",
         "Switches, each read at month-end closes as he tested them, each a gate added to the base rule "
         "(`--no-base` runs a switch alone, as his models were published). Liquidity (pp. 38-43): "
         "`--tbill-roc` the T-bill yield up less than {TBILL_ROC_MAX_PCT}% on a year earlier (a ratio, not "
@@ -452,8 +518,19 @@ BS_DOC = {
         "is not his index.",
         "**Rate-of-change on a near-zero yield is erratic.** `--tbill-roc` is a percent change of the yield "
         "itself, as he defined it. With the T-bill at 0.02-0.2% (2009-2015, 2020-2021) a few basis points "
-        "read as a 50-200% rise, so this switch, and the composite, flicker in those years; a zero yield "
-        "reads as no signal (not bullish).",
+        "read as a 50-200% rise, so this switch, and the composite, flicker in those years. A yield of zero "
+        "now against a positive one a year earlier reads as -100%, which is bullish; a zero a year earlier "
+        "makes the change undefined, which reads as not bullish. No month-end in 2012-2021 has a zero or "
+        "negative ^IRX, so neither case occurs in the optimise window. The {TBILL_FLOOR_PCT}% floor applies "
+        "(`--zero-bound`) applies to the base rule's T-bill condition only, not to this switch.",
+        "**The zero-bound floor is a judgement from the rule's intent, not a fit.** It was fixed before any "
+        "run, failed (1.1), and no other value is tried; it is an option only (`--zero-bound`). It is not testable in his period (no zero bound) and moves "
+        "2013-2015 and 2020-2021, about two-thirds of the optimise weeks; in 1980-2012 it acts only from "
+        "December 2008.",
+        "**The trade log.** The S&P is earned as a total-return series chained at VFINX's level, so the "
+        "log's `entry_price` / `exit_price` are SPY's own close (blank before 1993) and the series levels "
+        "are logged apart as `entry_tr_level` / `exit_tr_level`. `costs` is both fees; `r_multiple` is the "
+        "trade's fractional return (there is no stop).",
         "**The instruments.** The S&P is held as SPY's total return from 1993 and the Vanguard 500 fund "
         "before it; signals use the ^GSPC price index. The T-bill yield is ^IRX (13-week) for the signal "
         "and the cash return. The long yield is the 30-year Treasury, the 10-year before 1977. The Nasdaq "
@@ -472,7 +549,8 @@ BS_DOC = {
     ),
     "entry_rules": (
         "Base rule, at each week's last close: ^GSPC above its {TREND_WEEKS}-week average, and the T-bill "
-        "yield or the 30-year yield below its {TREND_WEEKS}-week average.",
+        "yield or the 30-year yield below its "
+        "{TREND_WEEKS}-week average.",
         "Every switched-on switch is bullish as of the latest month-end close, reading only economic numbers "
         "already released by then.",
         "Fill: the whole book buys the S&P total-return series at the close {FILL_DELAY_SESSIONS} session "
@@ -494,6 +572,7 @@ BS_DOC = {
         "The combination: base + late-cycle brake": "python -m jobs enqueue backtest --market us --strategies boucher_stocks --stage optimise --bt='--brake'",
         "A model alone, as he tested it (e.g. capacity)": "python -m jobs enqueue backtest --market us --strategies boucher_stocks --stage optimise --bt='--no-base --capacity'",
         "Nasdaq 7.9% reversal, long/short": "python -m jobs enqueue backtest --market us --strategies boucher_stocks --stage optimise --bt='--mode otc'",
+        "1.1's zero-bound floor (failed; option only)": "python -m jobs enqueue backtest --market us --strategies boucher_stocks --stage optimise --bt='--zero-bound'",
         "Compare: S&P 500 held throughout": "python -m jobs enqueue backtest --market us --strategies boucher_stocks --stage optimise --bt='--mode hold'",
         "Context: 1980-2012 (not a verdict)": "python -m jobs enqueue backtest --market us --strategies boucher_stocks --stage full --start 1980-01-01 --bt='--end 2012-12-31'",
     },
@@ -506,8 +585,27 @@ class BoucherStocksStrategy(PortfolioStrategy):
     key = BS_DOC["key"]
     doc = BS_DOC
     family = "boucher_stocks"
-    version = "1.0"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-11-14",
+         "The base rule is 1.0's again: the zero-bound floor is off by default and kept only as `--zero-bound` "
+         "(boucher_book 1.0 ran its stock sleeve with it, and still does). Why: the floor fixed before the 1.1 "
+         "run failed its pre-registered criteria in the optimise stage -- 7.16% CAGR against 1.0's 11.46%, 18 "
+         "round trips against 20 (needed 15 or fewer), 6.53% at 20bps against 11.25% needed -- and the "
+         "1980-2012 context was worse too (8.44% / -39.4% against 9.00% / -29.1%). The bill's 1bp noise had "
+         "kept the S&P in while the long yield rose. The 1.1 trade-log fix stays. No further trials of the "
+         "Boucher family (owner's decision)."),
+        ("1.1", "2026-11-14",
+         "Review 2026-11-14 (tracker #75). (1) The zero bound: while the 13-week T-bill yield is below "
+         "TBILL_FLOOR_PCT = 0.50% its condition in the base rule gives no signal and the 30-year yield decides "
+         "the rates leg alone. Fixed before any run from the rule's intent (the bill reads Fed policy; at the "
+         "zero floor its 1-3bp moves are noise -- 1.0's eight one-week exits), never tuned; the 40-week length "
+         "untouched. Pass criteria written into the status before the run. (2) The shared trade log "
+         "(simulate, also used by boucher_bonds_gold): `costs` now holds the entry fee plus the exit fee (it "
+         "held only the exit fee; the entry fee was, and is, inside pnl); `entry_price` / `exit_price` are "
+         "SPY's own close, and the VFINX-scaled total-return levels moved to `entry_tr_level` / "
+         "`exit_tr_level`. Reporting only: equity unchanged. (3) Caveat corrected: a zero T-bill now against a "
+         "positive one a year earlier reads -100% (bullish) for --tbill-roc, not 'no signal'."),
         ("1.0", "2026-11-13",
          "First version, from Mark Boucher's The Hedge Fund Edge (1999). Every threshold is his published "
          "one, FIXED BEFORE THE FIRST RUN: base rule ^GSPC > 40-week SMA and (T-bill yield < 40-week SMA or "
@@ -543,6 +641,7 @@ class BoucherStocksStrategy(PortfolioStrategy):
     param_docs = (
         ("Mode", "mode", "timing: the base rule and switches. otc / otc_long: the Nasdaq reversal. hold / hold_otc: buy-and-hold."),
         ("Trend average", "TREND_WEEKS", "Weeks in the S&P's and both yields' simple averages."),
+        ("T-bill floor", "TBILL_FLOOR_PCT", "With --zero-bound only (off by default; failed in 1.1): 13-week T-bill yield (%) below which the base rule's T-bill condition is silent."),
         ("T-bill change", "TBILL_ROC_MAX_PCT", "% change of the T-bill yield on {ROC_MONTHS} months earlier, below which --tbill-roc is bullish."),
         ("Bond proxy change", "BOND_ROC_MIN_PCT", "% change of the {BOND_PROXY_YEARS}-year Baa price proxy, above which --bond-roc is bullish."),
         ("Long-yield change", "LONG_ROC_MAX_PCT", "% change of the 30-year yield, at or below which --long-roc is bullish."),
@@ -623,6 +722,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     ap.add_argument("--end", default=None, help="an earlier end than the stage's, for a context run")
     ap.add_argument("--mode", default=BoucherStocksStrategy.mode, choices=list(MODES))
     ap.add_argument("--no-base", action="store_true", help="run the switches alone, without the 40-week rule")
+    ap.add_argument("--zero-bound", action="store_true",
+                    help="silence the T-bill condition below TBILL_FLOOR_PCT (1.1's rule; failed, off by default)")
     for sw in SWITCHES:
         ap.add_argument("--" + sw.replace("_", "-"), action="store_true")
     ap.add_argument("--cost-bps", type=float, default=BoucherStocksStrategy.cost_bps)
@@ -632,11 +733,14 @@ def main(argv: list[str] | None = None) -> dict | None:
     on = tuple(sw for sw in SWITCHES if getattr(a, sw))
     with context_boundary(a.end):
         tdf, eq, held, csh, costs, bench, bench_name, _r, _pos = run(a.start, a.mode, a.cost_bps,
-                                                                     base=not a.no_base, switches=on)
+                                                                     base=not a.no_base, switches=on,
+                                                                     zero_bound=a.zero_bound)
         if a.mode == "timing":
             what = ("Timing: " + ("40-week trend + rates" if not a.no_base else "no base rule")
-                    + (f", switches {', '.join(on)} (month-end)" if on else "") + ".")
-            tag = "-".join((["nobase"] if a.no_base else ["base40w"]) + [sw.replace("_", "") for sw in on])
+                    + (f", switches {', '.join(on)} (month-end)" if on else "")
+                    + (f", T-bill silent below {TBILL_FLOOR_PCT}%" if a.zero_bound else "") + ".")
+            tag = "-".join((["nobase"] if a.no_base else ["base40w"]) + [sw.replace("_", "") for sw in on]
+                           + (["zb"] if a.zero_bound else []))
         else:
             what = {"otc": f"Nasdaq {OTC_REVERSAL_PCT}% reversal, long/short.",
                     "otc_long": f"Nasdaq {OTC_REVERSAL_PCT}% reversal, long/T-bills.",
