@@ -250,6 +250,22 @@ def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
     return out
 
 
+def benchmark_for(strategy: str, market: str) -> tuple[str, str]:
+    """(ticker, name) of the index a portfolio strategy is judged against: its own `benchmark_key` for the
+    market (e.g. momentum_vol_scaled: the Smallcap 250 in India) when that series is stored, else the
+    market's benchmark. The backtest report and the paper record both use it, so they judge alike."""
+    from ..strategies import portfolio_strategies
+    cfg = MARKETS[market]
+    key = (getattr(portfolio_strategies().get(strategy), "benchmark_key", None) or {}).get(market)
+    tk = cfg.broad_index_symbols.get(key) if key else None
+    if tk is not None and cache.load_cached(market, tk) is not None:
+        return tk, key
+    if key:   # declared but not stored: say so rather than silently reporting a different index
+        logger.warning("%s declares benchmark %s for %s but it is not stored; falling back to %s",
+                       strategy, key, market, cfg.benchmark_symbol)
+    return cfg.benchmark_ticker, cfg.benchmark_symbol
+
+
 def regime_series(market: str, ticker: str | None, default: "pd.Series | None") -> "pd.Series | None":
     """The close series the market-regime switch reads: `ticker` when a strategy names one, else
     `default` (the market's broad benchmark).
@@ -1266,15 +1282,7 @@ def main(argv: list[str] | None = None, universe_filter=None, run_suffix: str = 
     # Resolve the benchmark BEFORE reporting, and recompute its figures against the series that is
     # actually named: run() computed them against the market's default, and relabelling those
     # without recomputing would print a Nifty 500 number under a Smallcap 250 heading.
-    _cls = portfolio_strategies()[args.strategy]
-    _key = (getattr(_cls, "benchmark_key", None) or {}).get(args.market)
-    bench_ticker = cfg.broad_index_symbols.get(_key) if _key else None
-    bench_name = _key
-    if bench_ticker is None or cache.load_cached(args.market, bench_ticker) is None:
-        if _key:   # declared but not stored: say so rather than silently reporting a different index
-            logger.warning("%s declares benchmark %s for %s but it is not stored; falling back to %s",
-                           args.strategy, _key, args.market, cfg.benchmark_symbol)
-        bench_ticker, bench_name = cfg.benchmark_ticker, cfg.benchmark_symbol
+    bench_ticker, bench_name = benchmark_for(args.strategy, args.market)
     bench_raw = cache.load_cached(args.market, bench_ticker)
     bc = bench_raw["close"].reindex(eq.index).ffill() if bench_raw is not None else None
     if bc is not None:

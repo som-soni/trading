@@ -493,7 +493,11 @@ def record(book: str, market: str) -> dict:
         closes = full.reindex(full.index.union(idx)).ffill().reindex(idx)
     eq = equity_curve(rows, closes) if len(idx) else pd.Series(dtype=float)
     cap = float(sum(t["amount"] or 0 for t in rows if t["side"] == "CASH"))
-    b = cache.load_cached(market, MARKETS[market].benchmark_ticker)
+    # the strategy's own benchmark, as its backtest is judged (baseline.benchmark_for); the calendar
+    # (`sessions`) stays on the market's benchmark
+    from .baseline import benchmark_for
+    btk, bname = benchmark_for(strategy_of(book, market), market)
+    b = cache.load_cached(market, btk)
     bench = b["close"].astype(float).reindex(idx).ffill() if b is not None else pd.Series(dtype=float)
     bench = bench / bench.iloc[0] * cap if len(bench) and bench.iloc[0] else bench
     dd = float((eq / eq.cummax() - 1).min() * 100) if len(eq) else None
@@ -501,7 +505,7 @@ def record(book: str, market: str) -> dict:
             "capital": cap, "as_of": idx[-1].date().isoformat() if len(idx) else None,
             "equity": [[d.date().isoformat(), round(float(v), 2)] for d, v in eq.items()],
             "benchmark": [[d.date().isoformat(), round(float(v), 2)] for d, v in bench.items() if pd.notna(v)],
-            "benchmark_name": MARKETS[market].benchmark_ticker,
+            "benchmark_name": f"{bname} ({btk})",
             "return_pct": round((float(eq.iloc[-1]) / cap - 1) * 100, 2) if len(eq) and cap else None,
             "benchmark_pct": round((float(bench.iloc[-1]) / cap - 1) * 100, 2) if len(bench) and cap else None,
             "max_drawdown_pct": round(dd, 2) if dd is not None and not math.isnan(dd) else None,
