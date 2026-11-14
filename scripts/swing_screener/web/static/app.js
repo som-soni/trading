@@ -8960,10 +8960,10 @@ const SECTIONS = [
   { key: "desk", label: "Trade desk", sidePanel: true, pages: [...PLAYBOOK.map(([p, t, , d]) => [p, t, d]),
     ["trade-desk", "Scans & reports", "The desk's research by date: strong sectors, their stock lists and sector reports as they stood that day"]] },
   // Library is reading material; the data-maintenance tools (TODO, sub-industry labels) live under System
-  { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"],
+  { key: "library", label: "Library", pages: [["learn", "Learn", "Learning material: candlesticks, chart patterns, bases and the VCP"],
     ["research", "Research", "The research notes: findings, studies, specifications and the sector playbook"],
     ["sector-research", "Sector research", "Long-term sector analyses, dated so you can revisit and extend them"],
-    ["learn", "Learn", "Learning material: candlesticks, chart patterns, bases and the VCP"]] },
+    ["notes", "Notes", "Your notes and trading journal"]] },
   { key: "system", label: "System", pages: [["status", "Status", "Is the data current? And the job queue"], ["runs", "Runs", "Every run, its steps and log"],
     ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"],
     ["subindustries", "Sub-industries", "Which sub-industry each company belongs to — review and edit"], ["todo", "TODO", "Ideas and follow-ups"]] },
