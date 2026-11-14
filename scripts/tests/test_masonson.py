@@ -65,12 +65,14 @@ def context_end_never_extends_a_stage() -> None:
 def _sectors(px: pd.DataFrame, **kw):
     orig_load, orig_cache = sr.load_sectors, sr.cache.load_cached
     sr.load_sectors = lambda market, only=None: (px, {c: c for c in px.columns})
+    orig_tv = sr.traded_value
+    sr.traded_value = lambda market, p: pd.DataFrame(index=p.index)    # every synthetic series liquid
     sr.cache.load_cached = lambda market, tkr: None
     try:
         return sr.run("us", str(px.index[sr.MIN_BARS].date()), top_n=1, lookback_days=5, rebalance="W-FRI",
                       cost_bps=0.0, **kw)
     finally:
-        sr.load_sectors, sr.cache.load_cached = orig_load, orig_cache
+        sr.load_sectors, sr.cache.load_cached, sr.traded_value = orig_load, orig_cache, orig_tv
 
 
 def rank_buffer_and_ema_exit() -> None:

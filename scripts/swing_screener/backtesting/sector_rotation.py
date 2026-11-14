@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 #: margin. India lists sector ETFs late, so several only become eligible part-way through a run.
 MIN_BARS = 300
 
+# ---- Point-in-time liquidity (1.3)
+# A fund is ranked at a rebalance date only if it could have been traded then. Through 1.2 the sector
+# list (config `sector_index_map`) was the only liquidity test, and it was judged on TODAY's traded
+# value: the Consumption ETF passed, yet in 2014-2019 it traded about Rs 13k-96k a day while the book
+# put 20-84x that into it, and its stored prints (a volume of 3 units, a +29.7% day) were noise.
+LIQ_WINDOW = 60                # sessions of traded value the floor reads, up to and including the date
+MAX_POSITION_DAYS = 5          # the starting position may be at most this many median days' traded value
+
 # ---- Masonson's switches (1.2), each off unless asked for
 WEEKLY_REBALANCE = "W-FRI"     # --weekly: rank on the last session of each week ("every Friday", 33:45)
 LOOKBACK_WEEKS = 12            # --weekly's lookback unless --lookback-weeks says otherwise (he names 4, 8, 12)
@@ -44,6 +52,32 @@ EXIT_EMA = 20                  # --ema-exit: sell on a close below this EMA, bet
 # read as health care (XLV) -- an INFERENCE from the transcript, stated in the caveats. XLC lists in
 # 2018, so before then the set is five.
 SIX_SECTORS = ("XLY", "XLE", "XLC", "XLK", "XLI", "XLV")
+
+
+def is_index(ticker: str) -> bool:
+    """An index ('^' prefix, the price store's convention) has no traded value of its own: its stored
+    volume is zero on most days and a constituents' total on others. It is held as a fund tracking
+    it (a documented caveat), so the liquidity floor applies to funds only."""
+    return ticker.startswith("^")
+
+
+def traded_value(market: str, px: pd.DataFrame) -> pd.DataFrame:
+    """Close x volume per session on the sectors' combined calendar, for the funds only (an index has
+    no column). A session after a fund's first print with no stored row counts as nothing traded --
+    those are the days `load_sectors` fills with a stale price."""
+    out = {}
+    for tkr in px.columns:
+        if is_index(tkr):
+            continue
+        d = cache.load_cached(market, tkr)
+        if d is None or "volume" not in d:
+            out[tkr] = pd.Series(0.0, index=px.index)      # nothing known to have traded
+            continue
+        tv = (d["close"].astype(float) * d["volume"].astype(float)).reindex(px.index)
+        first = px[tkr].first_valid_index()
+        tv.loc[tv.index >= first] = tv.loc[tv.index >= first].fillna(0.0)
+        out[tkr] = tv
+    return pd.DataFrame(out, index=px.index)
 
 
 def load_sectors(market: str, only: tuple | None = None) -> tuple:
@@ -68,9 +102,16 @@ def run(market: str, start: str, top_n: int = 3, lookback_days: int = 126,
         rebalance: str = "ME", cost_bps: float = 10.0, market_filter: bool = False,
         hold_rank: int = 0, ema_exit: int = 0, only: tuple | None = None):
     """`hold_rank` > top_n keeps a holding while it ranks within the top `hold_rank`; `ema_exit` > 0 sells a
-    holding on a close below that EMA (any session) and keeps a sector below it out of the book."""
+    holding on a close below that EMA (any session) and keeps a sector below it out of the book.
+
+    Returns (trades, equity, holdings per session, costs, {ticker: sector}, {rebalance date: rankable count})."""
     cfg = MARKETS[market]
     px, labels = load_sectors(market, only)
+    # the floor: a starting position (the account / top_n) must be no more than MAX_POSITION_DAYS of the
+    # fund's median daily traded value over the LIQ_WINDOW sessions up to the date -- as of that date
+    liq_floor = float(cfg.account_size) / top_n / MAX_POSITION_DAYS
+    liq = traded_value(market, px).rolling(LIQ_WINDOW, min_periods=LIQ_WINDOW).median()
+    rankable: dict = {}
     ema = px.ewm(span=ema_exit, adjust=False, min_periods=ema_exit).mean() if ema_exit else None
     book: list = []                     # what pick last chose, less what the EMA exit has sold since
     bench = cache.load_cached(market, cfg.benchmark_ticker)
@@ -80,7 +121,9 @@ def run(market: str, start: str, top_n: int = 3, lookback_days: int = 126,
     def pick(d, r, _px):
         # A sector only ranks once it has the history to be ranked: without this a newly listed
         # ETF enters the top with a return measured over a handful of bars.
-        ok = [c for c in px.columns if pd.notna(r.get(c)) and px[c].loc[:d].notna().sum() >= MIN_BARS]
+        ok = [c for c in px.columns if pd.notna(r.get(c)) and px[c].loc[:d].notna().sum() >= MIN_BARS
+              and liquid(d, c)]
+        rankable[d] = len(ok)
         if market_filter and bench_close is not None:
             b, m = bench_close.get(d), bench_sma.get(d)
             if pd.notna(b) and pd.notna(m) and b < m:
@@ -99,6 +142,12 @@ def run(market: str, start: str, top_n: int = 3, lookback_days: int = 126,
         book[:] = chosen
         return chosen
 
+    def liquid(d, c) -> bool:
+        if c not in liq.columns:            # an index: held through a fund that tracks it
+            return True
+        v = liq.at[d, c]
+        return bool(pd.notna(v) and v >= liq_floor)
+
     def below_ema(d, c) -> bool:
         p, e = px.at[d, c], ema.at[d, c]
         return bool(pd.notna(p) and pd.notna(e) and p < e)
@@ -113,7 +162,16 @@ def run(market: str, start: str, top_n: int = 3, lookback_days: int = 126,
                                              exit_check=exit_check if ema is not None else None)
     if len(tdf):
         tdf = tdf.assign(sector=tdf.symbol.map(labels))
-    return tdf, eq, held, costs, labels
+    return tdf, eq, held, costs, labels, rankable
+
+
+def rankable_by_year(rankable: dict) -> str:
+    """'2013: 3, 2014: 3-4, ...' -- how many sectors could be ranked at the year's rebalance dates."""
+    if not rankable:
+        return ""
+    s = pd.Series(rankable)
+    g = s.groupby(s.index.year).agg(["min", "max"])
+    return ", ".join(f"{y}: {lo}" if lo == hi else f"{y}: {lo}-{hi}" for y, (lo, hi) in g.iterrows())
 
 
 SR_DOC = {
@@ -122,6 +180,9 @@ SR_DOC = {
     "description": "Each month-end hold the {top_n} sectors with the best {lookback_days}-session (about "
                    "six-month) return, equal-weighted.",
     "status": (
+        "v1.3 (2026-11-14) adds a point-in-time liquidity floor, after a review found the India result rested on "
+        "the Consumption ETF in years it barely traded; the 1.3 optimise runs are queued, and every India figure "
+        "below predates the floor (the US sector ETFs all clear it, so the US figures should not move). "
         "MEASURED, and it lands where the guide said it would. Every figure below is LEGACY: runs from 2010 "
         "and 2020 to date, made before backtests ran in stages, so neither optimise nor verify (v1.1 leaves "
         "equity alone; its exposure and trade statistics are stale). India beats modestly and the US does not, on "
@@ -157,6 +218,9 @@ SR_DOC = {
         "The sectors, US: the eleven SPDR sector ETFs (XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU).",
         "The sectors, India: three NSE sector indices (Bank, IT, Pharma) and eight sector ETFs (PSU Bank, "
         "Private Bank, Auto, FMCG, Metal, Infra, Energy, Consumption).",
+        "A fund is ranked only while it could have been traded (1.3): its median daily traded value over the "
+        "{LIQ_WINDOW} sessions up to the month-end must be at least the starting position (the account ÷ "
+        "{top_n}) divided by {MAX_POSITION_DAYS}. Indices are exempt -- they are held as a fund tracking them.",
         "No stop, no target and, by default, no market filter: the ranking is the whole rule, and a sector "
         "leaves the book when it leaves the top {top_n} at a month-end.",
         "Les Masonson's rules, each a switch, all off by default (1.2): `--weekly` ranks on the last session of "
@@ -167,6 +231,18 @@ SR_DOC = {
         "sectors he names as the long-run leaders.",
     ),
     "caveats": (
+        "**The liquidity floor is a junk filter, not a capacity model** (1.3). It is measured against the "
+        "STARTING position (the account ÷ {top_n}), not the grown book, and lets a position be as much as "
+        "{MAX_POSITION_DAYS} median days of a fund's trading -- generous by any execution standard. It keeps out "
+        "a fund that could not have been traded at all (India's Consumption ETF, about Rs 13k-96k a day in "
+        "2014-2017, the reason for the floor); PSU Bank, at Rs 4-27 lakh a day in 2014-2019, clears it and stays "
+        "a capacity caveat. A session with no stored row counts as nothing traded. Indices are exempt, so the "
+        "floor never applies to Bank, IT or Pharma, and for most of 2013 PSU Bank's stored volume is zero, so "
+        "India ranks only the three indices in those months. Every US sector ETF clears it at every month-end.",
+        "**Stale prices from gaps in the stored series.** A fund with no stored row on a session carries its "
+        "last close (the prices are forward-filled onto the sectors' combined calendar here, in load_sectors). "
+        "India's Consumption ETF has 129 such sessions before 2022 -- gaps in the price store itself, not made "
+        "by this strategy -- which the floor now keeps out of the ranking but which stay in its stored history.",
         "**The guide expects little here, and says so.** Nine to twelve choices is very little to rank, and it "
         "reports no US edge over 1999-2026. This is built to measure that, not to assume otherwise.",
         "**India's sector coverage is thin and late.** All 11 mapped series are stored, but most list late: the "
@@ -198,6 +274,12 @@ SR_DOC = {
         "Which sectors can be ranked. A series is used only if it has at least {MIN_BARS} stored sessions, and "
         "it is ranked on a month-end only once it has {MIN_BARS} sessions of prices up to that date, so a newly "
         "listed sector ETF cannot enter the top on a return measured over a handful of days.",
+        "Liquidity, as of the date (1.3). A fund is ranked on a month-end only if the median of its daily "
+        "traded value (close × volume) over the {LIQ_WINDOW} sessions up to and including that session is at "
+        "least the account size ÷ {top_n} ÷ {MAX_POSITION_DAYS} -- a starting position worth no more than "
+        "{MAX_POSITION_DAYS} median days of its trading. A session with no stored row counts as zero. An index "
+        "(Bank, IT, Pharma) has no traded value of its own and is exempt. A holding that falls below the floor "
+        "is not ranked, so it is sold at that month-end like any sector leaving the top {top_n}.",
         "Trailing return. Close on the month-end session ÷ close {lookback_days} sessions earlier − 1, counted "
         "on the sectors' combined calendar -- about six months. No month is skipped. A series that did not "
         "trade on a day carries its last price.",
@@ -240,8 +322,9 @@ class SectorRotationStrategy(PortfolioStrategy):
     key = SR_DOC["key"]
     doc = SR_DOC
     family = "sector_rotation"
-    version = "1.2"
-    changelog = (("1.2", "2026-11-11", "Les Masonson's relative-strength rules (Tradeline interview) as switches, all OFF by default, so a default run is 1.1's -- checked: the optimise-stage equity curves of both markets are identical. --weekly ranks every Friday over --lookback-weeks (default LOOKBACK_WEEKS = 12); --hold-rank 4 keeps a holding while it ranks within the top 4 when holding the top 3; --ema-exit sells on a close below the 20-day EMA between rankings (rotation.simulate gained an optional exit_check for it, unused by every other strategy) and keeps a sector below it out of the book; --six ranks only XLY, XLE, XLC, XLK, XLI and XLV. The version moves because new module constants enter the fingerprint, not because the default rule changed. Pass criterion for a switch, written before any 1.2 run was read: excess CAGR over the market's benchmark (SPY, Nifty 500) above zero, a max drawdown no deeper than the benchmark's, and a higher CAGR than the 1.1 default on the same window."),
+    version = "1.3"
+    changelog = (("1.3", "2026-11-14", "Point-in-time liquidity floor (from the 2026-11-14 India review). The sector list in config was the only liquidity test and it was judged on today's traded value, so India's Consumption ETF (CONSUMBEES) ranked from 2015 although it traded about Rs 13k-96k a day in 2014-2019: the book's entries in it were 20-84x its daily traded value, and its stored series has 3-unit volumes, a +29.7% day and 129 stale-filled sessions. Now a fund ranks at a rebalance date only when its median daily traded value over the LIQ_WINDOW = 60 sessions up to that date is at least account / top_n / MAX_POSITION_DAYS (5) -- Rs 1.33 lakh in India, $3,333 in the US; sessions with no stored row count as zero; indices are exempt. Expectations written before any 1.3 run: US -- every sector ETF clears the floor at every month-end, so the optimise run must equal 1.2's to the cent (11.47%, -2.54 vs SPY, -30.7%); any difference is a bug. India -- Consumption is not rankable 2014-2017 and only in scattered months of 2018-2020, so CAGR falls from 15.11% toward the 12.76% the review measured with the ETF removed, expected 12-14.5% with excess at most +0.5 against the Nifty 500 and a drawdown near or deeper than its -38.3%; the strategy's pass rule (excess above zero, drawdown no deeper than the benchmark's) is expected to FAIL. Rankable India sectors expected: 2013 3 (PSU Bank's stored volume is zero), 2014-2017 4, 2018-2020 4-5, 2021 5-6."),
+                 ("1.2", "2026-11-11", "Les Masonson's relative-strength rules (Tradeline interview) as switches, all OFF by default, so a default run is 1.1's -- checked: the optimise-stage equity curves of both markets are identical. --weekly ranks every Friday over --lookback-weeks (default LOOKBACK_WEEKS = 12); --hold-rank 4 keeps a holding while it ranks within the top 4 when holding the top 3; --ema-exit sells on a close below the 20-day EMA between rankings (rotation.simulate gained an optional exit_check for it, unused by every other strategy) and keeps a sector below it out of the book; --six ranks only XLY, XLE, XLC, XLK, XLI and XLV. The version moves because new module constants enter the fingerprint, not because the default rule changed. Pass criterion for a switch, written before any 1.2 run was read: excess CAGR over the market's benchmark (SPY, Nifty 500) above zero, a max drawdown no deeper than the benchmark's, and a higher CAGR than the 1.1 default on the same window."),
                  ("1.1", "2026-10-25", "rotation.simulate, the engine it runs on, had two accounting errors. Its positions series was the final holding count repeated for every session, so exposure read 100% through every stretch in cash; it is now the count per session. And trade rows were built from each holding's first fill, ignoring the month-end resizes; a row is now the whole holding period -- every buy, trim and sale with costs, the entry price the average paid. Equity, CAGR and drawdown are unchanged; stored runs' exposure and trade statistics are stale."),
                  ("1.0", "2026-10-17", "First version: rank the market's sector indices by 6-month return each "
                                        "month-end and hold the top 3, equal-weighted."),)
@@ -269,6 +352,9 @@ class SectorRotationStrategy(PortfolioStrategy):
         ("Rebalance", "rebalance", "Pandas offset alias; ME is month-end."),
         ("Cost per side", "cost_bps", "Basis points charged on each side of a switch."),
         ("Minimum history", "MIN_BARS", "Bars a sector needs before it can be ranked."),
+        ("Liquidity window", "LIQ_WINDOW", "Sessions of traded value whose median the floor reads, up to the date."),
+        ("Position in days of trading", "MAX_POSITION_DAYS", "The floor: the starting position (account / top_n) "
+         "may be at most this many median days of a fund's traded value. Indices are exempt."),
         ("Weekly ranking", "WEEKLY_REBALANCE", "--weekly: the ranking date, the last session of each week."),
         ("Lookback in weeks", "LOOKBACK_WEEKS", "--weekly's lookback when --lookback-weeks is not given."),
         ("Rank buffer", "HOLD_RANK", "--hold-rank: Masonson's buffer when holding the top 3."),
@@ -304,13 +390,16 @@ def main(argv: list[str] | None = None) -> dict | None:
     rebalance = WEEKLY_REBALANCE if a.weekly else SectorRotationStrategy.rebalance
     weeks = a.lookback_weeks or (LOOKBACK_WEEKS if a.weekly else None)
     lookback = weeks * SESSIONS_PER_WEEK if weeks else a.lookback_days
-    tdf, eq, held, costs, labels = run(a.market, a.start, a.top_n, lookback, rebalance, a.cost_bps, a.market_filter,
+    tdf, eq, held, costs, labels, rankable = run(a.market, a.start, a.top_n, lookback, rebalance, a.cost_bps, a.market_filter,
                                        hold_rank=a.hold_rank, ema_exit=EXIT_EMA if a.ema_exit else 0,
                                        only=SIX_SECTORS if a.six else None)
     b = cache.load_cached(a.market, cfg.benchmark_ticker)
     bc = b["close"].astype(float).reindex(eq.index).ffill() if b is not None else None
     notes = [
         f"Ranked {len(labels)} sector series: {', '.join(sorted(labels.values()))}.",
+        f"Liquidity floor: a fund ranks only while its median daily traded value over {LIQ_WINDOW} sessions is at "
+        f"least {cfg.currency_symbol}{float(cfg.account_size) / a.top_n / MAX_POSITION_DAYS:,.0f} (the starting "
+        f"position / {MAX_POSITION_DAYS}); indices are exempt. Rankable sectors by year: {rankable_by_year(rankable)}.",
         "An ALLOCATION rule over sector indices: it holds whole sectors, so its 'trades' are switches and its "
         "trade statistics are not comparable to a stock strategy's.",
         f"Costs: {a.cost_bps:g}bps per side of a switch; sector-fund expenses are not modelled.",
