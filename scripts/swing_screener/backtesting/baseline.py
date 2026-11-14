@@ -1338,6 +1338,13 @@ VS_DOC = {
     "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
                    "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
+        "OPTIMISE v1.10 (in-sample, 2013-01-01 to 2021-12-31, run 2026-11-14): INDIA 24.07% CAGR, +8.64 excess "
+        "over the Smallcap 250, max drawdown -50.5%, 806 trades. v1.9 read 25.89% and +10.45 over the same "
+        "years; the 1.82 points were one purchase the turnover floor should have refused. On 2020-12-31 a stale "
+        "20-day average kept AURUM, ex a 98.8% special dividend, above the floor, and the book topped it up "
+        "on a locked upper circuit, buying about 82% of that day's volume (changelog 1.10). Every v1.9 figure "
+        "below whose window includes December 2020 (the full-stage and 2018 runs) carries that trade; the "
+        "verify window (2022 on) does not. "
         "FROM 2018-06-01 (full stage, v1.9, 2026-11-11 -- context, not a verdict; the years from 2022 are the "
         "verify window, and the start matches the quality-momentum runs, whose India filings only carry equity "
         "from then): INDIA 25.27% CAGR, -40.7% max drawdown against the Smallcap 250's 13.15% and -52.2% "
