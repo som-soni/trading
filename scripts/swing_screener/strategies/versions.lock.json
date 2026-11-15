@@ -1401,6 +1401,31 @@
     },
     "version": "1.7"
   },
+  "power_play": {
+    "family": "power_play",
+    "fingerprint": "a16e06a0",
+    "params": {
+      "ADVANCE_BARS": 40,
+      "ADVANCE_MIN_PCT": 100,
+      "FLAG_MAX_BARS": 30,
+      "FLAG_MIN_BARS": 10,
+      "MAX_DEPTH_PCT": 20,
+      "MAX_STOP_PCT": 20.0,
+      "MIN_STOP_PCT": 2.0,
+      "NOMINAL_TARGET_R": 3,
+      "_key": "power_play",
+      "expiry_bdays": 5,
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "pre_holiday": {
     "family": "pre_holiday",
     "fingerprint": "e4b83374",
