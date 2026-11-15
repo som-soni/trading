@@ -595,6 +595,10 @@ PEAD_DOC = {
                    "accelerating, revenue up at least {MIN_REVENUE_GROWTH}%, in the top {SEASON_RANK_TOP}% of the season so far, and the market "
                    "agreeing over the first {REACTION_DAYS} sessions -- and hold for {HOLD_SESSIONS} sessions.",
     "status": (
+        "US BOOK RETIRED 2026-11-15; INDIA STAYS LIVE while its price-reaction lead is judged (owner's decision). "
+        "Optimise stage (2013-2021, in-sample): the default growth screen made 1.81% a year at v1.8 against SPY's "
+        "14.01%, and SUE + reaction (mode 3) 9.47% against 11.40% for SPY held at the same exposure -- the drift "
+        "has largely gone from large US stocks. The US book is not run live and gets no verify run. "
         "v1.8 (2026-11-15) fixes SEC share-count units and forward-dated filings in the data it reads; the US mode-1 optimise run moves from 1.98% (953 trades) to 1.81% (955 trades), drawdown -32.7% both, in-sample. "
         "FAILS ITS PASS CRITERIA IN BOTH MARKETS (v1.6, OPTIMISE stage, 2013-2021, IN-SAMPLE, runs of 2026-11-15; "
         "criteria fixed before the runs). India's price reaction (mode 2) is a real but floor-sensitive lead: at a "
