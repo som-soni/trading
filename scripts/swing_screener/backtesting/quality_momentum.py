@@ -19,8 +19,9 @@ The four tests, each from code that already exists:
                flow - capex) at least QM_FCF_CONVERSION_MIN of net profit (skipped for banks/insurers).
 
 Point in time: a quarter counts from its filing date, or `financials.FILING_LAG_DAYS` after it
-ended when none was recorded (`fundamental_filter._available`); a fiscal year's statement lines carry
-no date and count `financials.LINES_FILING_LAG_DAYS` after the period ended. Missing data is NOT
+ended when none was recorded (`fundamental_filter._available`); a fiscal year's or balance sheet's
+statement lines count from the filing that brought them (`financials.line_public`), else
+`financials.LINES_FILING_LAG_DAYS` after the period ended. Missing data is NOT
 eligible. Every rebalance records how many ranked names had the data and how many passed
 (`quality_coverage.csv` beside the report), because thin coverage can make the filter look good or bad
 by accident.
@@ -104,10 +105,13 @@ def _ttm_sales_growth(series: list[dict]) -> float | None:
     return sum(x["rev"] for x in q) / prior - 1 if prior > 0 else None
 
 
-def _latest(periods: dict, d: dt.date, stale_days: int = QM_STATEMENT_STALE_DAYS) -> tuple[dt.date, dict] | None:
-    """The newest statement period public on `d` and not stale (older than `stale_days`; value_ranking
+def _latest(periods: dict, d: dt.date, stale_days: int = QM_STATEMENT_STALE_DAYS,
+            public: dict | None = None) -> tuple[dt.date, dict] | None:
+    """The newest statement period public on `d` (`financials.line_public`: the filing that brought it, from
+    `public`, else LINES_FILING_LAG_DAYS after it ended) and not stale (older than `stale_days`; value_ranking
     passes its own limit)."""
-    known = [e for e in periods if e + dt.timedelta(days=LINES_FILING_LAG_DAYS) <= d]
+    from ..marketdata.financials import line_public
+    known = [e for e in periods if line_public(e, public) <= d]
     if not known:
         return None
     e = max(known)
@@ -132,7 +136,7 @@ def measure(rows: list[dict], lines: dict, d: dt.date, financial: bool) -> dict:
     out["sales"] = _ttm_sales_growth(growth.growth_series(rows))
     if financial:
         return out
-    bs = _latest(lines.get("BS") or {}, d)
+    bs = _latest(lines.get("BS") or {}, d, public=lines.get("_public"))
     if bs and bs[1].get("equity") is not None:
         b = bs[1]
         # A filed balance sheet with no borrowings (or cash) line reports none: a debt-free company files
@@ -140,7 +144,7 @@ def measure(rows: list[dict], lines: dict, d: dt.date, financial: bool) -> dict:
         net_debt = (b.get("borrowings") or 0.0) - (b.get("cash") or 0.0)
         eq = b["equity"]
         out["debt"] = net_debt / eq if eq > 0 else (float("-inf") if net_debt <= 0 else float("inf"))
-    fy = _latest(lines.get("FY") or {}, d)
+    fy = _latest(lines.get("FY") or {}, d, public=lines.get("_public"))
     if fy and fy[1].get("cfo") is not None and fy[1].get("net_profit") is not None:
         f = fy[1]
         fcf = f["cfo"] - (f.get("capex") or 0.0)   # the same reading of an absent line as above
@@ -184,7 +188,8 @@ class QualityFilter:
     def lines(self, sym: str) -> dict:
         if sym not in self._lines:
             from ..marketdata import financials
-            self._lines[sym] = financials.load_lines(self.market, sym) if sym in self.quarters else {}
+            self._lines[sym] = ({**financials.load_lines(self.market, sym),
+                                 "_public": financials.lines_public(self.market, sym)} if sym in self.quarters else {})
         return self._lines[sym]
 
     def __call__(self, today, scores: dict) -> dict:
@@ -231,6 +236,7 @@ DOC = {
                    "rebalance date show ROE of at least {QM_ROE_MIN_PCT}% and no shrinking sales; top "
                    "{top_n}, rebalanced every month-end.",
     "status": (
+        "v1.8 (2026-11-15) fixed the filings it reads (share-count units, forward-dated facts, statement lines dated by their filing) and moved nothing in the default: the US optimise run (in-sample) gives 14.98%, -44.2%, 443 trades, every trade the same as v1.7 on the same day. "
         "v1.7 (2026-11-14) changed only how the turnover floor reads trading after a special dividend or "
         "demerger, and moved nothing here: re-run on the optimise stage it gives US 15.30%, -42.7%, 444 trades "
         "and India from 2013 8.53%, -30.9%, 151 trades, the same as v1.6, so the v1.6 figures below describe "
@@ -344,8 +350,10 @@ DOC = {
         "floors, close above the 200-day average, the {liquidity_top}-name liquid pool, a 12-1 momentum "
         "score. See momentum_baseline's Entry.",
         "Public by then. A quarter counts from its filing date, or {FILING_LAG_DAYS} days after it ended when "
-        "the source recorded none. A fiscal year's or balance sheet's lines carry no date and count "
-        "{LINES_FILING_LAG_DAYS} days after the period ended. A company whose latest quarter is over "
+        "the source recorded none; a figure filed on or before its own period end is a mis-tagged fact and is "
+        "ignored. A fiscal year's or balance sheet's lines count from the filing that brought them (the 10-K, "
+        "10-Q or results filing ending that day), or {LINES_FILING_LAG_DAYS} days after the period ended when no "
+        "stored quarter dates them. A company whose latest quarter is over "
         "{STALE_RESULTS_DAYS} days old, or whose latest fiscal year or "
         "balance sheet is over {QM_STATEMENT_STALE_DAYS} days old, has no data.",
         "ROE. Net income of the last four quarters over average equity (latest and about a year before), "
@@ -411,8 +419,10 @@ class QualityMomentumStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "quality_momentum"
-    version = "1.7"
+    version = "1.8"
     changelog = (
+        ("1.8", "2026-11-15",
+         "Data layer (marketdata/financials.py), from the value_ranking and quality_momentum reviews of 2026-11-14: (1) SEC share counts filed in thousands or millions are scaled back by the power of a thousand between them and the count the same filing implies (net income / EPS; the company's median where that filing's EPS is itself a slip), and dropped when their own filing contradicts them with no such power (sec_share_slips): 1,425 US quarters 2011-2021 corrected, 13 dropped, across 427 companies. Stored rows keep what the filing says. (2) A fact filed on or before its own period end is not a report: the parser no longer keeps it (it had won as the earliest filing and pushed the real first report out: LGND's 'Q4 2014' filed 2014-12-01) and load leaves out any stored row like it; the 13 affected companies were re-fetched. (3) A fiscal year's or balance sheet's statement lines count from the filing that brought them (the 10-K / 10-Q / results filing ending that day, financials.line_public), not a fixed 90 days: 924 US 10-Ks 2011-2021 were filed later than that. Here the default filings_only variant reads only quarters (ROE, sales), so only (2) reaches it, and once the real LGND report was re-fetched the book is unchanged: US optimise (in-sample, 2013-2021) 14.98%, -44.2%, 443 trades before and after, every trade identical. The quality and strict variants read balance sheets and cash flows, so (3) moves them; not re-run. Bumped by hand: the constants that moved are in the data layer."),
         ("1.7", "2026-11-14",
          "The loop it shares with momentum_baseline (1.5): The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. In memory on the optimise stage this run is unchanged in India (8.53%, 151 trades); US unchanged too (14.98%, 443 trades). Bumped because the floor's reading changed for every stock in the 20 sessions after a credited action. Bumped by hand: no numeric constant moved."),
         ("1.6", "2026-11-08",

@@ -170,6 +170,40 @@ def test_nse_slips():
     assert q._fix_nse([dict(r) for r in us]) == us                           # NSE rows only
 
 
+def test_sec_share_slips():
+    """SEC share counts filed in thousands or millions (Merck 2012-12: 3,076; Lamar 2013: 94.8 billion) are scaled
+    back by the power of a thousand the filing's own net income / EPS implies; an EPS slip is judged by the
+    company's median instead (the count is right); a count its own filing contradicts with no such power is
+    dropped; a cent-rounded EPS of a few cents still places a slip."""
+    import datetime as _dt
+    def sec(m, ni, eps, sh, src="sec_edgar"):
+        return {"period_end": _dt.date(2013, m, 28), "source": src, "net_income": ni, "eps": eps, "shares": sh}
+    rows = [sec(1, 1.0e9, 0.33, 3.03e9), sec(2, 1.1e9, 0.36, 3076.0), sec(3, 1.2e9, 0.40, 3.0e12),
+            sec(4, 1.1e9, 360.0, 3.04e9), sec(5, 1.0e9, 0.33, 3.05e6), sec(6, 1.0e9, 0.33, 4.0e7),
+            sec(7, 4.0e6, 0.02, 2.1e5), sec(8, None, None, 3.0e6), sec(9, 1.0e9, 0.33, 3.0e3, src="nse")]
+    slips = q.sec_share_slips(rows)
+    assert slips[_dt.date(2013, 2, 28)] == 1e6 and slips[_dt.date(2013, 3, 28)] == 1e-3   # millions; a scaled count again
+    assert _dt.date(2013, 4, 28) not in slips            # EPS 1,000x off (eps_scale's job): the count is right
+    assert slips[_dt.date(2013, 5, 28)] == 1e3           # thousands
+    assert slips[_dt.date(2013, 6, 28)] is None          # 75x off its own filing, no unit explains it: dropped
+    assert slips[_dt.date(2013, 7, 28)] == 1e3           # EPS $0.02 implies 200m shares, rounded; 1,000x still shows
+    assert slips[_dt.date(2013, 8, 28)] == 1e3           # no EPS: judged by the company's median implied count
+    assert _dt.date(2013, 9, 28) not in slips            # SEC rows only
+    fixed = q._fix_sec([dict(r) for r in rows])
+    assert abs(fixed[1]["shares"] - 3.076e9) < 1 and fixed[5]["shares"] is None and fixed[0]["shares"] == 3.03e9
+    assert q._unit_fixed(3.1e6, 3.0e9) == 3.1e9 and q._unit_fixed(2.9e9, 3.0e9) == 2.9e9 and q._unit_fixed(5e7, 3e9) is None
+
+
+def test_sec_fact_filed_before_its_period_ends():
+    """A fact filed on or before its own period end (LGND tagged a "Q4 2014" in a filing of 2014-12-01) is not a
+    report: it must not win as the earliest filing over the real first report."""
+    bogus = _fact("2024-10-01", "2024-12-31", 99, "x", "2024-12-01", fp="Q4")
+    out = q.sec_quarters(FACTS + [bogus])
+    assert out[D(2024, 12, 31)]["val"] == 52 - 36 and out[D(2024, 12, 31)]["filed"] == D(2025, 2, 15)
+    assert q.line_public(D(2024, 12, 31), {D(2024, 12, 31): D(2025, 4, 20)}) == D(2025, 4, 20)     # a late 10-K
+    assert q.line_public(D(2024, 12, 31), {}) == D(2024, 12, 31) + dt.timedelta(days=q.LINES_FILING_LAG_DAYS)
+
+
 def test_split_factors():
     shares = [100, 101, 202, 203, 204, 280]                 # 1:1 bonus, then a 37% share issue
     eps = [1.0, 1.0, 0.5, 0.5, 0.5, 0.4]

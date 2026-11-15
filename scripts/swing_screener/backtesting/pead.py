@@ -595,6 +595,7 @@ PEAD_DOC = {
                    "accelerating, revenue up at least {MIN_REVENUE_GROWTH}%, in the top {SEASON_RANK_TOP}% of the season so far, and the market "
                    "agreeing over the first {REACTION_DAYS} sessions -- and hold for {HOLD_SESSIONS} sessions.",
     "status": (
+        "v1.8 (2026-11-15) fixes SEC share-count units and forward-dated filings in the data it reads; the US mode-1 optimise run moves from 1.98% (953 trades) to 1.81% (955 trades), drawdown -32.7% both, in-sample. "
         "FAILS ITS PASS CRITERIA IN BOTH MARKETS (v1.6, OPTIMISE stage, 2013-2021, IN-SAMPLE, runs of 2026-11-15; "
         "criteria fixed before the runs). India's price reaction (mode 2) is a real but floor-sensitive lead: at a "
         "Rs 5 crore floor it made 21.89% a year against the Smallcap 250's ~16.4% total return (price 15.44% plus a "
@@ -819,8 +820,10 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.7"
+    version = "1.8"
     changelog = (
+        ("1.8", "2026-11-15",
+         "Data layer (marketdata/financials.py), from the value_ranking and quality_momentum reviews of 2026-11-14: (1) SEC share counts filed in thousands or millions are scaled back by the power of a thousand between them and the count the same filing implies (net income / EPS; the company's median where that filing's EPS is itself a slip), and dropped when their own filing contradicts them with no such power (sec_share_slips): 1,425 US quarters 2011-2021 corrected, 13 dropped, across 427 companies. Stored rows keep what the filing says. (2) A fact filed on or before its own period end is not a report: the parser no longer keeps it (it had won as the earliest filing and pushed the real first report out: LGND's 'Q4 2014' filed 2014-12-01) and load leaves out any stored row like it; the 13 affected companies were re-fetched. (3) A fiscal year's or balance sheet's statement lines count from the filing that brought them (the 10-K / 10-Q / results filing ending that day, financials.line_public), not a fixed 90 days: 924 US 10-Ks 2011-2021 were filed later than that. Here (1) changes which EPS figures the per-share scale check corrects (it reads the share count) and (2) removes forward-dated quarters from the events and the year-ago lookups. US optimise (in-sample, 2013-2021), mode 1, same day and data: 1.98% CAGR, -32.7% max DD, 953 trades -> 1.81%, -32.7%, 955 trades (excess -12.03 -> -12.20 points); 5 entries gone (BDX, KMI, LAMR, UHAL, WWD), 7 new. India not re-run: no SEC rows, and (3) is not read. Bumped by hand (1.8; 1.7 was taken by the mode-2 8-K change landed meanwhile): the constants that moved are in the data layer."),
         ("1.7", "2026-11-15",
          "Mode 2 only (SURPRISE_MODE=2; modes 1 and 3 are unchanged): every US 8-K with Item 2.02 is an event on its "
          "own date. financials.announcements grouped them by period end, which for an 8-K is only the calendar "

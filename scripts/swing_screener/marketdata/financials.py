@@ -56,7 +56,12 @@ India before the stored window (`quarterly_results_history`, `refresh_history`, 
 company's quarters back to 2009 from NSE's older filings -- XBRL from mid-2018, an HTML page of figures before --
 which `load` puts in front of the window. See the section of that name below.
 
-Backtests read these point in time: `load` and `load_lines` honour a stage's boundary (`asof`), and
+Filings carry their own slips, corrected on the way out (stored rows keep what the filing says): NSE quarters entered
+in lakh (`nse_slips`), per-share figures off by a thousand (`eps_scale`) and SEC share counts in thousands or millions
+(`sec_share_slips`). A fact filed on or before its own period end is never a report (`_filed_ok`).
+
+Backtests read these point in time: `load` and `load_lines` honour a stage's boundary (`asof`; a statement line
+from the filing that brought it, `line_public`), and
 `backtesting/fundamental_filter.py`, `pead.py` and `quality_momentum.py` judge each date only on what
 was public by then.
 """
@@ -99,7 +104,7 @@ RECHECK_DAYS = 3              # ... and this often while a new quarter's results
 RESULTS_GRACE_DAYS = 10       # a new quarter is "due" from the next quarter end + this many days
 NOT_FOUND_RETRY_DAYS = 30     # nothing at the source (fund, ETF, unlisted filer): look again after this
 FILING_LAG_DAYS = 60          # a quarter with no recorded filing date (yfinance) is public this long after it ended
-LINES_FILING_LAG_DAYS = 90    # a statement line has no filing date: treat it as public this long after its period
+LINES_FILING_LAG_DAYS = 90    # a statement period no stored quarter dates (`line_public`) is public this long after it
                               # ended (10-K / NSE annual results come within 60-90 days of the year end)
 SEC_PAUSE = 0.15              # SEC allows 10 requests/s
 NSE_PAUSE = 0.35
@@ -302,6 +307,13 @@ def _year_apart(a: dt.date, b: dt.date) -> bool:
     return _in((a - b).days, YEAR_APART)
 
 
+def _filed_ok(f: dict) -> bool:
+    """A fact filed after its own period ended. One filed on or before it is a mis-tagged or forward-dated XBRL
+    fact (LGND tagged a "Q4 2014" quarter in a filing of 2014-12-01), never a report: kept, it would win as the
+    earliest filing and push the real first report out (quality_momentum review, 2026-11-14)."""
+    return _d(f["filed"]) > _d(f["end"])
+
+
 def sec_quarters(facts: list[dict], additive: bool = True) -> dict:
     """One XBRL concept's facts -> {quarter end: {val, prior, filed, start, derived, fiscal}}.
 
@@ -313,7 +325,7 @@ def sec_quarters(facts: list[dict], additive: bool = True) -> dict:
     """
     fs = []
     for f in facts:
-        if str(f.get("form", "")).split("/")[0] not in SEC_FORMS or f.get("val") is None:
+        if str(f.get("form", "")).split("/")[0] not in SEC_FORMS or f.get("val") is None or not _filed_ok(f):
             continue
         f = dict(f, _end=_d(f["end"]), _start=_d(f.get("start")), _filed=_d(f["filed"]))
         fs.append(f)
@@ -401,7 +413,7 @@ def parse_sec(facts_json: dict) -> list[dict]:
     for name in SEC_EQUITY:
         if name in gaap:
             for f in _sec_units(gaap[name], "USD"):
-                if not f.get("start") and str(f.get("form", "")).split("/")[0] in SEC_FORMS:
+                if not f.get("start") and str(f.get("form", "")).split("/")[0] in SEC_FORMS and _filed_ok(f):
                     equity.setdefault(_d(f["end"]), float(f["val"]))
     # A derived Q4 EPS (full year - nine months) mixes share bases when a split falls between the Q3 10-Q
     # and the 10-K. Take the full year's EPS in proportion to Q4's share of the year's net income instead:
@@ -418,7 +430,7 @@ def parse_sec(facts_json: dict) -> list[dict]:
         for name in SEC_CONCEPTS[field]:
             if name in gaap:
                 for f in _sec_units(gaap[name], "USD/shares" if field == "eps" else "USD"):
-                    if str(f.get("form", "")).startswith("10-K") and f.get("start") and _in((_d(f["end"]) - _d(f["start"])).days, YEAR_DAYS):
+                    if str(f.get("form", "")).startswith("10-K") and f.get("start") and _filed_ok(f) and _in((_d(f["end"]) - _d(f["start"])).days, YEAR_DAYS):
                         end, filed = _d(f["end"]), _d(f["filed"])
                         if end not in full_year[field] or filed < full_year[field][end][0]:
                             full_year[field][end] = (filed, float(f["val"]))
@@ -490,7 +502,7 @@ def _sec_fy(gaap: dict, names: tuple, units: tuple, first: bool = False) -> dict
             continue
         best: dict = {}
         for f in _sec_units(gaap[name], *units):
-            if not str(f.get("form", "")).startswith("10-K") or not f.get("start") or f.get("val") is None:
+            if not str(f.get("form", "")).startswith("10-K") or not f.get("start") or f.get("val") is None or not _filed_ok(f):
                 continue
             end, start = _d(f["end"]), _d(f["start"])
             newer = end not in best or (_d(f["filed"]) < best[end][0] if first else _d(f["filed"]) >= best[end][0])
@@ -501,15 +513,17 @@ def _sec_fy(gaap: dict, names: tuple, units: tuple, first: bool = False) -> dict
     return out
 
 
-def _sec_inst(gaap: dict, names: tuple, units: tuple = ("USD",)) -> dict:
-    """Balance-sheet values per date (10-K / 10-Q), the latest filed; first concept in priority order."""
+def _sec_inst(gaap: dict, names: tuple, units: tuple = ("USD",), cover: bool = False) -> dict:
+    """Balance-sheet values per date (10-K / 10-Q), the latest filed; first concept in priority order. A cover-page
+    fact (`cover`: shares outstanding) is dated as late as the filing day itself, so it skips `_filed_ok`."""
     out: dict = {}
     for name in names:
         if name not in gaap:
             continue
         best: dict = {}
         for f in _sec_units(gaap[name], *units):
-            if f.get("start") or f.get("val") is None or str(f.get("form", "")).split("/")[0] not in SEC_FORMS:
+            if f.get("start") or f.get("val") is None or str(f.get("form", "")).split("/")[0] not in SEC_FORMS \
+                    or not (cover or _filed_ok(f)):
                 continue
             end = _d(f["end"])
             if end not in best or _d(f["filed"]) >= best[end][0]:
@@ -554,7 +568,7 @@ def sec_lines(facts_json: dict, rows: list[dict]) -> tuple[list[tuple], str]:
         out += [("FY", e, k, v) for k, v in _clean(vals).items()]
     # balance sheets: each year end, and the latest quarter end if newer
     bs = {k: _sec_inst(gaap, names) for k, names in SEC_BS.items()}
-    shares = _sec_inst(facts_json.get("facts", {}).get("dei", {}), ("EntityCommonStockSharesOutstanding",), ("shares",))
+    shares = _sec_inst(facts_json.get("facts", {}).get("dei", {}), ("EntityCommonStockSharesOutstanding",), ("shares",), cover=True)
     dates = [e for e in fy_ends if e in bs["total_assets"]]
     latest = max(bs["total_assets"], default=None)
     if latest and qends and latest >= max(qends) - dt.timedelta(days=10) and latest not in dates:
@@ -2122,6 +2136,88 @@ def nse_slips(rows: list[dict]) -> dict:
     return out
 
 
+# SEC share counts carry a unit slip of their own (value_ranking review, 2026-11-14): a filer tags its diluted
+# weighted shares in thousands or millions (Merck 2013-03: 3,076 "shares"; Coca-Cola 2018-06: 4,306), or a scaled
+# count once more (Lamar 2013-06: 94.8 billion). EDGAR publishes it as filed. About 1.4% of US quarters 2011-2021
+# were off by 10^3 or 10^6 in either direction, so anything that multiplies the count by a price -- a market value --
+# came out a thousand or a million times wrong. The count is checked against the one the same filing implies (net
+# income / EPS: one filing, one share basis) and scaled back by the power of a thousand between them; when that
+# filing's own EPS is itself out of line with the company (an EPS slip, `eps_scale`), against the company's median
+# implied count instead (implied counts only from an EPS of at least SEC_SHARES_MIN_EPS: a cent-rounded EPS of a few
+# cents implies nothing). A count its own filing contradicts with no power of a thousand to explain it is dropped,
+# not guessed; one only the company median disagrees with is kept (a big reverse split looks the same).
+SEC_SHARES_AGREE = 3.0        # a stored count within ×/÷ this of its reference is right (dilution, rounded EPS)
+SEC_SHARES_MIN_EPS = 0.10     # the company's median implied count, and dropping a count, only from EPS this large ...
+EPS_ROUNDING_SEC = 0.005      # ... because EPS is filed to the cent: a smaller one's implied count is this blurred
+SEC_SHARES_SANE = 30.0        # a filing's own implied count is used as the reference only within ×/÷ this of the
+                              # company's median implied count (no split or reverse split is that big)
+SEC_SHARES_SLIP_TOL = 0.3     # log10(reference / stored) within this of ±3 or ±6: the thousands / millions slip
+
+
+def sec_share_slips(rows: list[dict]) -> dict:
+    """One company's SEC quarters -> {period_end: k}: multiply the stored share count by k (a power of a
+    thousand), or None to drop it. See the note above; `_fix_sec` applies it."""
+    import math
+    sec = [r for r in rows if r.get("source") == "sec_edgar"]
+
+    def implied(r, min_eps=0.0):
+        ni, eps = r.get("net_income"), r.get("eps")
+        return abs(ni / eps) if ni and eps and abs(eps) >= min_eps else None
+
+    m_imp = _median_abs(implied(r, SEC_SHARES_MIN_EPS) for r in sec)
+    out: dict = {}
+    for r in sec:
+        sh = r.get("shares")
+        if not sh or sh <= 0:
+            continue
+        own = implied(r)
+        if own and m_imp and abs(math.log10(own / m_imp)) > math.log10(SEC_SHARES_SANE):
+            own = None                     # the filing's own EPS or net income is the slip: judge by the company
+        # a cent-rounded EPS blurs its implied count: widen the tolerance by its rounding error
+        blur = math.log10(1 + EPS_ROUNDING_SEC / abs(r["eps"])) if own else 0.0
+        if own and abs(math.log10(own / sh)) <= math.log10(SEC_SHARES_AGREE) + blur:
+            continue
+        verdict = "keep"                   # no reference at all: nothing to judge by
+        for ref, tol in ((own, SEC_SHARES_SLIP_TOL + blur), (m_imp, SEC_SHARES_SLIP_TOL)):
+            if not ref:                    # the filing's own implied count first, then the company's
+                continue
+            lg = math.log10(ref / sh)
+            p = 3 * round(lg / 3)
+            if abs(lg) <= math.log10(SEC_SHARES_SANE):
+                verdict = "keep"
+            elif p and abs(lg - p) <= tol:
+                verdict = 10.0 ** p
+            else:
+                verdict = "drop"
+                continue
+            break
+        if verdict == "drop" and own and abs(r["eps"]) >= SEC_SHARES_MIN_EPS:
+            out[r["period_end"]] = None    # its own filing contradicts it and no unit explains why: not a count
+        elif verdict not in ("keep", "drop"):
+            out[r["period_end"]] = verdict
+    return out
+
+
+def _unit_fixed(count: float, ref: float) -> float | None:
+    """A share count against a trusted one for the same date: scaled back by the power of a thousand between
+    them, kept when within SEC_SHARES_SANE, dropped when off by more with no such power (the balance sheet's
+    cover-page count, `EntityCommonStockSharesOutstanding`, slips the same way)."""
+    import math
+    lg = math.log10(ref / count)
+    if abs(lg) <= math.log10(SEC_SHARES_SANE):
+        return count
+    p = 3 * round(lg / 3)
+    return count * 10.0 ** p if p and abs(lg - p) <= SEC_SHARES_SLIP_TOL else None
+
+
+def _fix_sec(rows: list[dict]) -> list[dict]:
+    """One company's quarters, SEC share-count unit slips corrected (`sec_share_slips`)."""
+    for e, k in sec_share_slips(rows).items():
+        r = next(r for r in rows if r["period_end"] == e)
+        r["shares"] = r["shares"] * k if k else None
+    return rows
+
+
 def _fix_nse(rows: list[dict]) -> list[dict]:
     slips = nse_slips(rows)
     for r in rows:
@@ -2147,6 +2243,10 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
     args: tuple = (market,)
     if symbols is not None:
         sql, args = sql + " AND symbol = ANY(%s)", (market, list(symbols))
+    # A `filed` on or before the quarter's own end is a mis-tagged or forward-dated XBRL fact (LGND's "Q4 2014",
+    # filed 2014-12-01; 13 US quarters 2011-2021: quality_momentum review, 2026-11-14), not a report: such a row is
+    # left out. `sec_quarters` no longer keeps those facts, so a re-fetch stores the real first report in its place.
+    sql += " AND (filed IS NULL OR filed > period_end)"
     if asof.end_date():
         # a backtest stage's boundary: a quarter exists from the day it was FILED, so a period
         # that ended inside the window but was filed after it is not yet known. A quarter with no
@@ -2162,34 +2262,63 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
         for r in cur.fetchall():
             out[r[0]].append(dict(zip(COLUMNS, r[1:])))
     _with_history(market, out, symbols)
-    return {sym: _fix_eps_scale(_fix_nse(rows)) for sym, rows in out.items()}
+    return {sym: _fix_eps_scale(_fix_nse(_fix_sec(rows))) for sym, rows in out.items()}
 
 
-def _nse_slips_raw(market: str, symbol: str) -> dict:
-    """`nse_slips` over the company's stored quarters as filed (before any correction)."""
+def _quarters_raw(market: str, symbol: str) -> list[dict]:
+    """The company's stored quarters as filed (before any correction), oldest first."""
     with db.get_connection().cursor() as cur:
         cur.execute(f"SELECT {', '.join(COLUMNS)} FROM quarterly_results WHERE market=%s AND symbol=%s ORDER BY period_end", (market, symbol))
-        return nse_slips([dict(zip(COLUMNS, r)) for r in cur.fetchall()])
+        return [dict(zip(COLUMNS, r)) for r in cur.fetchall()]
+
+
+# A statement line carries no filing date of its own, but the filing that brought it does: a fiscal year's P&L, cash
+# flow and year-end balance sheet come with the 10-K (SEC: the derived Q4 row's `filed`) or NSE's Q4 results, a
+# quarter's lines and balance sheet with its 10-Q / results. So a period counts as public from the stored quarter
+# ending that day -- its `filed` -- and only when there is none, LINES_FILING_LAG_DAYS after it ended. A fixed lag
+# had read late 10-Ks before they were out (924 of 20,378 US years 2011-2021 filed more than 90 days after year end:
+# value_ranking review, 2026-11-14). A `filed` on or before its own period end is a forward-dated XBRL fact, never a
+# filing date (`_filed_ok`), and does not count.
+def lines_public(market: str, symbol: str) -> dict:
+    """{period_end: the date its statement lines became public} for the periods a stored quarter dates; a
+    period missing here is public LINES_FILING_LAG_DAYS after it ended (`line_public`)."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT period_end, filed FROM quarterly_results WHERE market=%s AND symbol=%s AND filed > period_end",
+                    (market, symbol))
+        return dict(cur.fetchall())
+
+
+def line_public(period_end: dt.date, public: dict | None) -> dt.date:
+    """When a statement period's lines became public: its filing (`lines_public`), else the fixed lag."""
+    return (public or {}).get(period_end) or period_end + dt.timedelta(days=LINES_FILING_LAG_DAYS)
 
 
 def load_lines(market: str, symbol: str) -> dict:
     """{period_type: {period_end: {line: value}}} for one company (EPS scale slips corrected: `eps_scale`,
-    against the quarter's stored share count where there is one).
+    against the quarter's share count where there is one; SEC share-count unit slips corrected, `sec_share_slips`).
 
-    Inside a backtest stage's boundary (`asof`) a period is known only LINES_FILING_LAG_DAYS after it
-    ended: the lines carry no filing date, so a year that closed inside the window but was reported
-    after it is left out."""
+    Inside a backtest stage's boundary (`asof`) a period is known only once its filing was (`line_public`:
+    the 10-K / 10-Q / results filing that brought it, else LINES_FILING_LAG_DAYS after it ended), so a year that
+    closed inside the window but was reported after it is left out."""
     out: dict = defaultdict(lambda: defaultdict(dict))
     sql, args = "SELECT period_type, period_end, line, value FROM financial_lines WHERE market=%s AND symbol=%s", (market, symbol)
-    if asof.end_date():
-        sql, args = sql + " AND period_end <= %s", args + (asof.end_date() - dt.timedelta(days=LINES_FILING_LAG_DAYS),)
     with db.get_connection().cursor() as cur:
         cur.execute(sql, args)
-        for pt, e, line, v in cur.fetchall():
+        rows = cur.fetchall()
+    end = asof.end_date()
+    public = lines_public(market, symbol) if end else None
+    for pt, e, line, v in rows:
+        if end is None or line_public(e, public) <= end:
             out[pt][e][line] = v
-        cur.execute("SELECT period_end, shares FROM quarterly_results WHERE market=%s AND symbol=%s", (market, symbol))
-        shares = dict(cur.fetchall())
-    slips = _nse_slips_raw(market, symbol)
+    raw = _quarters_raw(market, symbol)
+    slips = nse_slips(raw)
+    fixed = _fix_sec([dict(r) for r in raw])
+    shares = {r["period_end"]: r["shares"] for r in fixed}
+    sec_ends = {r["period_end"] for r in fixed if r.get("source") == "sec_edgar"}
+    for e, lines in (out.get("BS") or {}).items():
+        count, ref = lines.get("shares"), shares.get(e)
+        if e in sec_ends and count and count > 0 and ref and ref > 0:
+            lines["shares"] = _unit_fixed(count, ref)
     for pt, periods in out.items():
         for e, lines in periods.items():
             fix = slips.get(e)

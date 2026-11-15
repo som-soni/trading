@@ -1441,7 +1441,7 @@
       "position_pct": 8.0,
       "season_top": 20.0
     },
-    "version": "1.7"
+    "version": "1.8"
   },
   "pocket_pivot": {
     "family": "pocket_pivot",
@@ -1530,7 +1530,7 @@
       "skip": 21,
       "top_n": 10
     },
-    "version": "1.7"
+    "version": "1.8"
   },
   "rs_leaders": {
     "family": "rs_leaders",
@@ -2019,7 +2019,7 @@
       "skip": 21,
       "top_n": 20
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "wyckoff_spring": {
     "family": "wyckoff_spring",

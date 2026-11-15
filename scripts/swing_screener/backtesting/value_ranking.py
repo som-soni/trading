@@ -14,7 +14,8 @@ Reuse, not a second copy:
     a value book buys what has fallen, and the trend test would remove exactly those names;
   * the filings are `financials.load` / `financials.load_lines` (both stop at a stage's boundary, asof);
     a quarter counts from its filing date (`fundamental_filter._available`), a statement line
-    `LINES_FILING_LAG_DAYS` after its period (`quality_momentum._latest`), ROE is `fundamentals.growth.roe`;
+    public from its filing (`financials.line_public`, else `LINES_FILING_LAG_DAYS` after its period;
+    `quality_momentum._latest`), ROE is `fundamentals.growth.roe`;
   * prices are split-adjusted, filings are not: market value is the latest quarter's share count times
     the adjusted close times every split after the day that count was reported (`spec.split_factor_after`),
     so a split between the filing and the rebalance cannot halve or double a ratio.
@@ -85,11 +86,11 @@ def _ttm(rows: list[dict], field: str) -> float | None:
     return float(sum(r[field] for r in q))
 
 
-def _latest(periods: dict, d: dt.date) -> dict | None:
+def _latest(periods: dict, d: dt.date, public: dict | None = None) -> dict | None:
     """The newest statement period public on `d` and no older than VR_STATEMENT_STALE_DAYS
     (quality_momentum's reader, with this strategy's own freshness limit)."""
     from .quality_momentum import _latest as latest
-    hit = latest(periods, d, VR_STATEMENT_STALE_DAYS)
+    hit = latest(periods, d, VR_STATEMENT_STALE_DAYS, public)
     return hit[1] if hit else None
 
 
@@ -103,8 +104,8 @@ def fundamentals_on(rows: list[dict], lines: dict, d: dt.date) -> dict | None:
     if not rows or (d - rows[-1]["period_end"]).days > STALE_RESULTS_DAYS:
         return None
     last = rows[-1]
-    bs = _latest(lines.get("BS") or {}, d) or {}
-    fy = _latest(lines.get("FY") or {}, d) or {}
+    bs = _latest(lines.get("BS") or {}, d, lines.get("_public")) or {}
+    fy = _latest(lines.get("FY") or {}, d, lines.get("_public")) or {}
     equity = last.get("equity") if last.get("equity") is not None else bs.get("equity")
     fcf = (fy["cfo"] - (fy.get("capex") or 0.0)) if fy.get("cfo") is not None else None
     # SEC restates a quarter's weighted shares for any split before the filing, so the count is on the
@@ -168,7 +169,8 @@ class ValueFilter:
     def lines(self, sym: str) -> dict:
         if sym not in self._lines:
             from ..marketdata import financials
-            self._lines[sym] = financials.load_lines(self.market, sym) if sym in self.quarters else {}
+            self._lines[sym] = ({**financials.load_lines(self.market, sym),
+                                 "_public": financials.lines_public(self.market, sym)} if sym in self.quarters else {})
         return self._lines[sym]
 
     def _closes(self, d: dt.date, symbols: list) -> dict:
@@ -262,6 +264,7 @@ DOC = {
                    "sales-to-price and free-cash-flow yield, from the filings public on the rebalance date; "
                    "equal weight, rebalanced every quarter-end.",
     "status": (
+        "v1.2 (2026-11-15) fixed the share counts and filing dates it reads: re-run on the optimise stage (in-sample, US 2013-2021) it gives 9.51%, -58.9%, Sharpe 0.47, 255 trades (excess -4.50 points), against 9.42%, -55.2%, 279 trades for v1.1 on the same day; about a third of the book changed, but the verdict below stands (still fails both counts by a wide margin). The v1.0 figures below are pre-fix. "
         "v1.1 (2026-11-14) changed only how the turnover floor reads trading after a special dividend or "
         "demerger: re-run on the optimise stage it gives 9.32%, -55.2%, 279 trades, the same as v1.0, so the "
         "figures below describe the current rules. "
@@ -313,12 +316,17 @@ DOC = {
         "most liquid names, ETFs and funds excluded, at least {lookback} + {skip} sessions of history (the "
         "momentum guard needs them). No 200-day trend test.",
         "Public by then. A quarter counts from its filing date, or {FILING_LAG_DAYS} days after it ended when the "
-        "source recorded none; a fiscal year's or balance sheet's lines {LINES_FILING_LAG_DAYS} days after the "
-        "period ended. A company whose latest quarter is over {STALE_RESULTS_DAYS} days old, or whose latest "
+        "source recorded none; a fiscal year's or balance sheet's lines from the filing that brought them (the "
+        "10-K or 10-Q ending that day), or {LINES_FILING_LAG_DAYS} days after the period ended when no stored "
+        "quarter dates it. A figure filed on or before its own period end is a mis-tagged fact and is ignored. "
+        "A company whose latest quarter is over {STALE_RESULTS_DAYS} days old, or whose latest "
         "fiscal year or balance sheet is over {VR_STATEMENT_STALE_DAYS} days old, has no data for it.",
         "Market value: the latest quarter's share count times the rebalance close, times every split after the "
-        "day that count was reported (stored prices are adjusted for later splits, filings are not). A company "
-        "whose statements are in another currency than its price is not valued.",
+        "day that count was reported (stored prices are adjusted for later splits, filings are not). A US count "
+        "filed in thousands or millions is first scaled back by the power of a thousand between it and the count "
+        "its own filing implies (net income / EPS), and dropped when they disagree with no such power to explain "
+        "it (no count, no market value). A company whose statements are in another currency than its price is "
+        "not valued.",
         "Earnings yield, book-to-price, sales-to-price, free-cash-flow yield: as in How it works; a sum of "
         "quarters needs four consecutive ones. Negative earnings, book or free cash flow give a negative ratio, "
         "which ranks at the expensive end.",
@@ -368,8 +376,10 @@ class ValueRankingStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "value_ranking"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-11-15",
+         "Data layer (marketdata/financials.py), from the value_ranking and quality_momentum reviews of 2026-11-14: (1) SEC share counts filed in thousands or millions are scaled back by the power of a thousand between them and the count the same filing implies (net income / EPS; the company's median where that filing's EPS is itself a slip), and dropped when their own filing contradicts them with no such power (sec_share_slips): 1,425 US quarters 2011-2021 corrected, 13 dropped, across 427 companies. Stored rows keep what the filing says. (2) A fact filed on or before its own period end is not a report: the parser no longer keeps it (it had won as the earliest filing and pushed the real first report out: LGND's 'Q4 2014' filed 2014-12-01) and load leaves out any stored row like it; the 13 affected companies were re-fetched. (3) A fiscal year's or balance sheet's statement lines count from the filing that brought them (the 10-K / 10-Q / results filing ending that day, financials.line_public), not a fixed 90 days: 924 US 10-Ks 2011-2021 were filed later than that. Here: market value no longer comes out 1,000-1,000,000x too small for a slipped count (MRK, KO, MDLZ, COP, GRMN, AXP, PCAR, GGG, GPC were bought as absurdly cheap), and FCF yield and total assets are read only once the 10-K was out. US optimise (in-sample, 2013-2021), same day and data: 9.42% CAGR, -55.2% max DD, Sharpe 0.48, 279 trades -> 9.51%, -58.9%, 0.47, 255 trades (excess -4.59 -> -4.50 points against SPY 14.01%). Bumped by hand: the constants that moved are in the data layer, not this module."),
         ("1.1", "2026-11-14",
          "The loop it shares with momentum_baseline (1.5): The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. In memory on the optimise stage: India unchanged (9.38%, 107 trades); US unchanged too (9.42%, 279 trades). Bumped because the floor's reading changed for every stock in the 20 sessions after a credited action. Bumped by hand: no numeric constant moved."),
         ("1.0", "2026-11-14",
