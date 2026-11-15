@@ -6126,7 +6126,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   root.innerHTML = LOADING;
   const [d] = await Promise.all([api(`/api/strategies/${encodeURIComponent(key)}`).catch(() => null), loadEdges()]);
   if (!alive()) return;
-  if (!d) { root.innerHTML = `<div class="empty"><b>Strategy not found</b><div class="muted"><a href="#/strategies">Today's setups</a></div></div>`; return; }
+  if (!d) { root.innerHTML = `<div class="empty"><b>Strategy not found</b><div class="muted"><a href="#/strategies">All strategies</a></div></div>`; return; }
   const trades = d.kind === "screener";
   // A portfolio strategy has no per-symbol setups to screen for -- it holds a ranked book. Its
   // equivalent of "Candidates" is what it HOLDS, taken from the latest run's still-open
@@ -6159,7 +6159,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   tab = tabs.some(([k]) => k === tab) ? tab : "rules";
   document.title = `${d.name} · Strategies · Trading`;
   const kind = { benchmark: "Benchmark", "long-term": "Long-term investing", screener: "Trading strategy" }[d.kind] || "Strategy";
-  root.innerHTML = `<div class="crumbs">${kind}</div>
+  root.innerHTML = `<div class="strat-crumbs-host"></div>
     <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
       ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
     ${EDGE?.strategies?.[key] ? `<div class="edge-row">${MKTS.map((m) => edgeChip(key, m.key)).join("")}</div>` : ""}
@@ -6167,6 +6167,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
     ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(statusVerdict(d.status))}">${esc(shortStatus(d.status))}</span></div>` : ""}
     <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of ${MKTS.map((m) => edgeDot(d.variant_of.key, m.key)).join("")}<a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}${d.live_variant ? ` The daily screen currently lists them under the variant <b>${esc(d.live_variant.name)}</b> (provisional — see <a href="#/strategies/${encodeURIComponent(key)}/setups">Candidates</a>).` : ""}${d.market_rules ? Object.entries(d.market_rules).map(([m, r]) => ` <b>${esc((MKTS.find((x) => x.key === m) || {}).name || m)} runs its own rules:</b> ${esc(r.name)} (${Object.entries(r.const || {}).map(([k, v]) => `<code>${esc(k)}=${esc(v)}</code>`).join(" ")}) — ${mdInline(r.why)}`).join("") : ""}</p>
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
+  stratCrumbs(root.querySelector(".strat-crumbs-host"), key, STRAT_KIND[d.kind] || kind);
   const host = root.querySelector("#stab");
   if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey, d);
   if (tab === "holdings") return portfolioTab(host, alive, d, key);
@@ -9329,7 +9330,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ⌘K / Ctrl+K: go anywhere — a page by name, or a stock by symbol or company name
-function openPalette() {
+function openPalette(prefill = "") {
   if (document.querySelector(".palette")) return;
   const pages = [...SECTIONS.flatMap((s) => s.pages.map(([p, t, d]) => ({ kind: "page", label: t, sub: `${s.label} · ${d}`, href: tabRoot(p) }))),
     ...THEMES.map(([k, t]) => ({ kind: "page", label: `Theme: ${t}`, sub: "Change the colour theme", theme: k }))];
@@ -9339,7 +9340,7 @@ function openPalette() {
   const inp = m.querySelector("input"), host = m.querySelector(".pal-list");
   let items = [], cur = 0, timer, seq = 0, state = "";   // state: "" | "searching" | "failed"
   const draw = () => {
-    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : x.kind === "recent" ? "Recent" : x.kind === "learn" ? "Learn" : MKT_BADGE[x.market]}</span>
+    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : x.kind === "strategy" ? "Strategy" : x.kind === "recent" ? "Recent" : x.kind === "learn" ? "Learn" : MKT_BADGE[x.market]}</span>
       <b>${esc(x.label)}</b><span class="muted small">${esc(x.sub || "")}</span></div>`).join("")
       + (state === "searching" ? '<div class="muted small pal-none"><span class="spin"></span> Searching stocks…</div>'
         : state === "failed" ? '<div class="small pal-none neg">Stock search failed — is the web server running?</div>'
@@ -9350,18 +9351,24 @@ function openPalette() {
     sub: `${Learn.FAMILY_LABEL[Learn.familyOf(x)]} · ${(Learn.GROUPS.find((g) => g[0] === x.group) || [])[1] || ""}`, href: `#/learn/${x.key}` }));
   api("/api/reports?kind=research").then((runs) => { runs.filter((x) => x.run.startsWith("learn-")).forEach((x) =>
     learnItems.push({ kind: "learn", label: guideLabel(x), sub: "Learn · guide", href: `#/learn/${x.run.replace(/^learn-/, "")}` })); }).catch(() => {});
+  // every strategy by name, so "Go to" on a strategy's page (and ⌘K anywhere) jumps to one
+  const stratItems = [];
+  api("/api/strategies").then((xs) => { xs.forEach((x) => stratItems.push({ kind: "strategy", label: x.name, sub: `Strategy · ${x.style_label || ""}`, href: `#/strategies/${x.key}` })); if (inp.value.trim()) update(); }).catch(() => {});
   const recent = (store.get("recentVisits", []) || []).filter((x) => x.hash !== location.hash)
     .map((x) => ({ kind: "recent", label: x.label, sub: x.hash.replace(/^#\//, "").split("/")[0], href: x.hash }));
   const update = async () => {
     const q = inp.value.trim().toLowerCase(), my = ++seq;
     const pg = pages.filter((p) => !q || p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q));
     const lr = q ? learnItems.filter((x) => x.label.toLowerCase().includes(q)).slice(0, 5) : [];
-    items = q ? [...pg.slice(0, 6), ...lr] : [...recent, ...pg].slice(0, 24); cur = 0; state = q ? "searching" : ""; draw();
-    if (q.length < 1) return;
+    // "strategy " (the Go to button's prefill) lists every strategy; otherwise strategies whose name matches
+    const sq = q.replace(/^strategy\s*/, "");
+    const sr = q ? stratItems.filter((x) => (q.startsWith("strategy") && !sq) || (sq && x.label.toLowerCase().includes(sq))).slice(0, q.startsWith("strategy") ? 60 : 5) : [];
+    items = q ? [...sr, ...pg.slice(0, 6), ...lr] : [...recent, ...pg].slice(0, 24); cur = 0; state = q ? "searching" : ""; draw();
+    if (q.length < 1 || q.startsWith("strategy")) { state = ""; draw(); return; }
     const syms = await api(`/api/symbols?q=${encodeURIComponent(q)}&limit=8`).catch(() => null);
     if (my !== seq) return;
     state = syms ? "" : "failed";
-    items = [...pg.slice(0, 5), ...lr, ...(syms || []).map((r) => ({ kind: "symbol", market: r.market, label: r.symbol.replace(/\.NS$/, ""), sub: r.name || r.sector || "",
+    items = [...sr, ...pg.slice(0, 5), ...lr, ...(syms || []).map((r) => ({ kind: "symbol", market: r.market, label: r.symbol.replace(/\.NS$/, ""), sub: r.name || r.sector || "",
       href: `#/chart/${r.market}/${encodeURIComponent(r.symbol)}` }))];
     cur = 0; draw();
   };
@@ -9377,7 +9384,7 @@ function openPalette() {
   };
   host.onclick = (e) => { const it = e.target.closest("[data-i]"); if (it) pick(+it.dataset.i); };
   m.onclick = (e) => { if (e.target === m) close(); };
-  inp.focus(); update();
+  inp.value = prefill; inp.focus(); update();
 }
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
@@ -10186,7 +10193,7 @@ async function todayPage(alive, mkt) {
         <div class="td-sub">Tradeable, by strategy</div>
         <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
         <div class="td-legend">${edgeLegend()}</div>
-        <div class="td-foot"><a class="small" href="#/strategies">All setups, with entry, stop and target →</a></div></div>
+        <div class="td-foot"><a class="small" href="#/setups">All setups, with entry, stop and target →</a></div></div>
       <div class="sec-card td-card">${tdHead(`Screener picks · ${esc(mktInfo(mkt).name)}`)}
         <div class="muted small td-explain">Every stock a strategy's latest run marks as a trade or on watch, kept while it stays flagged — so it also remembers when each stock joined.</div>
         ${picksSummary(mkt, mine, fresh)}
