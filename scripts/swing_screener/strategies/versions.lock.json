@@ -1646,6 +1646,19 @@
     },
     "version": "1.3"
   },
+  "short_reversal": {
+    "family": "short_reversal",
+    "fingerprint": "afbd4c48",
+    "params": {
+      "_key": "short_reversal",
+      "cost_bps": 20.0,
+      "liquidity_top": 300,
+      "lookback": 5,
+      "skip": 0,
+      "top_n": 20
+    },
+    "version": "1.0"
+  },
   "stage4_shorts": {
     "family": "stage4_shorts",
     "fingerprint": "858b315a",
