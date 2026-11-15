@@ -5829,10 +5829,10 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
 
 /** The measured outcome, per market, at the head of the Rules tab.
  *
- *  One row per stage (full period, out-of-sample, in-sample, and legacy where pre-stage runs exist):
- *  the BEST configuration run in that stage's standard window, ranked by excess CAGR -- the number the
- *  rest of the app decides on. Runs over different windows never rank against each other. A run from a
- *  superseded spec id is marked, the same way the Backtests tab marks it.
+ *  The path a rule set takes, per market: the BEST configuration in-sample (by excess CAGR, the number
+ *  the rest of the app decides on), then that same configuration out-of-sample, then over the full
+ *  period. A pre-stage run shows only when it beats the in-sample best and has no in-sample run. A run
+ *  from a superseded spec id is marked, the same way the Backtests tab marks it.
  */
 /** A backtest's stage (backtesting/windows.py), labelled from the run's OWN window, never hard-coded:
  *  out-of-sample (verify) is the number to believe, in-sample (optimise) flatters the rules because
@@ -5896,45 +5896,48 @@ function perfGlance(d, key) {
       <td class="num">${esc(s.sharpe || "")}</td>
       <td class="num" title="${s.trades ? `share of ${esc(s.trades)} trades that made money` : "share of trades that made money"}">${esc(s.win_rate || "—")}</td>
       <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
-  // One row per stage per market: the BEST configuration run in that stage's standard window. A
-  // configuration is a version plus any experiment settings (v1.2 with a $100m turnover floor is a
-  // different candidate from plain v1.2), each counted by its newest run in the window, ranked by
-  // excess CAGR. Runs over other windows never rank against these: that would crown whichever had the
-  // kinder market. Legacy (pre-stage) runs rank only within the window holding the most of them.
-  const winOf = (b) => `${b.window_start}|${b.window_end}`;
+  // The path a rule set takes, one row per step, per market: pick the BEST configuration in-sample,
+  // then judge THAT configuration out-of-sample, then read it over the full period. A configuration is
+  // a version plus any experiment settings (v1.2 with a $100m turnover floor is a different candidate
+  // from plain v1.2), counted by its newest run in the stage's standard window and ranked by excess
+  // CAGR. Only the in-sample step ranks: the out-of-sample and full rows are the in-sample winner's
+  // own runs ("—" until they exist), never the best of several -- that would be selection on the
+  // hold-out. Runs over other windows never rank against these, since that crowns the kinder market.
   const cfgOf = (b) => `${b.spec_id}|${(b.overrides || []).join(" ")}`;
   const rank = (xs) => {
     const seen = new Map();
     for (const b of xs) if (b.spec_id && pct(b.summary.excess_cagr) !== null && !seen.has(cfgOf(b))) seen.set(cfgOf(b), b);
     return [...seen.values()].sort((a, b) => pct(b.summary.excess_cagr) - pct(a.summary.excess_cagr));
   };
-  const STAGES = [["full", "Full period"], ["verify", "Out-of-sample"], ["optimise", "In-sample"]];
+  const inWin = (pool, stage) => { const w = st[stage] || {};
+    return pool.filter((b) => b.stage === stage && (!w.start || b.window_start === w.start)); };
   const mkts = [...new Set(all.map((b) => b.market))].sort();
-  const emptyRow = (m, first, stageHtml, why) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
-      <td>—</td><td>${stageHtml}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+  const emptyRow = (m, first, ver, stageHtml, why) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
+      <td>${ver}</td><td>${stageHtml}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
       <td class="small">${why}</td></tr>`;
+  const dimChip = (text) => `<span class="stg dim">${text}</span>`;
   const rows = mkts.map((m) => {
     const pool = all.filter((b) => b.market === m);       // newest first; experiments compete too
     const out = [];
-    for (const [stage, text] of STAGES) {
-      const w = st[stage] || {};
-      const inWin = pool.filter((b) => b.stage === stage && (!w.start || b.window_start === w.start));
-      const ranked = rank(inWin);
-      const tip = stage === "verify"
-        ? "best of the out-of-sample runs: picking a rule set by this is selection on the hold-out, so treat it as a read, not a verdict"
-        : "the highest excess CAGR among the configurations run in this window";
-      if (ranked.length) out.push(row(ranked[0], m, !out.length, ranked.length > 1 ? `best of ${ranked.length}` : "only run"));
-      else out.push(emptyRow(m, !out.length, `<span class="stg dim">${text}</span>`, "no run yet"));
-      if (ranked.length) out[out.length - 1] = out[out.length - 1].replace('title="Open this run"', `title="Open this run — ${esc(tip)}"`);
+    const ranked = rank(inWin(pool, "optimise"));
+    const best = ranked[0] || null;
+    if (best) out.push(row(best, m, true, ranked.length > 1 ? `best of ${ranked.length}` : "only run"));
+    else out.push(emptyRow(m, true, "—", dimChip("In-sample"), "no in-sample run yet"));
+    if (best) {
+      const vlabel = `v${esc(verOf(best))}${(best.overrides || []).length ? ` <span class="muted small">+ ${esc(best.overrides.join(" "))}</span>` : ""}`;
+      // a superseded version cannot be re-run: the code now holds newer rules
+      const why = isOld(best.spec_id) ? "older rules — restore them as the current version to run this step" : "not run yet";
+      for (const [stage, text] of [["verify", "Out-of-sample"], ["full", "Full period"]]) {
+        const own = inWin(pool, stage).find((b) => cfgOf(b) === cfgOf(best));
+        out.push(own ? row(own, m, false, "same config") : emptyRow(m, false, vlabel, dimChip(text), why));
+      }
     }
-    const legacy = pool.filter((b) => b.stage === "legacy");
-    if (legacy.length) {
-      const groups = new Map();
-      for (const b of legacy) { if (!groups.has(winOf(b))) groups.set(winOf(b), []); groups.get(winOf(b)).push(b); }
-      const biggest = [...groups.values()].sort((x, y) => rank(y).length - rank(x).length)[0];
-      const ranked = rank(biggest);
-      if (ranked.length) out.push(row(ranked[0], m, false, ranked.length > 1 ? `best of ${ranked.length}` : "only run"));
-    }
+    // A pre-stage run chose its own years. It shows only when it beats the in-sample winner AND its
+    // configuration has no in-sample run -- otherwise that run is the comparable number for it.
+    const ins = new Set(inWin(pool, "optimise").map(cfgOf));
+    const leg = rank(pool.filter((b) => b.stage === "legacy"))[0];
+    if (leg && !ins.has(cfgOf(leg)) && (!best || pct(leg.summary.excess_cagr) > pct(best.summary.excess_cagr)))
+      out.push(row(leg, m, false, isOld(leg.spec_id) ? "older rules, no in-sample run" : "needs in-sample run"));
     return out.join("");
   }).join("");
 
@@ -5952,7 +5955,8 @@ function perfGlance(d, key) {
       <b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
-      Each row is the <b>best</b> configuration run in that stage's window — a version, or a version with experiment settings (shown as <i>+ …</i>) — ranked by excess CAGR; <b>Legacy</b> runs predate stages and rank only among runs sharing their years.
+      The <b>in-sample</b> row is the best configuration — a version, or a version with experiment settings (shown as <i>+ …</i>) — by excess CAGR; the out-of-sample and full rows are that same configuration's runs, "—" until they exist.
+      A <b>legacy</b> run (made before stages, over its own years) shows only when it beats the in-sample best and its configuration has no in-sample run yet.
       ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}Click a row for the report, or see
       <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
 }
