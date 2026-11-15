@@ -580,6 +580,22 @@
     },
     "version": "1.0"
   },
+  "golden_cross": {
+    "family": "golden_cross",
+    "fingerprint": "42fce059",
+    "params": {
+      "MAX_STOP_PCT": 20.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "STOP_PCT": 15.0,
+      "_key": "golden_cross",
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "ibs_reversion": {
     "family": "ibs_reversion",
     "fingerprint": "548fe195",
