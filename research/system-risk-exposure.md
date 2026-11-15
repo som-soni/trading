@@ -6,6 +6,8 @@ and what the creators said they do.
 
 **In short**
 
+- **Capital (§0):** ₹20L account, 1% (₹20,000) max risk per trade; ₹5L to a monthly-rebalanced momentum book, ₹15L
+  to the swing and position books. Review on 2027-02-15.
 - Three **risk tiers** — normal, reduced, probe — chosen each day by the [daily market review](system-daily-market-review.md).
   A probe is a real trade at a tiny fraction of normal risk: being early costs almost nothing.
 - **Progressive exposure**: open small, earn the right to full size with closed winners, drop back to pilot size after
@@ -17,13 +19,28 @@ and what the creators said they do.
 
 ---
 
+## 0. Capital (set 2026-11-15, review 2027-02-15)
+
+| Item | Value | How it is used |
+|---|---|---|
+| **Account** | **₹20,00,000** (India) | The equity every R is taken from |
+| **Max risk per trade (R)** | **1% = ₹20,000** | Entry to stop × shares ≤ ₹20,000. The screens and setups already size at this (India market config: account ₹20L, risk 1%, high-volatility days 0.5%) |
+| **Momentum book** | **₹5,00,000** | A monthly-rebalanced ranking book, sized by the book's own value and the strategy's weights — not by R. Its stocks carry no stop, so they use no part of the R budget. Strategy: to choose (India momentum is the only family here with an out-of-sample edge; dual-momentum combo has the shallowest drawdowns) |
+| **Swing / position books** | **₹15,00,000** | Every per-stock trade, sized by R. Cash, not R, is the binding limit: positions must fit in the ₹15L |
+| **Largest position** | ₹5,00,000 (25% of the account) | The screens' cap; with ₹15L for the swing books that is three full positions at most |
+| **Review** | **2027-02-15**, three months on | Revisit the ₹5L / ₹15L split and R against the journal: realised R per trade, drawdown, how often the cash limit bound |
+
+**Sizing a trade:** shares = ₹20,000 ÷ (entry − stop), then cut to fit the position cap (₹5L) and the swing books' free
+cash. Example: entry ₹500, stop ₹470 → ₹30 risk a share → 666 shares, ₹3.33L, inside both caps. A stop 2% away
+(entry ₹500, stop ₹490) would ask for 2,000 shares = ₹10L, so the cap cuts it to 1,000 shares and the trade risks only ₹10,000.
+
 ## 1. Risk tiers
 
 | Tier | Risk per trade | When | Reference points |
 |---|---|---|---|
-| **Normal** | R = **to decide** | The daily-review row allows the trade and no override applies | Minervini spec strategy: 1% of equity (SL-04); [Stage 4 shorts](learn-strat-stage4-shorts.md): 0.5% per short |
-| **Reduced** | ½ R | One override applies, or the "uptrend, narrowing" row | The repository's progressive-exposure pilot is ½ of the risk budget (PE-02) |
-| **Probe** | ≤ 0.1 R | A setup I like on a day I don't trust — or the first trades after a correction | Luk: 0.02–0.1% of the account per attempt on a poor day for shorts |
+| **Normal** | R = **1% of equity, ₹20,000** (§0) | The daily-review row allows the trade and no override applies | Minervini spec strategy: 1% of equity (SL-04); [Stage 4 shorts](learn-strat-stage4-shorts.md): 0.5% per short |
+| **Reduced** | ½ R = ₹10,000 | One override applies, or the "uptrend, narrowing" row | The repository's progressive-exposure pilot is ½ of the risk budget (PE-02) |
+| **Probe** | ≤ 0.1 R = ₹2,000 | A setup I like on a day I don't trust — or the first trades after a correction | Luk: 0.02–0.1% of the account per attempt on a poor day for shorts |
 
 **Setting R: the tolerance check** (a Reddit post, Nov 2026, "if a loss hurts, your size is too big"). *Proposed.* When I set
 normal R, choose it so that a full stop-out does not change how I take the next trade. If a 1R loss still bothers me a
@@ -105,7 +122,8 @@ never as probes — a probe must be cheap even when it gaps.
 
 ## 7. Decisions for me to make
 
-1. My base risk R per trade, for longs and for shorts.
+1. ~~My base risk R per trade~~ — set 2026-11-15: 1% of ₹20L for longs (§0). Still open: R for shorts.
+1a. Which strategy runs the ₹5L momentum book.
 2. Total open risk and short risk caps.
 3. Whether to adopt both the market filter and progressive exposure (smoother equity, lower return) or the filter alone.
 4. Which session I trade with full attention — India by day, the US by night — and the size cap for the other.
