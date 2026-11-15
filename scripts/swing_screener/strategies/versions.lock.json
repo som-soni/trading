@@ -1432,6 +1432,31 @@
     },
     "version": "1.6"
   },
+  "rsi_divergence": {
+    "family": "rsi_divergence",
+    "fingerprint": "97bde09a",
+    "params": {
+      "DIV_LOOK": 40,
+      "HOLD_BARS": 10,
+      "MAX_STOP_PCT": 15.0,
+      "MIN_SEP": 5,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "OVERSOLD": 35,
+      "SWING_K": 3,
+      "_key": "rsi_divergence",
+      "expiry_bdays": 3,
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "sector_rotation": {
     "family": "sector_rotation",
     "fingerprint": "9f55e557",
