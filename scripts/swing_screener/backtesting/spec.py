@@ -579,6 +579,8 @@ def results_blackout(signals: list, market: str, days: int, by_announcement: boo
     XBRL broadcast of results already out at the board meeting arrives weeks later, and until minervini 1.52 it
     counted as an announcement of its own, so India's blackout also blocked the fortnight just after results.
     On the 1.51 India optimise run that removed 17 trades with nothing due; `first_per_quarter=False` restores it.
+    A US 8-K 2.02 is never grouped (minervini 1.69): its period end is only the calendar quarter before it, and
+    grouped, AbbVie's early-quarter update hid its results three weeks later in every quarter.
 
     `strict` (minervini RESULTS_BLACKOUT_STRICT, 1.66): an announcement ON the signal date blocks too (by default only
     a later one does, so a signal on results day was bought the next open, into the reaction), and each kept signal

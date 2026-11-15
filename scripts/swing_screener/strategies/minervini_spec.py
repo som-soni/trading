@@ -575,7 +575,8 @@ EARNINGS_BLACKOUT_DAYS = 14
 RESULTS_BY_ANNOUNCEMENT = 1
 # 1.52: 1 = a quarter is announced once, on its earliest record -- NSE's XBRL broadcast of results already
 # out at the board meeting lands weeks later and is not a second announcement; 0 = every record counts, as
-# in 1.51 (India then read ~7 dates per company-year). Read after the scan.
+# in 1.51 (India then read ~7 dates per company-year). Since 1.69 a US 8-K 2.02 always counts on its own
+# date (its period end is only the calendar quarter before it). Read after the scan.
 RESULTS_FIRST_PER_QUARTER = 1
 # 1.66, research switch (0 = off, 1.65): F1 + F3 of the trade reviews. 1 = the blackout also blocks results ON the
 # signal date (LTTS 17 Jan 2019, MARICO 29 Apr 2016 were bought the next open, into the reaction), and a resting order
@@ -1247,7 +1248,8 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.68"
+    version = "1.69"
+    # 1.69 changes only the results blackout's US dates, read after the scan: 1.64's cached rows still stand.
     # 1.68 changes the fill session's stop test, the RS rating's universe, the trades' base number and the live
     # screen -- all after the scan or live only -- so 1.64's cached rows still stand.
     # 1.67 adds the US rules (market_consts): exits and the market gate's index test, read after the scan except
@@ -1255,6 +1257,14 @@ class MinerviniSpecStrategy(Strategy):
     # cached rows stand. A variant turning on one evaluate() reads (RECLAIM_ON, FLAT_PIVOT_HIGHEST) rescans.
     signal_version = "1.64"
     changelog = (
+        ("1.69", "2026-11-15",
+         "The US results blackout keeps every results date (REVIEW-2026-11-08 item 2, re-applied on today's code). "
+         "Since 1.52 each quarter's records are grouped by period end, but a US 8-K Item 2.02 carries only the "
+         "calendar quarter end before its filing, so two 8-Ks in one calendar quarter kept only the earlier: AbbVie "
+         "files an update early each quarter, and its results (2024-04-26, 07-25, 10-30) were all dropped for the "
+         "update three weeks before; 11,878 US groups spanned more than 14 days. US 8-Ks now each count on their own "
+         "date, so every US run of 1.52 to 1.68 blocked too few trades (RESULTS_BLACKOUT_STRICT reads the same dates); "
+         "India is unchanged. After the scan, so signal_version stays 1.64. Results move in the US."),
         ("1.68", "2026-11-14",
          "Bug fixes from the 2026-11-14 reviews of this strategy and minervini_coil; no rule was tuned. (1) EX-01 on the "
          "fill session (simulator, --exit-mode minervini): a buy at the open whose session then reached the stop is "
@@ -2167,6 +2177,8 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.69 fixes the US results blackout (1.52-1.68 dropped real US results dates; India unchanged); no 1.69 run "
+        "yet, so every US figure below comes from the under-blocking blackout. "
         "v1.68 (review bug fixes, judged as fixes, not tuned) optimise stage, 2013-2021, IN-SAMPLE: India 6.09% CAGR, "
         "-14.2% max drawdown, +0.44R over 290 trades (run #1811; 1.67: 10.31%, -18.0%, +0.89R over 181); US 11.12%, "
         "-19.8%, +0.53R over 334 (run #1812; 1.67: 10.83%, -18.9%, +0.45R over 342). India's fall comes from the "
@@ -2743,7 +2755,8 @@ class MinerviniSpecStrategy(Strategy):
         "earnings calendar; in a backtest from the recorded results announcements (RESULTS_BY_ANNOUNCEMENT "
         "is {RESULTS_BY_ANNOUNCEMENT}), or the filing date for a company with none recorded. A quarter counts "
         "once, on its earliest record (RESULTS_FIRST_PER_QUARTER is {RESULTS_FIRST_PER_QUARTER}): a filing "
-        "broadcast weeks after the board meeting is not a second announcement. RESULTS_BLACKOUT_STRICT "
+        "broadcast weeks after the board meeting is not a second announcement; every US 8-K with Item 2.02 "
+        "counts on its own date (since 1.69), early-quarter updates included. RESULTS_BLACKOUT_STRICT "
         "({RESULTS_BLACKOUT_STRICT}; 1.66, a research switch): results on the signal date block too, and a resting "
         "buy-stop is cancelled once its stock's next results fall within {EARNINGS_BLACKOUT_DAYS} days.",
         "The stock is too thin. It must trade at least {TURNOVER_FLOOR_BP_INR} basis points (India) or "
@@ -2951,7 +2964,7 @@ class MinerviniSpecStrategy(Strategy):
          "date block too, and a resting order is cancelled once results fall within the blackout; 0 = off."),
         ("Cheat distance above the 50-day", "CHEAT_MIN_SMA50_PCT", "1.66, research switch: a cheat (S3 / S4) "
          "whose buy sits less than this % above the 50-day is refused (0 = off)."),
-        ("One announcement per quarter", "RESULTS_FIRST_PER_QUARTER", "1.52: a quarter's earliest record is its announcement (1); 0 = every record counts, as in 1.51."),
+        ("One announcement per quarter", "RESULTS_FIRST_PER_QUARTER", "1.52: a quarter's earliest record is its announcement (1); 0 = every record counts, as in 1.51. A US 8-K counts on its own date either way (1.69)."),
         ("Preferred uptrend", "SMA200_RISING_PREF_BARS", "W5: sessions over which the 200-day should have risen."),
         ("Preferred uptrend required", "SMA200_PREF_REQUIRED", "1 = W5 holds the plan at WATCH (no new buy); 0 = noted only."),
         ("Turnover floor scales", "SCALE_TURNOVER_FLOOR", "1.45: 1 = the floor is a share of the day's market turnover (the 1,000 most-traded stocks); 0 = the fixed floors below (1.44)."),

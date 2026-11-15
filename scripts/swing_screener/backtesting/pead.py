@@ -819,8 +819,13 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.6"
+    version = "1.7"
     changelog = (
+        ("1.7", "2026-11-15",
+         "Mode 2 only (SURPRISE_MODE=2; modes 1 and 3 are unchanged): every US 8-K with Item 2.02 is an event on its "
+         "own date. financials.announcements grouped them by period end, which for an 8-K is only the calendar "
+         "quarter before its filing, so an early-quarter update hid the results three weeks later (AbbVie, every "
+         "quarter of 2024; 11,878 US groups spanned more than 14 days). India is unchanged."),
         ("1.6", "2026-11-14",
          "Data paths fixed (2026-11-14 review, P1, B2, B3 and the universe); the rules are unchanged in mode 1. "
          "(1) Results are dated by the RELEASE -- the earliest recorded announcement after the quarter end "

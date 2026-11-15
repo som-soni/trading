@@ -71,6 +71,7 @@ import os
 import time
 from collections import defaultdict
 
+import psycopg2.errors
 import requests
 
 from . import db
@@ -1075,6 +1076,11 @@ def announcements(market: str, first_per_quarter: bool = True) -> dict:
     quarter, so a 2017 broadcast carries a 2016 period end; its earliest record is the 2016 announcement.
     `first_per_quarter=False` returns every record, as minervini 1.51 and earnings_gaps 1.9 read them.
 
+    An SEC 8-K Item 2.02 (`sec_8k_202`) is never grouped: its period end is not the filing's, only the calendar
+    quarter end before its filing date (`sec_announcements`), so two 8-Ks in one calendar quarter are not one
+    quarter's records. Grouped, AbbVie's early-quarter update (2024-04-03) hid its results (2024-04-26) in every
+    quarter.
+
     A meeting dated in the future is returned too; a caller only ever asks about dates on or before the day it
     judges. Point in time: inside a backtest stage only announcements on or before its boundary are returned
     (the earliest is taken among those). Empty for a market with no announcement source, so a caller falls back
@@ -1085,12 +1091,12 @@ def announcements(market: str, first_per_quarter: bool = True) -> dict:
     if asof.end_date():
         sql, args = sql + " AND announced_at::date <= %s", args + (asof.end_date(),)
     if first_per_quarter:
-        sql += " GROUP BY symbol, period_end"
+        sql += " GROUP BY symbol, period_end, CASE WHEN source = 'sec_8k_202' THEN announced_at END"
     try:
         with db.get_connection().cursor() as cur:
             cur.execute(sql, args)
             rows = cur.fetchall()
-    except Exception:   # noqa: BLE001 -- the table does not exist until the first refresh
+    except psycopg2.errors.UndefinedTable:   # the table does not exist until the first refresh
         return {}
     out: dict = {}
     for sym, at in rows:

@@ -977,7 +977,7 @@
         "W5"
       ]
     },
-    "version": "1.68"
+    "version": "1.69"
   },
   "minervini_coil": {
     "family": "minervini",
@@ -1164,7 +1164,7 @@
       "position_pct": 8.0,
       "season_top": 20.0
     },
-    "version": "1.6"
+    "version": "1.7"
   },
   "pre_holiday": {
     "family": "pre_holiday",
