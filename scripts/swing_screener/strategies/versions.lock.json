@@ -1755,6 +1755,32 @@
     },
     "version": "1.6"
   },
+  "ttm_squeeze": {
+    "family": "ttm_squeeze",
+    "fingerprint": "c891c302",
+    "params": {
+      "BB_SD": 2,
+      "HOLD_BARS": 10,
+      "KC_ATR": 1.5,
+      "LEN": 20,
+      "MAX_STOP_PCT": 15.0,
+      "MIN_SQUEEZE_BARS": 5,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "STOP_ATR": 2,
+      "TRAIL_ATR": 2,
+      "_key": "ttm_squeeze",
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "turn_of_month": {
     "family": "turn_of_month",
     "fingerprint": "d4db0dad",
