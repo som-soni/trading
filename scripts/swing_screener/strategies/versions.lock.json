@@ -530,6 +530,17 @@
     },
     "version": "1.2"
   },
+  "ibs_reversion": {
+    "family": "ibs_reversion",
+    "fingerprint": "548fe195",
+    "params": {
+      "_key": "ibs_reversion",
+      "cost_bps": 5.0,
+      "ibs_entry": 0.2,
+      "max_hold": 5
+    },
+    "version": "1.0"
+  },
   "kell_cycle": {
     "family": "kell_cycle",
     "fingerprint": "f0f079ec",

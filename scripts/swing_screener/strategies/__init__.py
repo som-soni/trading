@@ -153,6 +153,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.dual_momentum import DualMomentumStrategy
     from ..backtesting.etf_swing import EtfSwingStrategy
     from ..backtesting.fno_income import FnoIncomeStrategy
+    from ..backtesting.ibs_reversion import IbsReversionStrategy
     from ..backtesting.ma_trend import MaTrendStrategy
     from ..backtesting.masonson_tqqq import MasonsonTqqqStrategy
     from ..backtesting.mean_reversion import MeanReversionStrategy
@@ -177,6 +178,7 @@ def portfolio_strategies() -> dict:
                                 # the swing catalogue's ranking and index-timing setups (2026-11-15)
                                 TurnOfMonthStrategy,
                                 PreHolidayStrategy,
+                                IbsReversionStrategy,
                                 )}
 
 

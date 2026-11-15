@@ -71,6 +71,7 @@ EVIDENCE = {
     "boucher_book": _e("D", 1, 0, 1, 0, "Mark Boucher, The Hedge Fund Edge (1999): the author's own model backtests, no independent test."),
     # snap-back
     "stock_reversion": _e("C", 1, 0, 1, 0, "Connors-style oversold buying in single stocks: published backtests; the underlying short-term reversal (Jegadeesh 1990, Lehmann 1990) is real, but costs take most of it."),
+    "ibs_reversion": _e("B", 1, 0, 1, 0, "Internal bar strength on index ETFs: Pagonidis (2013) and practitioner replications; published backtests, not peer-reviewed or independently costed."),
     "mean_reversion": _e("C", 1, 0, 1, 1, "Connors & Alvarez, Short Term Trading Strategies That Work (2008): RSI(2), %b and Double 7s on indices; weaker since publication."),
     # event
     "pead": _e("C", 2, 1, 1, 0, "Post-earnings drift: Bernard & Thomas (1989, 1990); Chan, Jegadeesh & Lakonishok (1996). Much weaker in US large caps since the 2000s."),
