@@ -35,6 +35,11 @@ from .trend_pullback import round_tick
 PASS_RULE = ("Pass criterion, fixed before any run and judged per market: in the optimise stage (2013-2021) the "
              "rules beat the market's benchmark CAGR (positive excess) AND make a positive average R after costs. "
              "A market that passes may go to one verify run; one that fails does not.")
+# The same rule for a ranking or timing book, which has no per-trade R: excess CAGR, and a max drawdown no
+# deeper than the benchmark's by more than 5 points.
+PASS_RULE_PORTFOLIO = ("Pass criterion, fixed before any run and judged per market: in the optimise stage (2013-2021) "
+                       "positive excess CAGR over the benchmark AND a max drawdown no more than 5 points deeper than "
+                       "the benchmark's. A market that passes may go to one verify run; one that fails does not.")
 
 
 class SwingSetupStrategy(Strategy):
