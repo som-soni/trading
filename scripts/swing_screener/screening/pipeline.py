@@ -187,7 +187,9 @@ def _run(
     elif refresh_universe and market_key == "india":
         universe.fetch_india_universe_from_yfinance_screener()
 
-    tickers = universe.load_universe(market_key)
+    # operating companies only (universe.non_stock_symbols): a liquid fund's straight-line drift reads as a
+    # perfect breakout to every price-pattern rule
+    tickers = universe.stock_universe(market_key)
     if limit:
         tickers = tickers[:limit]
     logger.info("Universe: %d tickers", len(tickers))

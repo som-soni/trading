@@ -86,39 +86,13 @@ def init_schema() -> None:
 
 # ---------------------------------------------------------------- which symbols count
 
-def _known_kinds(market: str) -> dict[str, str]:
-    """Stock-vs-fund labels already known: symbol_kind, plus what the fundamentals fetch learnt."""
-    kinds = {}
-    with db.get_connection().cursor() as cur:
-        cur.execute("SELECT symbol, kind FROM symbol_kind WHERE market=%s", (market,))
-        kinds.update(dict(cur.fetchall()))
-        cur.execute("SELECT to_regclass('fundamentals_raw') IS NOT NULL")
-        if cur.fetchone()[0]:
-            cur.execute("""SELECT symbol, COALESCE(raw->>'not_equity', raw->'info'->>'quoteType', 'EQUITY') FROM fundamentals_raw
-                           WHERE market=%s AND (raw ? 'not_equity' OR raw->'income' <> '{}'::jsonb)""", (market,))
-            for s, k in cur.fetchall():
-                kinds.setdefault(s, k)
-    return kinds
-
-
-# Unambiguous fund naming conventions only (a name ENDING in ETF/BEES, LIQUID, NIFTY, fund-house gold/silver
-# products...) — a loose pattern catches real companies (JETFREIGHT, GOLDENTOBC, CHEMBOND). Applied only to India
-# symbols not yet classified; classify() is the real test, this is the stopgap until it has run.
-import re
-_FUND_NAME = re.compile(r"(BEES|IETF|ETF)$|LIQUID|NIFTY|SENSEX|GILT|GSEC|LOWVOL|^(AONE|BBNPP|CHOICE|GROWW|HSBC|MO|UNION|LICNETF)(GOLD|SILVER)")
+_known_kinds = universe.known_kinds   # moved to marketdata/universe.py with the rule that reads it
 
 
 def eligible(market: str) -> list[str]:
-    """Common stocks of the market's universe: US as listed (the universe file already drops ETFs);
-    India minus everything classified as not an equity."""
-    syms = [s for s in universe.load_universe(market) if not s.startswith("^")]
-    if market == "us":  # closed-end funds / income trusts, flagged by the `classify` job (marketdata/subindustries.py)
-        kinds = _known_kinds(market)
-        return [s for s in syms if kinds.get(s) != "FUND"]
-    if market == "india":
-        kinds = _known_kinds(market)
-        syms = [s for s in syms if kinds.get(s) == "EQUITY" or (s not in kinds and not _FUND_NAME.search(s.removesuffix(".NS")))]
-    return syms
+    """Common stocks of the market's universe: `universe.stock_universe`, the one instrument-eligibility rule
+    (ETFs, liquid and debt funds, closed-end funds and trusts out) that the strategies read too."""
+    return universe.stock_universe(market)
 
 
 def classify(market: str, top: int = 1800, workers: int = 2) -> dict:

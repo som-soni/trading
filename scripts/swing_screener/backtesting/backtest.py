@@ -1236,7 +1236,7 @@ def _point_in_time_candidates(
     as collect_portfolio_signals); the candidate list comes back in universe order, identical
     to the serial path (workers=1, the default).
     """
-    tickers = universe.load_universe(market_key)
+    tickers = universe.stock_universe(market_key)   # operating companies only: universe.non_stock_symbols
     logger.info(
         "Universe: %d tickers; applying the pre-filter POINT-IN-TIME over the window...",
         len(tickers),

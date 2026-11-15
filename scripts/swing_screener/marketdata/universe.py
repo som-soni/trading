@@ -12,6 +12,7 @@ since the vast majority never reach a gate that needs their sector.
 import csv
 import datetime as dt
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -133,19 +134,40 @@ def fetch_us_universe_from_nasdaqtrader(min_price_hint: bool = True) -> Path:
 _NON_STOCK_NAME_KEYWORDS = ("INVIT", "TRUST", " FUND", "ETF")
 
 
-def non_stock_symbols(market: str) -> set[str]:
-    """Listed instruments that are not operating companies — ETFs, liquid funds, InvITs.
+def known_kinds(market: str) -> dict[str, str]:
+    """Stock-vs-fund labels already known: symbol_kind (the `classify` job's yfinance quoteType), plus what
+    the fundamentals fetch learnt."""
+    from . import db
+    kinds = {}
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT symbol, kind FROM symbol_kind WHERE market=%s", (market,))
+        kinds.update(dict(cur.fetchall()))
+        cur.execute("SELECT to_regclass('fundamentals_raw') IS NOT NULL")
+        if cur.fetchone()[0]:
+            cur.execute("""SELECT symbol, COALESCE(raw->>'not_equity', raw->'info'->>'quoteType', 'EQUITY') FROM fundamentals_raw
+                           WHERE market=%s AND (raw ? 'not_equity' OR raw->'income' <> '{}'::jsonb)""", (market,))
+            for s, k in cur.fetchall():
+                kinds.setdefault(s, k)
+    return kinds
 
-    The keyword list above is applied at FETCH time, on a universe refresh, so anything that
-    listed afterwards walks straight in. It did: a volatility-weighted momentum book ended up
-    98.8% in three money-market ETFs (DSP/Zerodha/Nifty 1D Rate), because an instrument with
-    almost no volatility scores near-infinite on both a vol-scaled rank and an inverse-vol weight.
 
-    Two conditions, not one. `symbol_industry` is only populated for quoteType EQUITY, so a
-    missing row is the authoritative signal — but coverage is 93% in India, so absence alone would
-    also cut real small caps. Requiring the NAME to say fund/ETF as well makes "TRUST" safe:
-    American Assets Trust and Northern Trust have industry rows, a gilt ETF does not.
-    """
+# Unambiguous fund naming conventions only (a symbol ENDING in ETF/BEES, LIQUID, NIFTY, fund-house gold/silver
+# products...) -- a loose pattern catches real companies (JETFREIGHT, GOLDENTOBC, CHEMBOND). Applied only to India
+# symbols not yet classified; classify() is the real test, this is the stopgap until it has run.
+FUND_SYMBOL = re.compile(r"(BEES|IETF|ETF)$|LIQUID|NIFTY|SENSEX|GILT|GSEC|LOWVOL|^(AONE|BBNPP|CHOICE|GROWW|HSBC|MO|UNION|LICNETF)(GOLD|SILVER)")
+
+
+#: Debt listed like a share -- exchange-traded notes (ETNs) and "baby bonds" (Entergy's First Mortgage Bonds trade
+#: as ENO, EAI...). Name test only, never the fetch filter: "BOND" is inside CHEMBOND and BONDADA, which the
+#: industry-row condition keeps safe here but a name-only fetch filter would cut.
+_DEBT_NAME_KEYWORDS = ("BOND", " ETN", " NOTES", "DEBENTURE")
+
+
+def _non_stock_by_name(market: str) -> set[str]:
+    """Named as a fund/ETF/trust or as debt, and with no industry row: `symbol_industry` is only populated for quoteType
+    EQUITY, so a missing row is the authoritative signal -- but coverage is 93% in India, so absence alone
+    would also cut real small caps. Requiring the NAME to say fund/ETF as well makes "TRUST" safe: American
+    Assets Trust and Northern Trust have industry rows, a gilt ETF does not."""
     from . import db
 
     with db.get_connection().cursor() as cur:
@@ -154,7 +176,49 @@ def non_stock_symbols(market: str) -> set[str]:
         cur.execute("SELECT symbol, name FROM symbol_names WHERE market=%s AND name IS NOT NULL", (market,))
         named = cur.fetchall()
     return {s for s, n in named
-            if s not in has_industry and any(k in n.upper() for k in _NON_STOCK_NAME_KEYWORDS)}
+            if s not in has_industry and any(k in n.upper() for k in (*_NON_STOCK_NAME_KEYWORDS, *_DEBT_NAME_KEYWORDS))}
+
+
+def _non_stock_by_kind(market: str, symbols) -> set[str]:
+    """Classified as not an equity: in the US a closed-end fund / income trust (kind FUND -- the universe file
+    already drops ETFs); in India any non-EQUITY label, or, while unclassified, a fund naming convention
+    (FUND_SYMBOL)."""
+    kinds = known_kinds(market)
+    if market == "us":
+        return {s for s in symbols if kinds.get(s) == "FUND"}
+    if market == "india":
+        return {s for s in symbols if (s in kinds and kinds[s] != "EQUITY")
+                or (s not in kinds and FUND_SYMBOL.search(s.removesuffix(".NS")))}
+    return set()
+
+
+def non_stock_symbols(market: str) -> set[str]:
+    """Listed instruments that are not operating companies -- ETFs, liquid and money-market funds, debt and
+    gilt ETFs, closed-end funds, InvITs. THE instrument-eligibility rule: every stock universe (the daily
+    strategy screens, every stock-strategy and portfolio backtest, the Screens snapshot, breadth) reads it,
+    through `stock_universe` or directly.
+
+    The keyword list above is applied at FETCH time, on a universe refresh, so anything that listed afterwards
+    walks straight in. It did, twice: a volatility-weighted momentum book ended up 98.8% in three money-market
+    ETFs (DSP/Zerodha/Nifty 1D Rate), because an instrument with almost no volatility scores near-infinite on
+    both a vol-scaled rank and an inverse-vol weight; and the daily Darvas screen (2026-11) listed LIQUID1.NS
+    and LIQUIDADD.NS as "TRADE - HIGH CONFIDENCE" -- a liquid fund's price climbs in a near-straight line, so
+    every breakout rule reads it as a perfect breakout.
+
+    Two independent tests, either one enough: the name (`_non_stock_by_name`) and the quoteType classification
+    (`_non_stock_by_kind`). Each misses what the other catches -- the classification labels most Indian ETFs
+    EQUITY (the fundamentals fetch defaults to it), the name test misses US closed-end funds, which carry
+    industry rows -- so they used to be two partial rules in two places (here and the Screens' `eligible`).
+    """
+    syms = set(load_universe(market)) if universe_csv_path(market).exists() else set()
+    return _non_stock_by_name(market) | _non_stock_by_kind(market, syms)
+
+
+def stock_universe(market: str) -> list[str]:
+    """The universe file's operating companies, in file order: no index symbols, nothing `non_stock_symbols`
+    names. What a stock strategy may screen or trade."""
+    skip = non_stock_symbols(market)
+    return [s for s in load_universe(market) if not s.startswith("^") and s not in skip]
 
 
 #: The first month-end a backtest can rank on: the optimise stage's start (backtesting/windows.py).
