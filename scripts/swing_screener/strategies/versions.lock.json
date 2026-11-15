@@ -26,6 +26,31 @@
     },
     "version": "1.0"
   },
+  "bollinger_squeeze": {
+    "family": "bollinger_squeeze",
+    "fingerprint": "87fe8d08",
+    "params": {
+      "BB_SD": 2,
+      "MAX_STOP_PCT": 15.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "SQUEEZE_LOOKBACK": 125,
+      "SQUEEZE_RECENT": 5,
+      "_key": "bollinger_squeeze",
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ],
+      "watch_codes": [
+        "W1"
+      ]
+    },
+    "version": "1.0"
+  },
   "boucher_bonds_gold": {
     "family": "boucher_bonds_gold",
     "fingerprint": "23b6ad68",
