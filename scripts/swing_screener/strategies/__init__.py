@@ -62,6 +62,13 @@ from .stage_analysis import StageAnalysisStrategy
 from .stock_reversion import StockReversionStrategy
 from .trend_pullback import TrendPullbackStrategy
 from .turtle_soup import TurtleSoupStrategy
+from .rsi_divergence import RsiDivergenceStrategy
+from .td_sequential import TdSequentialStrategy
+from .wyckoff_spring import WyckoffSpringStrategy
+from .one_two_three import OneTwoThreeStrategy
+from .elder_triple_screen import ElderTripleScreenStrategy
+from .avwap_pullback import AvwapPullbackStrategy
+from .holy_grail import HolyGrailStrategy
 from .macd_cross import MacdCrossStrategy
 from .golden_cross import GoldenCrossStrategy
 from .earnings_premium import EarningsPremiumStrategy
@@ -92,6 +99,13 @@ register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion 
 # The swing catalogue's untested setups (research/strategy-catalog-swing.md), added 2026-11-15 on the shared
 # plumbing of strategies/swing_base.py so each can be backtested beside the rest.
 register(TurtleSoupStrategy())
+register(RsiDivergenceStrategy())
+register(TdSequentialStrategy())
+register(WyckoffSpringStrategy())
+register(OneTwoThreeStrategy())
+register(ElderTripleScreenStrategy())
+register(AvwapPullbackStrategy())
+register(HolyGrailStrategy())
 register(MacdCrossStrategy())
 register(GoldenCrossStrategy())
 register(EarningsPremiumStrategy())

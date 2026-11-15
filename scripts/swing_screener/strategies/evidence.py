@@ -87,6 +87,13 @@ EVIDENCE = {
     "earnings_premium": _e("B", 2, 0, 1, 0, "Frazzini & Lamont (2007), the earnings-announcement premium; Beaver (1968). Peer-reviewed, in-sample and before costs."),
     "golden_cross": _e("E", 0, 0, 1, 0, "Widespread 50/200-day crossover rule; tested on stocks and failed after costs. A negative control."),
     "macd_cross": _e("E", 0, 0, 1, 0, "Appel's MACD (1979) signal-line cross; tested and failed after costs. A negative control."),
+    "holy_grail": _e("D", 1, 0, 1, 0, "Raschke & Connors, Street Smarts (1995): full rules and chart examples, no independent published test."),
+    "avwap_pullback": _e("D", 0, 0, 1, 0, "Brian Shannon, Maximum Trading Gains with Anchored VWAP (2023): practitioner method and examples, no published test."),
+    "elder_triple_screen": _e("D", 0, 0, 1, 0, "Alexander Elder, Trading for a Living (1993): textbook method, no published test."),
+    "one_two_three": _e("D", 0, 0, 1, 0, "Victor Sperandeo, Trader Vic (1991): textbook rule with examples, no published test."),
+    "wyckoff_spring": _e("D", 0, 0, 1, 0, "Wyckoff's method as set out by Hank Pruden, The Three Skills of Top Trading (2007): practitioner method, no published test."),
+    "td_sequential": _e("D", 0, 0, 1, 0, "Tom DeMark, The New Science of Technical Analysis (1994): full rules, widely used, no published test of the rules as stated."),
+    "rsi_divergence": _e("E", 0, 0, 1, 0, "A widespread rule with no single source: published trading-rule studies find no edge after costs."),
     # short side
     "parabolic_short": _e("D", 0, 0, 1, 0, "Kullamägi's parabolic short: examples, no published test."),
     "stage4_shorts": _e("D", 0, 0, 1, 0, "Weinstein's stage 4 short (1988): examples, no published test."),
