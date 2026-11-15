@@ -94,21 +94,21 @@ is noted.
 | 1 | **Cross-sectional momentum** (buy top 12-1 month returns, monthly) | Jegadeesh & Titman (1993), replicated widely | A | 5 | Edge: India momentum beat its benchmark in-sample and out-of-sample (vol-scaled, baseline, combo) |
 | 2 | **Industry / sector momentum** | Moskowitz & Grinblatt (1999); Faber's sector rotation | B | 4 | India marginal (+1.6), US fails |
 | 3 | **Dual momentum** (relative plus absolute, few ETFs) | Antonacci, *Dual Momentum Investing* (2014) | C | 3 | Mixed: failed in-sample, passed out-of-sample on 14 trades |
-| 4 | **RS line at a new high before price** | O'Neil / IBD | D | 1 | Not tested alone |
+| 4 | **RS line at a new high before price** | O'Neil / IBD | D | 1 | Implemented as `rs_line_lead` v1.0 (2026-11-15); optimise runs queued (US #2021, India #2022), no result yet |
 | 5 | **RS leaders** (top relative-strength rank plus a setup) | IBD, Minervini | D | 1 | Fails (−9 to −10) |
 
 ### 3.2 Continuation — breakout from a base
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **52-week-high proximity / breakout** | George & Hwang (2004) | A | 4 | Part of the trend template; not tested alone |
+| 1 | **52-week-high proximity / breakout** | George & Hwang (2004) | A | 4 | Implemented as `high52_rank` v1.0 (2026-11-15); optimise runs queued (US #2027, India #2028), no result yet — ranked across stocks, not the trend template's gate |
 | 2 | **Donchian channel breakout** (20/55-day) | Turtle rules (Dennis, Faith); Brock et al. (1992) | C | 3 | India +3.7, US −4.7 |
 | 3 | **Volatility contraction pattern (VCP)** | Minervini (US Investing Championship 1997) | D | 1 | US v1.67 passed its own out-of-sample rule but trailed SPY (−0.6); in-sample −2 to −3 |
 | 4 | **Cup-with-handle / CAN SLIM base** | O'Neil, *How to Make Money in Stocks* | D | 1 | Inside chart_pattern: about −1 |
 | 5 | **Qullamaggie breakout** (flag after a big move, opening-range entry) | Kristjan Kullamägi (public account statements, not audited) | D | 1 | US −6.7, India −10 |
-| 6 | **High tight flag** | O'Neil; Bulkowski's pattern statistics | B | 2 | Not tested alone |
+| 6 | **High tight flag** | O'Neil; Bulkowski's pattern statistics | B | 2 | Implemented as `high_tight_flag` v1.0 (2026-11-15); optimise runs queued (US #2017, India #2018), no result yet |
 | 7 | **Darvas box** | Darvas, *How I Made $2,000,000* (1960) | D | 1 | −1.8 US, −3.7 India |
-| 8 | **Pocket pivot** (volume inside the base) | Morales & Kacher (2010) | D | 1 | Not tested |
+| 8 | **Pocket pivot** (volume inside the base) | Morales & Kacher (2010) | D | 1 | Implemented as `pocket_pivot` v1.0 (2026-11-15); optimise runs queued (US #2019, India #2020), no result yet |
 | 9 | **Weinstein stage 2 breakout** | Weinstein (1988) | D | 1 | −2 to −3.6 |
 | 10 | **Ascending triangle / flat base / base-on-base** | Bulkowski; Zanger (large claimed returns, unverified) | B | 1 | Inside chart_pattern |
 | 11 | **Volume-surge breakout** | Common blog rule | E | 1 | −7.8 India, −8.6 US |
@@ -117,9 +117,9 @@ is noted.
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **NR7 / inside-bar breakout** | Crabel (1990) | C | 2 | Not tested |
-| 2 | **Bollinger squeeze** | John Bollinger | D | 1 | Not tested |
-| 3 | **TTM squeeze** (Bollinger inside Keltner) | John Carter, *Mastering the Trade* | D | 1 | Not tested |
+| 1 | **NR7 / inside-bar breakout** | Crabel (1990) | C | 2 | Implemented as `nr7_breakout` v1.0 (2026-11-15); optimise runs queued (US #2009, India #2010), no result yet |
+| 2 | **Bollinger squeeze** | John Bollinger | D | 1 | Implemented as `bollinger_squeeze` v1.0 (2026-11-15); optimise runs queued (US #2011, India #2012), no result yet |
+| 3 | **TTM squeeze** (Bollinger inside Keltner) | John Carter, *Mastering the Trade* | D | 1 | Implemented as `ttm_squeeze` v1.0 (2026-11-15); optimise runs queued (US #2013, India #2014), no result yet |
 | 4 | **Minervini coil** (tight range before the pivot) | Minervini | D | 1 | Fails in-sample |
 
 ### 3.4 Continuation — pullback in a trend
@@ -127,13 +127,13 @@ is noted.
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **Buy short-term weakness in a long-term uptrend** (RSI(2) under 10 above the 200-day) | Connors & Alvarez (2008) | C | 3 | See snap-back: decayed |
-| 2 | **Holy Grail** (ADX above 30, pullback to the 20-EMA) | Raschke & Connors, *Street Smarts* (1995) | D | 1 | Not tested |
+| 2 | **Holy Grail** (ADX above 30, pullback to the 20-EMA) | Raschke & Connors, *Street Smarts* (1995) | D | 1 | Implemented as `holy_grail` v1.0 (2026-11-15); optimise runs queued (US #1995, India #1996), no result yet |
 | 3 | **EMA pullback** (8/21-EMA, 10/20-day touch) | Swing YouTube / X, Kullamägi | D | 1 | In-sample, no edge |
 | 4 | **Kell's EMA crossback / cycle of price action** | Oliver Kell (US Investing Championship 2020) | D | 1 | India +9.4 (with a group-RS floor), US −11 |
-| 5 | **Anchored VWAP pullback** | Brian Shannon | D | 0 | Not tested |
+| 5 | **Anchored VWAP pullback** | Brian Shannon | D | 0 | Implemented as `avwap_pullback` v1.0 (2026-11-15); optimise runs queued (US #1997, India #1998), no result yet |
 | 6 | **Trend pullback** (above the 50- and 200-day, dip to the 20) | Common swing rule | D | 1 | US +2.2 only with idle cash in the index; failed out-of-sample (−3.05% CAGR) |
-| 7 | **Elder triple screen** | Alexander Elder, *Trading for a Living* (1993) | D | 1 | Not tested |
-| 8 | **Fibonacci retracement entry** | Widespread | E | 0 | Not tested |
+| 7 | **Elder triple screen** | Alexander Elder, *Trading for a Living* (1993) | D | 1 | Implemented as `elder_triple_screen` v1.0 (2026-11-15); optimise runs queued (US #1999, India #2000), no result yet |
+| 8 | **Fibonacci retracement entry** | Widespread | E | 0 | Not tested; skipped (grade E, credibility 0) |
 
 ### 3.5 Continuation — burst / gap-and-go
 
@@ -141,7 +141,7 @@ is noted.
 |---|---|---|---|---|---|
 | 1 | **Episodic pivot** (earnings or news gap of 10%+ on huge volume) | Pradeep Bonde (Stockbee), popularised by Kullamägi | B | 3 | See event: earnings gap |
 | 2 | **Momentum burst** (a 4% day on rising volume, held 3–5 days) | Stockbee | D | 1 | India +5.1 with a 20-day-average exit; US −6.7 |
-| 3 | **Power play** (100% in 8 weeks, then a tight flag) | O'Neil, Minervini | D | 1 | Not tested |
+| 3 | **Power play** (100% in 8 weeks, then a tight flag) | O'Neil, Minervini | D | 1 | Implemented as `power_play` v1.0 (2026-11-15); optimise runs queued (US #2015, India #2016), no result yet |
 
 ### 3.6 Trend following (ride the move)
 
@@ -150,37 +150,37 @@ is noted.
 | 1 | **Time-series momentum on futures / ETFs** | Moskowitz, Ooi & Pedersen (2012); Hurst, Ooi & Pedersen (2017) | A | 5 | Turtle trend: tsmom −7.6 (US) |
 | 2 | **Moving-average trend** (price above the 200-day, 10-month average) | Faber (2007); Brock et al. (1992) | C | 4 | −1.8 India, −4.4 US |
 | 3 | **Supertrend / ATR trailing stop** | Popular in India | D | 1 | No edge |
-| 4 | **Golden cross** (50 over 200) | Widespread | E | 1 | Not tested alone |
-| 5 | **MACD crossover** | Widespread | E | 1 | Not tested |
+| 4 | **Golden cross** (50 over 200) | Widespread | E | 1 | Implemented as `golden_cross` v1.0 (2026-11-15); optimise runs queued (US #1991, India #1992), no result yet; a labelled negative control |
+| 5 | **MACD crossover** | Widespread | E | 1 | Implemented as `macd_cross` v1.0 (2026-11-15); optimise runs queued (US #1993, India #1994), no result yet; a labelled negative control |
 
 ### 3.7 Reversal (trend change)
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **Double bottom / inverse head-and-shoulders** | Bulkowski; Lo, Mamaysky & Wang (2000) found some information content | B | 2 | Inside chart_pattern |
-| 2 | **Wyckoff spring** | Richard Wyckoff | D | 0 | Not tested |
-| 3 | **1-2-3 reversal** | Victor Sperandeo | D | 1 | Not tested |
-| 4 | **RSI / MACD divergence** | Widespread | E | 1 | Not tested |
-| 5 | **TD Sequential 9/13** | Tom DeMark | D | 1 | Not tested |
-| 6 | **Candlestick reversals** (hammer, engulfing) | Steve Nison; Marshall, Young & Rose (2006) found no value on US large caps | E | 0 | Not tested |
+| 2 | **Wyckoff spring** | Richard Wyckoff | D | 0 | Implemented as `wyckoff_spring` v1.0 (2026-11-15); optimise runs queued (US #2003, India #2004), no result yet |
+| 3 | **1-2-3 reversal** | Victor Sperandeo | D | 1 | Implemented as `one_two_three` v1.0 (2026-11-15); optimise runs queued (US #2001, India #2002), no result yet |
+| 4 | **RSI / MACD divergence** | Widespread | E | 1 | Implemented as `rsi_divergence` v1.0 (2026-11-15); optimise runs queued (US #2007, India #2008), no result yet (RSI only) |
+| 5 | **TD Sequential 9/13** | Tom DeMark | D | 1 | Implemented as `td_sequential` v1.0 (2026-11-15); optimise runs queued (US #2005, India #2006), no result yet |
+| 6 | **Candlestick reversals** (hammer, engulfing) | Steve Nison; Marshall, Young & Rose (2006) found no value on US large caps | E | 0 | Not tested; skipped (grade E, credibility 0) |
 
 ### 3.8 Snap-back (short-term mean reversion)
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **Short-term reversal** (buy last week's or month's losers) | Jegadeesh (1990), Lehmann (1990) | C | 4 | Not tested on stocks; costs eat most of it |
+| 1 | **Short-term reversal** (buy last week's or month's losers) | Jegadeesh (1990), Lehmann (1990) | C | 4 | Implemented as `short_reversal` v1.0 (2026-11-15); optimise runs queued (US #2029, India #2030), no result yet; weekly, the 300 most liquid, 20bps a side |
 | 2 | **RSI(2) on indices** | Connors & Alvarez (2008) | C | 3 | High win rate; trails the index at the same exposure |
 | 3 | **Bollinger %b on indices** | Connors / Alvarez Quant Trading | C | 3 | Closest of the three; still trails the index at the same exposure |
 | 4 | **Double 7s** | Connors & Alvarez (2008) | C | 3 | Trails the index at the same exposure |
-| 5 | **Internal bar strength (IBS)** (buy a close near the low) | Practitioner research on index ETFs | B | 2 | Not tested |
+| 5 | **Internal bar strength (IBS)** (buy a close near the low) | Practitioner research on index ETFs | B | 2 | Implemented as `ibs_reversion` v1.0 (2026-11-15); optimise runs queued (US #1985, India #1986), no result yet — on the benchmark index |
 | 6 | **Stock oversold reversion** (big caps, RSI or down-streak) | Connors | C | 2 | −11 to −16 |
 
 ### 3.9 Fade (the failed move)
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **Turtle Soup** (fade a failed 20-day breakout) | Raschke & Connors (1995) | D | 1 | Not tested |
-| 2 | **Gap fill** | Widespread | D | 1 | Not tested |
+| 1 | **Turtle Soup** (fade a failed 20-day breakout) | Raschke & Connors (1995) | D | 1 | Implemented as `turtle_soup` v1.0 (2026-11-15); optimise runs queued (US #1979, India #1980), no result yet — the book's Plus One version |
+| 2 | **Gap fill** | Widespread | D | 1 | Implemented as `gap_fill` v1.0 (2026-11-15); optimise runs queued (US #1987, India #1988), no result yet |
 
 ### 3.10 Event-driven
 
@@ -188,17 +188,17 @@ is noted.
 |---|---|---|---|---|---|
 | 1 | **Post-earnings-announcement drift** | Bernard & Thomas (1989, 1990); Chan, Jegadeesh & Lakonishok (1996) | C (weaker since the 2000s in US large caps) | 4 | −7 US, −15 India |
 | 2 | **Earnings gap-up continuation** | PEAD plus the episodic pivot | B | 3 | US +7.9 (older version, 10-day exit); India −8 |
-| 3 | **Earnings-announcement premium** (hold into the report) | Frazzini & Lamont (2007) | B | 3 | Not tested |
-| 4 | **Insider cluster buying** | Lakonishok & Lee (2001) | B | 3 | Not tested |
-| 5 | **Index inclusion** | Shleifer (1986); much smaller in recent decades | C | 3 | Not tested |
-| 6 | **Short-squeeze long** (high short interest) | Asquith, Pathak & Ritter (2005) found high short interest underperforms on average | E | 1 | Not tested |
+| 3 | **Earnings-announcement premium** (hold into the report) | Frazzini & Lamont (2007) | B | 3 | Implemented as `earnings_premium` v1.0 (2026-11-15); optimise runs queued (US #1989, India #1990), no result yet |
+| 4 | **Insider cluster buying** | Lakonishok & Lee (2001) | B | 3 | Not tested: no insider-transaction data is stored; needs a data pipeline first |
+| 5 | **Index inclusion** | Shleifer (1986); much smaller in recent decades | C | 3 | Not tested: no point-in-time index-membership history is stored; needs a data pipeline first |
+| 6 | **Short-squeeze long** (high short interest) | Asquith, Pathak & Ritter (2005) found high short interest underperforms on average | E | 1 | Not tested: no short-interest data is stored (and grade E) |
 
 ### 3.11 Calendar
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **Turn of the month** | Ariel (1987); Lakonishok & Smidt (1988) | C | 4 | Not tested |
-| 2 | **Pre-holiday** | Lakonishok & Smidt (1988) | C | 3 | Not tested |
+| 1 | **Turn of the month** | Ariel (1987); Lakonishok & Smidt (1988) | C | 4 | Implemented as `turn_of_month` v1.0 (2026-11-15); optimise runs queued (US #1981, India #1982), no result yet — standalone on the index, not yet as an overlay |
+| 2 | **Pre-holiday** | Lakonishok & Smidt (1988) | C | 3 | Implemented as `pre_holiday` v1.0 (2026-11-15); optimise runs queued (US #1983, India #1984), no result yet |
 
 ### 3.12 Short side
 
@@ -206,7 +206,7 @@ is noted.
 |---|---|---|---|---|---|
 | 1 | **Parabolic short** (fade an extended run) | Kullamägi | D | 1 | Fails (−0.095R a trade) |
 | 2 | **Stage 4 breakdown short** | Weinstein | D | 1 | −6.6 India, −14 US |
-| 3 | **Failed-breakout short** | Common swing rule | D | 1 | Not tested |
+| 3 | **Failed-breakout short** | Common swing rule | D | 1 | Not tested: needs a short-side simulator for per-stock setups (the per-symbol engine is long-only) |
 
 ---
 
