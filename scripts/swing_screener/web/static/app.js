@@ -5653,6 +5653,7 @@ function stratRows(list, fig = "best") {
         e, ran: !!e && e.level !== "unmeasured",
         cagr: e?.cagr ?? null, excess: e?.excess ?? null, dd: e?.risk?.max_drawdown ?? null, bdd: e?.risk?.bench_max_drawdown ?? null,
         sharpe: e?.risk?.sharpe ?? null, bsharpe: e?.risk?.bench_sharpe ?? null,
+        win: e?.risk?.win_rate ?? null, trades: e?.risk?.trades ?? null,
         // today's activity: only a per-stock strategy has setups; a portfolio book holds positions instead
         today: x.kind !== "screener" ? null : run ? { trade: run.tradeable, watch: run.watch, run: run.run } : { notrun: true },
       };
@@ -5700,6 +5701,8 @@ function stratColumns(sm) {
         v: (r) => (r.mk[k].ran ? r.mk[k].dd : null), dir: -1 },
       { id: `${k}:sharpe`, grp: k, label: "Sharpe", num: true, tip: "Sharpe ratio of that run (the index's in the tooltip).",
         v: (r) => (r.mk[k].ran ? r.mk[k].sharpe : null), dir: -1 },
+      { id: `${k}:win`, grp: k, label: "Win rate", num: true, tip: "Share of that run's trades that made money (how many trades it counts on hover).",
+        v: (r) => (r.mk[k].ran ? r.mk[k].win : null), dir: -1 },
       { id: `${k}:today`, grp: k, label: "Today", num: true, tip: "From the strategy's latest run in this market: tradeable setups / names on watch. A portfolio book has no daily setups.",
         v: (r) => { const t = r.mk[k].today; return !t || t.notrun ? null : t.trade * 1000 + t.watch; }, dir: -1 },
     );
@@ -5776,7 +5779,7 @@ async function strategiesHome(alive) {
     const th = (c) => `<th class="${c.num ? "num" : ""} ${c.cls || ""} ${c.grp ? "g-" + esc(c.grp) : ""}${c.id === col ? " sorted" : ""}" data-c="${esc(c.id)}"
         aria-sort="${c.id === col ? (dir > 0 ? "ascending" : "descending") : "none"}" title="${esc(c.tip || "Sort by " + c.label)}"><button class="sh-sort">${esc(c.label)}<span class="arrow">${c.id === col ? (dir > 0 ? "▲" : "▼") : ""}</span></button></th>`;
     const lead = cols.filter((c) => !c.grp && c.id !== "backtests").length;
-    thead.innerHTML = `<tr class="sh-g"><th class="sh-name" colspan="1"></th><th colspan="${lead - 1}"></th>${marketsFirst(sm).map((m) => `<th colspan="6" class="g-${esc(m.key)} gh${m.key === sm ? " cur" : ""}">${esc(m.flag || "")} ${esc(m.name)}</th>`).join("")}<th></th></tr>
+    thead.innerHTML = `<tr class="sh-g"><th class="sh-name" colspan="1"></th><th colspan="${lead - 1}"></th>${marketsFirst(sm).map((m) => `<th colspan="${cols.filter((c) => c.grp === m.key).length}" class="g-${esc(m.key)} gh${m.key === sm ? " cur" : ""}">${esc(m.flag || "")} ${esc(m.name)}</th>`).join("")}<th></th></tr>
       <tr>${cols.map(th).join("")}</tr>`;
   };
   const num = (v, d, sign = false) => (v == null ? "" : `${sign && v > 0 ? "+" : ""}${v.toFixed(d)}`);
@@ -5785,14 +5788,15 @@ async function strategiesHome(alive) {
     const today = !t ? `<td class="num muted" title="A portfolio book: it holds positions, not daily setups">—</td>`
       : t.notrun ? `<td class="num"><span class="notrun">Not run</span></td>`
       : `<td class="num" title="${esc(`Latest run ${prettyDate(t.run)}: ${t.trade} tradeable, ${t.watch} on watch`)}"><b class="${t.trade ? "" : "zero"}">${t.trade}</b><span class="muted"> / ${t.watch}</span></td>`;
-    if (!x.ran) return `<td class="g-${esc(m.key)} gs" colspan="5">${edgeCell(x.e)}</td>${today}`;
+    if (!x.ran) return `<td class="g-${esc(m.key)} gs" colspan="${cols.filter((c) => c.grp === m.key).length - 1}">${edgeCell(x.e)}</td>${today}`;
     const stg = { verify: "out-of-sample", optimise: "in-sample", full: "full period" }[x.e?.stage] || "legacy run";
     const bc = x.cagr != null && x.excess != null ? x.cagr - x.excess : null;
     return `<td class="g-${esc(m.key)} gs">${edgeCell(x.e)}</td>
       <td class="num" title="${esc(`${stg}, v${x.e?.version || "?"}${bc != null ? `; index ${bc.toFixed(1)}%` : ""}`)}">${x.cagr != null ? `${num(x.cagr, 1)}%` : ""}</td>
       <td class="num ${x.excess > 0 ? "pos" : x.excess < 0 ? "neg" : ""}">${num(x.excess, 1, true)}${x.excess != null ? "%" : ""}</td>
       <td class="num" title="${x.bdd != null ? esc(`index ${x.bdd.toFixed(1)}%`) : ""}">${x.dd != null ? `${num(x.dd, 1)}%` : ""}</td>
-      <td class="num" title="${x.bsharpe != null ? esc(`index ${x.bsharpe.toFixed(2)}`) : ""}">${num(x.sharpe, 2)}</td>${today}`;
+      <td class="num" title="${x.bsharpe != null ? esc(`index ${x.bsharpe.toFixed(2)}`) : ""}">${num(x.sharpe, 2)}</td>
+      <td class="num" title="${x.trades != null ? esc(`${x.trades} trades`) : ""}">${x.win != null ? `${num(x.win, 1)}%` : ""}</td>${today}`;
   };
   const rowHtml = (r) => `<tr data-k="${esc(r.key)}" tabindex="-1">
       <td class="sh-name"><a href="#/strategies/${esc(r.key)}"><b>${esc(r.name)}</b></a>${r.version ? ` <span class="st-ver${r.is_current ? "" : " old"}" title="${esc(r.spec_id || "")}${r.is_current ? "" : " — an older version"}">v${esc(r.version)}</span>` : ""}

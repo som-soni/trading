@@ -1027,7 +1027,10 @@ def _risk(summary) -> dict | None:
     parts = [f"drawdown {dd:.1f}% vs index {bdd:.1f}% ({'shallower' if dd > bdd else 'deeper'})"]
     if sh is not None and bsh is not None:
         parts.append(f"Sharpe {sh:.2f} vs {bsh:.2f}")
+    win = f("win_rate")                      # share of trades that made money (ingest reads it from the report)
+    trades = (summary or {}).get("trades")
     return {"max_drawdown": dd, "bench_max_drawdown": bdd, "sharpe": sh, "bench_sharpe": bsh,
+            "win_rate": win, "trades": int(trades) if str(trades or "").isdigit() else None,
             "deeper": dd < bdd, "text": ", ".join(parts)}
 
 
