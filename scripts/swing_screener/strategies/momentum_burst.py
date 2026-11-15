@@ -1,4 +1,4 @@
-"""Momentum burst — Pradeep Bonde's (Stockbee's) 4% breakout, held for a few sessions.
+"""Momentum burst — Pradeep Bonde's (Stockbee's) 4% breakout, held while it trends.
 
 Bonde's observation: stocks move in short bursts of three to five days, and a burst usually starts
 from a quiet stock with one decisive up day on rising volume. This is the daily-bar version the Learn
@@ -9,11 +9,12 @@ guide (research/learn-strat-momentum-burst.md, §3, §4 and the §8 method note)
     narrower ranges than usual;
   * today is the burst: a close at least BURST_MIN_PCT% above yesterday's, on more volume than
     yesterday, in the top of the day's range;
-  * buy that close, stop at the day's low, sell at the close of session HOLD_BARS after the entry.
+  * buy that close, stop at the day's low; sell on the first close below the TRAIL_SMA-day average
+    (2.0; 1.x sold at the close of the fifth session, which capped the winners at the losers' size).
 
 Bonde enters intraday, as the stock crosses +4% or breaks the opening range; daily bars cannot, so
-this buys the close. The exit is the shared bracket with no target and a time stop
-(`backtest_args`), so the hold is a command-line flag: a variant moves it with `--time-stop-bars`.
+this buys the close. The exit is the shared `ma` mode (`backtest_args`, built from TRAIL_SMA,
+MAX_HOLD_BARS and POSITION_CAP_PCT at import), so a variant moves it with a flag (`--ma-col`), not `--const`.
 """
 
 import pandas as pd
@@ -58,7 +59,9 @@ MARKET_INDEX_LABELS = ("QQQ", "NIFTY500")
 # ---- after evaluate() (classify(), the plan and the backtest's exit read these)
 MIN_STOP_PCT = 1.0                # a stop closer than this % below the entry is not bought
 NOMINAL_TARGET_R = 3              # a target for the plan's R column only; the backtest has no target
-HOLD_BARS = 5                     # sold at the close of this session after the entry (backtest_args)
+TRAIL_SMA = 20                    # sold at the first close below this simple average (backtest_args) …
+MAX_HOLD_BARS = 250               # … or at the close of this session after the entry
+POSITION_CAP_PCT = 12.5           # one position's value at most this % of equity (backtest_args)
 
 S1 = "S1"   # today is a burst
 W1 = "W1"   # the burst's volume is below its 50-day average
@@ -66,24 +69,31 @@ W1 = "W1"   # the burst's volume is below its 50-day average
 
 class MomentumBurstStrategy(Strategy):
     selection = "time_series"
-    version = "1.1"
-    # 1.1 changes only the portfolio simulator's order mechanics, never the scan
-    # (CLAUDE.md, signal_version).
+    version = "2.0"
+    # 1.1 and 2.0 change only what happens after evaluate() (order mechanics, the exit, the
+    # position cap), never the scan (CLAUDE.md, signal_version).
     signal_version = "1.0"
     changelog = (
+        ("2.0", "2026-11-15",
+         "The exit: sell on the first close below the {TRAIL_SMA}-day average (or at the stop, or after "
+         "{MAX_HOLD_BARS} sessions) instead of at the close of the fifth session, and one position at most "
+         "{POSITION_CAP_PCT}% of equity. Why: 1.1 won 44-47% of its trades but its winners were about the size "
+         "of its losers, so the average trade was about zero after costs in both markets. The entry, gates and "
+         "stop are unchanged (signal_version stays 1.0). Chosen after several exit variants were run on the "
+         "same optimise years, so it is judged by a stricter, pre-written criterion (status)."),
         ("1.1", "2026-11-14",
          "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.0 optimise runs 347 US positions (70 India) were under 0.5% of equity, holding 13.6% of US slot-days (6.3% India). Orders buy the signal close and are dropped when no slot is free, so the late-fill problem does not arise. signal_version pinned to 1.0: the scan is unchanged. Results move."),
         ("1.0", "2026-10-31",
          "v1: the Learn guide's daily-bar version of Bonde's momentum burst. An uptrend near the highs (Near "
          "highs screen), a quiet yesterday (up at most {PRIOR_MAX_GAIN_PCT}%, narrow ranges), then a close "
          "{BURST_MIN_PCT}%+ up on more volume than yesterday, near the high. Bought at that close, stop at the "
-         "day's low, sold at the close of session {HOLD_BARS}."),
+         "day's low, sold at the close of the fifth session."),
     )
     key = "momentum_burst"
     name = "Momentum burst"
     description = (
         "Bonde's 4% breakout: a quiet stock in an uptrend has one decisive up day on rising volume; buy that "
-        "close with the stop at the day's low and hold a few sessions."
+        "close with the stop at the day's low and hold until it closes below its 20-day average."
     )
     style = "burst"
     horizon = "swing"
@@ -104,15 +114,16 @@ class MomentumBurstStrategy(Strategy):
     extra_columns = ("burst_pct", "vol_vs_prior", "vol_vs_avg", "close_pos", "prior_gain_pct",
                      "quiet_range_frac")
     extra_numeric_columns = extra_columns
-    # HOLD_BARS is not exempt: it is read at import, into backtest_args, so a `--const` could not move it
+    # TRAIL_SMA, MAX_HOLD_BARS and POSITION_CAP_PCT are not exempt: they are read at import, into
+    # backtest_args, so a `--const` could not move them
     signal_exempt_consts = ("MIN_STOP_PCT", "NOMINAL_TARGET_R")
 
     thesis = (
         "Stocks do not trend smoothly; they move in short bursts and rest in between. A burst that starts from a "
-        "quiet stock, with one decisive up day on rising volume, tends to carry on for a few more days before it "
-        "rests again. Buying the first day and selling a few days later captures that continuation; a stop at "
-        "the burst day's low makes the many failures small. The edge, if any, is a small average gain repeated "
-        "over many trades."
+        "quiet stock, with one decisive up day on rising volume, tends to carry on; now and then it starts a "
+        "trend that runs for weeks. Buying the first day with a stop at its low makes the many failures small, "
+        "and holding until the trend breaks lets the few big winners pay for them. The edge, if any, is in "
+        "those winners, not in the win rate."
     )
     how_it_works = (
         "**The idea.** Bonde (Stockbee): momentum bursts of three to five days, started by a 4% up day from a "
@@ -127,8 +138,9 @@ class MomentumBurstStrategy(Strategy):
         "**Signal and buy.** S1: today closes at least {BURST_MIN_PCT}% above yesterday, on more volume than "
         "yesterday, closing at least {CLOSE_MIN_RANGE_POS} of the way from the day's low to its high. Buy at "
         "that close. The stop is today's low; the trade is skipped if that is less than {MIN_STOP_PCT}% below.",
-        "**Manage.** Sell at the stop (or the open, if it gaps through), or at the close of session "
-        "{HOLD_BARS} after the entry. Nothing else.",
+        "**Manage.** Sell at the stop (or the open, if it gaps through), on the first close below the "
+        "{TRAIL_SMA}-day average, or after {MAX_HOLD_BARS} sessions. Nothing else. One position is at most "
+        "{POSITION_CAP_PCT}% of equity.",
         "**What the backtest buys.** Only TRADE - HIGH CONFIDENCE: every gate passing, S1, and a stop at least "
         "{MIN_STOP_PCT}% away. Ties between same-day signals go to the stronger 12-1 month momentum.",
     )
@@ -154,9 +166,13 @@ class MomentumBurstStrategy(Strategy):
         "it before reading a backtest result.",
         "**Fills at the stop.** On a day that does not gap through it, the stop fills at its price. On a stock "
         "that has just moved 4% the real fill is often worse.",
-        "**Run it with its exit flags.** `--no-target --time-stop-bars {HOLD_BARS}` (the page's backtest command "
-        "adds them). Without them the default bracket sells everything at the nominal target. HOLD_BARS only "
-        "documents the flag: a hold variant changes `--time-stop-bars`, not the constant.",
+        "**Run it with its exit flags.** `--exit-mode ma --ma-col sma{TRAIL_SMA} --no-target --time-stop-bars "
+        "{MAX_HOLD_BARS} --max-position-pct` (the page's backtest command adds them). Without them the default "
+        "bracket sells everything at the nominal target. The constants only document the flags: an exit "
+        "variant changes `--ma-col`, not TRAIL_SMA.",
+        "**A daily trailing exit is not Bonde's.** He takes profits into the burst within days. Holding to a "
+        "close below the {TRAIL_SMA}-day average is the trend-follower's exit (Kullamägi's slower one); 2.0 adopts "
+        "it because the daily-bar entry cannot make his short hold pay.",
         "**The fill session is never checked.** The entry is the burst session's close, so its stop and exits "
         "are first tested on the next session.",
         "**No results rule.** Many bursts are results days; this does not know results dates and holds through "
@@ -165,6 +181,15 @@ class MomentumBurstStrategy(Strategy):
     )
 
     status = (
+        "v2.0 NOT YET MEASURED (pre-registered 2026-11-15, before any 2.0 run). India only: the US failed "
+        "under every exit tried in 1.x. The 2.0 exit was picked after several exit variants were run on the "
+        "same optimise years, so the bar is stricter than 1.x's. 2.0 passes the optimise stage only if ALL "
+        "hold in India, at the market's standard costs: (1) positive excess over the benchmark CAGR; (2) "
+        "positive average R; (3) a max drawdown shallower than the benchmark's; (4) both neighbouring trails, "
+        "the 10-day exponential average (`--ma-col ema10`; no 10-day simple average is stored) and the 50-day "
+        "(`--ma-col sma50`), also have positive excess at standard costs; (5) total P&L stays positive with the "
+        "best 1% of trades removed. If it passes, one verify run (2022 to today) judged on (1)-(3); if it "
+        "fails, the setup is shelved, not tuned again. Figures further on are 1.x's. "
         "v1.1, OPTIMISE STAGE (2013-2021, in-sample), jobs #1784 India and #1785 US, measured 2026-11-15, against "
         "v1.0: India 3.84% CAGR (was 3.68%), excess -9.70, max drawdown -31.2% (was -32.5%), +0.04R a trade over "
         "994 trades; US -1.29% CAGR (was -2.15%), excess -15.30, max drawdown -61.0% (was -61.8%), +0.00R a trade "
@@ -255,23 +280,24 @@ class MomentumBurstStrategy(Strategy):
         "bought in the backtest: a gap-up day with a tiny range leaves no room.",
         "How it sells (backtest). The first session whose low touches it sells at the stop, or at the open if it "
         "opened below it.",
-        "It never moves.",
+        "It never moves; the trailing average does the rest.",
     )
     target_rules = (
         "There is no sell order at the target. The target is entry + {NOMINAL_TARGET_R} R, so that the plan has an "
         "R column. The backtest runs with `--no-target`.",
     )
     exit_rules = (
-        "Each session after the entry, in this order (backtest, bracket mode with `--no-target --time-stop-bars "
-        "{HOLD_BARS}`):",
+        "Each session after the entry, in this order (backtest, `--exit-mode ma --ma-col sma{TRAIL_SMA} "
+        "--no-target --time-stop-bars {MAX_HOLD_BARS}`):",
         "1. The stop: the position sells at the stop, or at the open if the stock gapped through it.",
-        "2. The time limit: at the close of session {HOLD_BARS} after the entry, the position sells at that close.",
+        "2. The trail: a close below the {TRAIL_SMA}-day simple average sells the position at that close.",
+        "3. The time limit: at the close of session {MAX_HOLD_BARS} after the entry, the position sells at that close.",
         "Live, the screen shows the setup; nothing manages an open position.",
         "No other exits. A position still open when the backtest ends is marked at the last close.",
     )
     sizing_rules = (
-        "Risk-based. Shares = (equity × Risk per trade) ÷ (price paid − stop), rounded down, capped at Max position "
-        "size × equity.",
+        "Risk-based. Shares = (equity × Risk per trade) ÷ (price paid − stop), rounded down, capped at "
+        "{POSITION_CAP_PCT}% of equity (2.0, `--max-position-pct`; the market's Max position size before).",
         "Cash. When cash cannot buy the full size, the backtest buys what it can, but only if that is at least half the planned shares (`--min-fill 0.5`); less is skipped, counted under \"cash buys under 50% of the planned size\". Before 1.1 it bought whatever was left, often a sliver of equity that held a slot for weeks.",
         "Slots. At most Position cap positions at once. A close order with no free slot is dropped.",
     )
@@ -308,7 +334,9 @@ class MomentumBurstStrategy(Strategy):
         ("Index EMA", "MKT_EMA", "G6: the index closes above this exponential average."),
         ("Index fast EMA", "MKT_FAST_EMA", "G6: this EMA must be above the slower one."),
         ("Minimum stop", "MIN_STOP_PCT", "A stop closer than this % below the entry is not bought."),
-        ("Hold", "HOLD_BARS", "Sessions after the entry before the position is sold (the --time-stop-bars flag)."),
+        ("Trailing average", "TRAIL_SMA", "The position sells at the first close below this simple average (--ma-col)."),
+        ("Time limit", "MAX_HOLD_BARS", "Sessions after the entry before the position is sold (--time-stop-bars)."),
+        ("Position cap %", "POSITION_CAP_PCT", "One position's value at most this % of equity (--max-position-pct)."),
         ("Nominal target", "NOMINAL_TARGET_R", "Target = entry + this × R, for the R column only."),
         ("Minimum history", "min_bars", "Daily bars a stock needs before it is evaluated."),
         ("Minimum liquidity", "cfg.screener.min_dollar_volume",
@@ -319,7 +347,8 @@ class MomentumBurstStrategy(Strategy):
         ("Tick size", "cfg.tick_size", "The stop is rounded down to this increment."),
         ("Slippage", "cfg.slippage_bps", "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = f"--no-target --time-stop-bars {HOLD_BARS} --rank-by setup_momentum --min-fill 0.5"
+    backtest_args = (f"--exit-mode ma --ma-col sma{TRAIL_SMA} --no-target --time-stop-bars {MAX_HOLD_BARS} "
+                     f"--max-position-pct {POSITION_CAP_PCT / 100:g} --rank-by setup_momentum --min-fill 0.5")
 
     # ---------- market ----------
 
@@ -507,5 +536,5 @@ class MomentumBurstStrategy(Strategy):
             out.append({"shape": "note", "at": d,
                         "text": f"Momentum burst {d}: {e.get('burst_pct') or 0:+.1f}% on "
                                 f"{e.get('vol_vs_prior') or 0:.1f}× yesterday's volume; bought the close, stop at "
-                                f"the day's low, sold after {HOLD_BARS} sessions."})
+                                f"the day's low, sold on a close below the {TRAIL_SMA}-day."})
         return out or super().chart_anatomy(sig)

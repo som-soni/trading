@@ -119,6 +119,7 @@ Each rule below is a condition a program can check. Section 4 gives the ranges.
 - **The episodic pivot.** A burst caused by big news, usually results, on many times normal volume. It can lead to a move of months rather than days. See [Earnings gaps and episodic pivots](learn-strat-earnings-gaps.md).
 - **Base breakouts.** The same first strong day, from a longer base, held for weeks. See [Kullamägi's momentum breakouts](learn-strat-kullamagi.md) and [Darvas boxes](learn-strat-darvas.md).
 - **Selling into strength.** Instead of a fixed hold, sell part into the first big up day after the entry, and the rest at the time limit.
+- **Holding the winners.** Keep the same entry and stop, but sell on the first close below the 20-day average instead of after five sessions. Most trades still end at the stop or within days. The few that become trends run for weeks, so the winners grow much larger than the losers. It is a trend-follower's exit, not Bonde's, and it wins less often. See [Stops and exits](learn-risk-stops-exits.md).
 - **Opening range entry.** Buy the break of the first 5 or 15 minutes' high on the burst day. The stop is closer, so the same move is worth more R.
 
 ## 6. Worked examples
