@@ -2160,8 +2160,8 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 
 /* ---------- Strategies section (app.js strategiesHome, setupsTable, stratCrumbs): full-width tables, no left panel.
    Soft fills rather than hairlines, a sticky header, tabular numbers, secondary text at 12.5px or more. */
-/* the Strategies table and a strategy's page: room at the sides and a readable width on a wide screen */
-.strat-home, .strat-page { max-width: 1480px; margin: 0 auto; padding: 0 24px; }
+/* the Strategies table and a strategy's page: a little room at the sides (main adds 16px), full width otherwise */
+.strat-home, .strat-page { padding: 0 8px; }
 @media (max-width: 760px) { .strat-home, .strat-page { padding: 0; } }
 .sh-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 2px 0 6px; }
 .sh-bar .sh-q input { width: 260px; max-width: calc(100vw - 48px); }
