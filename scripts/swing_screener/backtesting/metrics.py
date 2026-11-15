@@ -55,6 +55,9 @@ class Performance:
     # those need opposite fixes. `matched` holds the index at the strategy's own daily exposure, so
     # beating it is selection skill at an equal risk budget; `while_flat` parks the idle cash in the
     # index, so the gap to it is what the drag costs.
+    #: what Sharpe and Sortino (strategy and benchmark alike) are measured over: None is 0%, "cash rate"
+    #: is the per-session cash rate the runner passed as `rf` (see `compute`).
+    risk_free: str | None = None
     benchmark_matched_cagr_pct: float | None = None
     benchmark_while_flat_cagr_pct: float | None = None
     avg_invested_pct: float | None = None
@@ -81,16 +84,31 @@ def max_drawdown(equity: pd.Series) -> tuple[float, int]:
     return worst, longest
 
 
-def _annualised(daily_returns: pd.Series) -> tuple[float, float, float]:
-    """(ann. volatility %, Sharpe, Sortino) at a 0% risk-free rate.
+def excess_returns(daily_returns: pd.Series, rf: pd.Series | None = None) -> pd.Series:
+    """Daily returns less the per-session risk-free return `rf` (a decimal per session, e.g. an annual
+    cash rate / 252), aligned on dates; missing rf days count as 0. With no `rf`, the returns unchanged."""
+    r = daily_returns.dropna()
+    if rf is None:
+        return r
+    return r - rf.reindex(r.index).ffill().fillna(0.0)
 
-    Sortino uses downside deviation about zero; if there are no down days
-    it is undefined rather than infinite, so NaN is returned."""
+
+def _annualised(daily_returns: pd.Series, rf: pd.Series | None = None) -> tuple[float, float, float]:
+    """(ann. volatility %, Sharpe, Sortino), over the per-session risk-free return `rf` (0% without one).
+
+    A book whose idle money earns interest MUST pass the cash rate it was credited. At 0% the interest
+    counts as risk-adjusted return: a book that sat in cash for nine years (two trades) drew a straight
+    line at the cash rate, a daily volatility near zero, and a Sharpe ratio of 38 (stage4_shorts, India,
+    2026-11-14). Over the cash rate the same line scores about zero, which is what it earned for its risk.
+
+    Volatility is of the raw returns. Sortino uses downside deviation of the excess returns about zero;
+    if there are no down days it is undefined rather than infinite, so NaN is returned."""
     r = daily_returns.dropna()
     if len(r) < 2:
         return float("nan"), float("nan"), float("nan")
+    ann_vol = float(r.std(ddof=1)) * np.sqrt(TRADING_DAYS) * 100
+    r = excess_returns(r, rf)
     sd = float(r.std(ddof=1))
-    ann_vol = sd * np.sqrt(TRADING_DAYS) * 100
     mean = float(r.mean())
     sharpe = (mean / sd) * np.sqrt(TRADING_DAYS) if sd > 0 else float("nan")
     downside = r[r < 0]
@@ -99,19 +117,20 @@ def _annualised(daily_returns: pd.Series) -> tuple[float, float, float]:
     return ann_vol, sharpe, sortino
 
 
-def risk_stats(daily_returns: pd.Series) -> tuple[float, float, float]:
-    """Public form of `_annualised`: (ann. vol %, Sharpe, Sortino).
+def risk_stats(daily_returns: pd.Series, rf: pd.Series | None = None) -> tuple[float, float, float]:
+    """Public form of `_annualised`: (ann. vol %, Sharpe, Sortino), over `rf` when given.
 
     Exposed so the index-investing modules can report the same risk numbers
     as the stock-level backtests without reimplementing (and quietly
     disagreeing with) the convention.
     """
-    return _annualised(daily_returns)
+    return _annualised(daily_returns, rf)
 
 
-def benchmark_stats(bench_close: pd.Series) -> dict:
+def benchmark_stats(bench_close: pd.Series, rf: pd.Series | None = None) -> dict:
     """Buy-and-hold stats for the benchmark over the same dates, so the
-    strategy is judged against the alternative of doing nothing."""
+    strategy is judged against the alternative of doing nothing. Sharpe over
+    `rf` when given -- the same rate as the strategy's, or the two do not compare."""
     b = bench_close.dropna()
     if len(b) < 2:
         return {}
@@ -119,7 +138,7 @@ def benchmark_stats(bench_close: pd.Series) -> dict:
     total = (b.iloc[-1] / b.iloc[0] - 1) * 100
     cagr = ((b.iloc[-1] / b.iloc[0]) ** (1 / years) - 1) * 100
     dd, _ = max_drawdown(b)
-    _, sharpe, _ = _annualised(b.pct_change())
+    _, sharpe, _ = _annualised(b.pct_change(), rf)
     return {
         "benchmark_return_pct": float(total),
         "benchmark_cagr_pct": float(cagr),
@@ -162,9 +181,15 @@ def compute(
     bench_close: pd.Series | None = None,
     cash: pd.Series | None = None,
     notes: list[str] | None = None,
+    rf: pd.Series | None = None,
 ) -> Performance:
     """`equity` and `positions_open` are daily series on the same index.
-    `trades` needs r_multiple, pnl and notional columns."""
+    `trades` needs r_multiple, pnl and notional columns.
+
+    `rf` is the per-session risk-free return (annual cash rate / 252) the runner credited on idle money.
+    Pass it whenever the equity earns interest: Sharpe and Sortino, the strategy's and the benchmark's,
+    are then measured over it (see `_annualised`). Without it they are at 0%, which is only honest for a
+    book whose cash earns nothing."""
     equity = equity.dropna()
     if equity.empty:
         raise ValueError("empty equity curve")
@@ -173,7 +198,7 @@ def compute(
     total_return = (equity.iloc[-1] / equity.iloc[0] - 1) * 100
     cagr = ((equity.iloc[-1] / equity.iloc[0]) ** (1 / years) - 1) * 100
     dd, dd_days = max_drawdown(equity)
-    ann_vol, sharpe, sortino = _annualised(equity.pct_change())
+    ann_vol, sharpe, sortino = _annualised(equity.pct_change(), rf)
     calmar = (cagr / abs(dd)) if dd else float("nan")
 
     # Exposure: share of days holding anything, which is what makes a
@@ -208,12 +233,13 @@ def compute(
         turnover_annual=float(turnover), trades=int(len(trades)),
         win_rate_pct=win_rate, avg_r=avg_r, profit_factor=pf, expectancy_r=avg_r,
         costs_paid=float(costs_paid), notes=list(notes or []),
+        risk_free="cash rate" if rf is not None else None,
     )
     if bench_close is not None and cash is not None:
         for k, v in deployment_stats(equity, cash, bench_close).items():
             setattr(perf, k, v)
     if bench_close is not None:
-        for k, v in benchmark_stats(bench_close).items():
+        for k, v in benchmark_stats(bench_close, rf).items():
             setattr(perf, k, v)
     return perf
 
@@ -233,7 +259,7 @@ def format_report(p: Performance, currency: str, cap: int) -> str:
         "",
         f"Max drawdown      {f(p.max_drawdown_pct)}%   (longest {p.max_drawdown_days} days below a prior peak)",
         f"Ann. volatility   {f(p.ann_volatility_pct)}%",
-        f"Sharpe            {f(p.sharpe)}        (0% risk-free)",
+        f"Sharpe            {f(p.sharpe)}        ({'over the ' + p.risk_free if p.risk_free else '0% risk-free'})",
         f"Sortino           {f(p.sortino)}",
         f"Calmar            {f(p.calmar)}",
         "",

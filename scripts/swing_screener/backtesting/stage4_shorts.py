@@ -650,10 +650,9 @@ def find_long_book(market: str, out_dir: Path) -> Path | None:
 
 
 def excess_sharpe(eq: pd.Series, rf: pd.Series) -> float:
-    """Annualised Sharpe ratio of the daily returns over the cash rate (`rf` is per session)."""
-    r = eq.pct_change().dropna()
-    x = r - rf.reindex(r.index).fillna(0.0)
-    return float(x.mean() / x.std() * math.sqrt(252)) if x.std() > 0 else float("nan")
+    """Annualised Sharpe ratio of the daily returns over the cash rate (`rf` is per session) -- the shared
+    convention (metrics.risk_stats), the same the headline uses."""
+    return float(metrics.risk_stats(eq.pct_change(), rf)[1])
 
 
 def index_short(eq: pd.Series, bench: pd.Series, rf: pd.Series) -> tuple[pd.Series, float]:
@@ -1142,8 +1141,12 @@ def main(argv: list[str] | None = None) -> dict | None:
         + (f"Interest at the cash rate is credited on the account's equity: {dropped.get('interest', 0):,.0f} over the run."
            if CREDIT_INTEREST else "No interest is credited."),
     ]
+    # the account earns the cash rate on its collateral, so Sharpe (the book's and the index's) is over it:
+    # at 0% a book that sat in cash scored the interest as risk-adjusted return (India v1.5 C+P: 38.01)
+    rf = prep["cash_rate"].reindex(eq.index).ffill().fillna(0.0) / 252
     perf = metrics.compute(equity=eq, positions_open=held, trades=tdf, max_open_positions=0,
-                           costs_paid=costs, bench_close=bc, cash=None, notes=notes)
+                           costs_paid=costs, bench_close=bc, cash=None, notes=notes,
+                           rf=rf if CREDIT_INTEREST else None)
     perf.benchmark_name = f"{cfg.benchmark_symbol} ({cfg.benchmark_ticker})"
 
     name = (f"{a.start}_entry{a.entries}_{'mkt' if use_filter else 'nomkt'}_risk{RISK_PCT:g}"
@@ -1162,7 +1165,6 @@ def main(argv: list[str] | None = None) -> dict | None:
         fit = int((tdf["notional"] >= INDIA_LOT_MIN_VALUE).sum())
         perf.notes.append(f"Whole lots: {fit} of {len(tdf)} shorts reached one futures lot (proxy: a contract worth at "
                           f"least {INDIA_LOT_MIN_VALUE:,.0f}) at an account of {cfg.account_size:,.0f}.")
-    rf = prep["cash_rate"].reindex(eq.index).ffill().fillna(0.0) / 252
     long_dir = find_long_book(a.market, out)
     leq = (pd.read_csv(long_dir / "equity.csv", index_col=0, parse_dates=True)["equity"]
            if long_dir is not None else None)
