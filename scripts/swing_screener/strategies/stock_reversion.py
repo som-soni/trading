@@ -50,7 +50,7 @@ DOWN_CLOSES = 3           # S3: at least this many lower closes in a row
 DROP_BARS = 3             # the drop the ranking switch reads: the close against the close this many sessions ago
 
 # ---- after the scan (signal_exempt_consts): entry, stop, exit, ranking
-ENTRY_LIMIT_PCT = 0       # 0: buy the next session's open; > 0: a buy limit this % under the signal close, next session only
+ENTRY_LIMIT_PCT = 3       # 0: buy the next session's open; > 0: a buy limit this % under the signal close, next session only
 CATASTROPHE_ATR = 0       # 0: no stop (the published rule); > 0: a stop this many ATR14 under the signal close
 EXIT_SMA = 5              # sell on the first close above the simple average of this many closes
 EXIT_ON_RSI = 0           # 1: sell instead on the first close whose RSI(2) is above EXIT_RSI (the average is not used)
@@ -90,8 +90,18 @@ class StockReversionStrategy(Strategy):
     # buying a dip inside an uptrend is a pullback entry with a reversion exit.
     style = "snapback"
     horizon = "swing"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 moved only ENTRY_LIMIT_PCT, read after evaluate() (signal_meta): the scan is v1.0's, so its
+    # cached signal rows carry forward instead of a rescan.
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-11-15",
+         "Buy with a limit {ENTRY_LIMIT_PCT}% under the signal close, for the next session only, instead "
+         "of at the next open (ENTRY_LIMIT_PCT 0 -> {ENTRY_LIMIT_PCT}). The v1.0 base rule failed its "
+         "optimise-stage criteria in both markets; of six single switches tried on those years only this "
+         "one beat the index held at the same exposure in both (+5.0% US, +8.4% India). Chosen in-sample, "
+         "so it is judged once on the verify stage against criteria written before that run. Signal scan "
+         "unchanged (ENTRY_LIMIT_PCT is read after evaluate)."),
         ("1.0", "2026-11-14",
          "v1 baseline, the published Connors rule fixed before any run: a liquid stock above its 200-day "
          "with RSI(2) under {RSI_ENTRY}, bought at the next open, sold on the first close above the "
@@ -102,8 +112,8 @@ class StockReversionStrategy(Strategy):
     key = "stock_reversion"
     name = "Stock mean reversion"
     description = (
-        "Buys a short, sharp dip (RSI(2) under {RSI_ENTRY}) in a liquid stock above its 200-day; sells the "
-        "first close above the {EXIT_SMA}-day average."
+        "Buys a short, sharp dip (RSI(2) under {RSI_ENTRY}) in a liquid stock above its 200-day with a limit "
+        "{ENTRY_LIMIT_PCT}% under the close; sells the first close above the {EXIT_SMA}-day average."
     )
     gate_codes = ("G1",)
     screen_key = "above_200"
@@ -136,8 +146,9 @@ class StockReversionStrategy(Strategy):
         "**Signal.** The oversold test SETUP_RULE picks (now {SETUP_RULE}): S1 RSI(2) under {RSI_ENTRY} "
         "(the base rule), S2 a close under the lower 20-day, {BB_SD}-SD Bollinger band, or S3 "
         "{DOWN_CLOSES} or more lower closes in a row. Every session that passes is a signal.",
-        "**Buy.** At the next session's open (ENTRY_LIMIT_PCT = {ENTRY_LIMIT_PCT}); with ENTRY_LIMIT_PCT "
-        "above 0, a buy limit that % under the signal close, for the next session only.",
+        "**Buy.** A buy limit {ENTRY_LIMIT_PCT}% under the signal close, for the next session only: filled "
+        "at the open if the stock opens under it, at the limit if the session trades down to it, dropped "
+        "otherwise. ENTRY_LIMIT_PCT = 0 is the published v1.0 entry, the next session's open.",
         "**Sell.** At the first close above the {EXIT_SMA}-day simple average, the fill session included "
         "(with EXIT_ON_RSI = 1, the first close whose RSI(2) is above {EXIT_RSI} instead), or at the close "
         "of the {MAX_HOLD_BARS}th session after the fill session. No stop in the base rule; "
@@ -147,7 +158,11 @@ class StockReversionStrategy(Strategy):
         "goes first (RANK_BY_DROP = 1: the largest {DROP_BARS}-day drop).",
     )
     caveats = (
-        "**Measured in-sample only.** See Status for the optimise-stage results; verify has not been run.",
+        "**The limit was chosen in-sample.** It was the best of six switches on the optimise years; its "
+        "verify-stage result in Status is the only test of it on unseen years.",
+        "**The limit misses the dips that bounce at once.** A stock that does not trade "
+        "{ENTRY_LIMIT_PCT}% lower the next session is never bought, so the book holds fewer positions "
+        "and sits more in cash than the v1.0 rule.",
         "**No stop in the base rule.** The published rule has none: a stock that keeps falling is held "
         "until the time stop, {MAX_HOLD_BARS} sessions. A gap down on bad news is taken in full. The "
         "CATASTROPHE_ATR switch tests a {CATASTROPHE_ATR}-ATR stop (3 in the variant run).",
@@ -166,7 +181,15 @@ class StockReversionStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "MEASURED AND IT FAILS: v1.0, OPTIMISE STAGE (2013-2021, in-sample), jobs #1790 US and #1791 "
+        "AWAITING VERIFY: v1.1 (the {ENTRY_LIMIT_PCT}% buy limit) is queued for its one verify-stage run. "
+        "Verify pass criteria, written 2026-11-15 before any v1.1 run: in each market, over the "
+        "verify window (2022-01-01 to the run date), excess CAGR above 0 against the index held at the "
+        "same exposure, with at least 100 trades. Each market passes or fails on its own; the strategy "
+        "passes only if both do. The correlation arm is not used here: the limit passed on the optimise "
+        "years by the excess arm alone (its monthly correlation to Momentum baseline was 0.56-0.60). Max "
+        "drawdown, Sharpe and correlation are reported, not judged.\n\n"
+        "**v1.0, the published rule.** MEASURED AND IT FAILS: v1.0, OPTIMISE STAGE (2013-2021, "
+        "in-sample), jobs #1790 US and #1791 "
         "India, measured 2026-11-15. The base rule failed its pass criteria in both markets. The "
         "criteria were written before any run: excess CAGR above 0 "
         "against the index held at the same exposure, OR a positive CAGR with monthly-return correlation "
@@ -201,8 +224,8 @@ class StockReversionStrategy(Strategy):
         "correlation one. It was one of six switches tried on the same years, so it is a **candidate, "
         "not a result**: the deeper dip it waits for is Connors' own limit-entry variant, but choosing it "
         "here is in-sample selection. Its drawdown is still -51.7% in the US (-28.5% in India), and it "
-        "invests 57% (US) and 21% (India) of capital on an average day. Making it the default is a new "
-        "version, judged once on the verify stage; v1.0 is not verified."
+        "invests 57% (US) and 21% (India) of capital on an average day. It became the default as "
+        "v1.1 (above); v1.0 was never verified."
     )
     gate_docs = {
         "G1": (
@@ -235,8 +258,8 @@ class StockReversionStrategy(Strategy):
     }
     entry_rules = (
         "Signal. The SETUP_RULE setup with G1 passing, graded TRADE - HIGH CONFIDENCE.",
-        "Order. ENTRY_LIMIT_PCT = 0 (now {ENTRY_LIMIT_PCT}): buy at the next session's open, that session "
-        "only. Above 0: a buy limit ENTRY_LIMIT_PCT % under the signal close for the next session only; it "
+        "Order. A buy limit ENTRY_LIMIT_PCT % (now {ENTRY_LIMIT_PCT}) under the signal close for the next "
+        "session only (0: buy at the next session's open, the v1.0 rule); it "
         "fills at the open if the stock opens at or under it, else at the limit if the session trades down "
         "to it, and is dropped otherwise.",
         "The plan's entry is the signal session's close, a nominal number; the price paid is the fill.",

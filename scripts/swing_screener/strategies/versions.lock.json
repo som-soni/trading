@@ -1794,13 +1794,13 @@
   },
   "stock_reversion": {
     "family": "stock_reversion",
-    "fingerprint": "68ef77ca",
+    "fingerprint": "52675668",
     "params": {
       "BB_SD": 2,
       "CATASTROPHE_ATR": 0,
       "DOWN_CLOSES": 3,
       "DROP_BARS": 3,
-      "ENTRY_LIMIT_PCT": 0,
+      "ENTRY_LIMIT_PCT": 3,
       "EXIT_ON_RSI": 0,
       "EXIT_RSI": 70,
       "EXIT_SMA": 5,
@@ -1820,7 +1820,7 @@
         "S3"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "supertrend": {
     "family": "supertrend",
