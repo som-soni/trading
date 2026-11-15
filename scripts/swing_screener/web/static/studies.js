@@ -1370,8 +1370,6 @@ const Studies = (() => {
     setups_kullamagi: genericSetups("kullamagi", "learn-strat-kullamagi", { base: ["The rest", "#2962ff"], pivot: ["Rest high", "#ff9800"] }),
     setups_momentum_burst: genericSetups("momentum_burst", "learn-strat-momentum-burst", { base: ["Quiet sessions", "#2962ff"],
       tight: ["Burst day", "#ff9800"], pivot: ["Burst threshold", "#26a69a"] }),
-    setups_earnings_gaps: genericSetups("earnings_gaps", "learn-strat-earnings-gaps", { base: ["Results reaction", "#2962ff"],
-      tight: ["Flag", "#ff9800"], pivot: ["Buy-stop", "#26a69a"], support: ["Close before the news", "#ef5350"] }),
     // Kell's cycle has no guide of its own; its wedge pop and EMA crossback are pullbacks to moving averages
     setups_kell_cycle: genericSetups("kell_cycle", "learn-strat-pullback-ma", { base: ["Base (base break)", "#2962ff"] }),
     // portfolio strategies that trade one stock at a time: the same layer, drawn from their own runner

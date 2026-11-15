@@ -323,6 +323,8 @@ class EarningsGapStrategy(Strategy):
         "on, during the day. The stop sells during the day; the 20-day exit sells at that day's close.",
     )
     caveats = (
+        "The research switch ENTRY_AT_CLOSE buys the same close it decides on, so the v1.7 variant runs "
+        "that used it are optimistic.",
         "Only stocks with stored quarterly results can ever trade. With nothing to link a move to, "
         "G3 refuses it. Without the link the trade would be buying random spikes, but it shrinks the universe hard: about 1,800 US and 580 Indian symbols "
         "had stored, dated quarters in October 2026. When the strategy was built, an alphabetical "
@@ -384,7 +386,15 @@ class EarningsGapStrategy(Strategy):
         "daily bars, so the buy comes a day later and higher.",
         corporate_actions.CAVEAT_TRADED,
     )
+    retired = "2026-11-15"
     status = (
+        "RETIRED 2026-11-15 -- CLEAN CODE, NO EDGE (owner's decision on the review "
+        "research/review-earnings_gaps-2026-11-15.md, tracker #87). v1.11, optimise stage (2013-2021, in-sample): "
+        "US 5.06% CAGR against SPY's 14.01%, max drawdown -16.9%, 520 trades, a 3% bootstrap chance of a positive "
+        "excess; India 0.95% on 56 trades. Both variants set before the last review failed: E1 (the neglect gate) "
+        "+0.09R a trade against the +0.20R needed; E4 (India Rs 10 crore floor, ATR cap off) narrowly -- 2021 made "
+        "68% of the gain and the drawdown was -15.1% against a -15% limit. The event dating passed (release "
+        "dates, no look-ahead). Kept as a measured negative result; not run live, no verify run spent. "
         "v1.11, OPTIMISE STAGE (2013-2021, in-sample), jobs #1776 India and #1777 US, measured 2026-11-15, against "
         "v1.10: India 0.95% CAGR (was 0.95%), excess -12.59, max drawdown -7.8% (was -7.8%), +0.16R a trade over "
         "56 trades; US 5.06% CAGR (was 4.20%), excess -8.95, max drawdown -16.9% (was -20.3%), +0.10R a trade over "
