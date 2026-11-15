@@ -94,6 +94,13 @@ EVIDENCE = {
     "wyckoff_spring": _e("D", 0, 0, 1, 0, "Wyckoff's method as set out by Hank Pruden, The Three Skills of Top Trading (2007): practitioner method, no published test."),
     "td_sequential": _e("D", 0, 0, 1, 0, "Tom DeMark, The New Science of Technical Analysis (1994): full rules, widely used, no published test of the rules as stated."),
     "rsi_divergence": _e("E", 0, 0, 1, 0, "A widespread rule with no single source: published trading-rule studies find no edge after costs."),
+    "nr7_breakout": _e("C", 1, 0, 1, 0, "Crabel, Day Trading with Short Term Price Patterns and Opening Range Breakout (1990): the book's own tables on futures; little independent replication on stocks."),
+    "bollinger_squeeze": _e("D", 0, 0, 1, 0, "Bollinger, Bollinger on Bollinger Bands (2001), The Squeeze: chart examples, no published test of the rule as a system."),
+    "ttm_squeeze": _e("D", 0, 0, 1, 0, "Carter, Mastering the Trade (2005): the TTM squeeze with chart examples, no published test."),
+    "power_play": _e("D", 0, 0, 1, 0, "Minervini, Trade Like a Stock Market Wizard (2013), the power play: practitioner examples, no published test."),
+    "high_tight_flag": _e("B", 1, 0, 1, 0, "Bulkowski, Encyclopedia of Chart Patterns (2005): his best-performing pattern (own samples, hindsight-measured, no costs); O'Neil, How to Make Money in Stocks."),
+    "pocket_pivot": _e("D", 1, 0, 1, 0, "Morales & Kacher, Trade Like an O'Neil Disciple (2010): full rules, the authors' own record and examples, no independent published test."),
+    "rs_line_lead": _e("D", 1, 0, 1, 0, "O'Neil / Investor's Business Daily: the RS line at a new high before the price; the publisher's examples, no published test of the rule alone."),
     # short side
     "parabolic_short": _e("D", 0, 0, 1, 0, "Kullamägi's parabolic short: examples, no published test."),
     "stage4_shorts": _e("D", 0, 0, 1, 0, "Weinstein's stage 4 short (1988): examples, no published test."),

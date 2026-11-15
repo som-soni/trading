@@ -1260,6 +1260,29 @@
     },
     "version": "1.10"
   },
+  "nr7_breakout": {
+    "family": "nr7_breakout",
+    "fingerprint": "448d9a25",
+    "params": {
+      "HOLD_BARS": 3,
+      "MAX_STOP_PCT": 8.0,
+      "MIN_STOP_PCT": 0.5,
+      "NOMINAL_TARGET_R": 2,
+      "NR4_BARS": 4,
+      "NR_BARS": 7,
+      "_key": "nr7_breakout",
+      "expiry_bdays": 1,
+      "gate_codes": [
+        "G1"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1",
+        "S2"
+      ]
+    },
+    "version": "1.0"
+  },
   "one_two_three": {
     "family": "one_two_three",
     "fingerprint": "8119f6e6",

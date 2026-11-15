@@ -62,6 +62,13 @@ from .stage_analysis import StageAnalysisStrategy
 from .stock_reversion import StockReversionStrategy
 from .trend_pullback import TrendPullbackStrategy
 from .turtle_soup import TurtleSoupStrategy
+from .rs_line_lead import RsLineLeadStrategy
+from .pocket_pivot import PocketPivotStrategy
+from .high_tight_flag import HighTightFlagStrategy
+from .power_play import PowerPlayStrategy
+from .ttm_squeeze import TtmSqueezeStrategy
+from .bollinger_squeeze import BollingerSqueezeStrategy
+from .nr7_breakout import Nr7BreakoutStrategy
 from .rsi_divergence import RsiDivergenceStrategy
 from .td_sequential import TdSequentialStrategy
 from .wyckoff_spring import WyckoffSpringStrategy
@@ -99,6 +106,13 @@ register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion 
 # The swing catalogue's untested setups (research/strategy-catalog-swing.md), added 2026-11-15 on the shared
 # plumbing of strategies/swing_base.py so each can be backtested beside the rest.
 register(TurtleSoupStrategy())
+register(RsLineLeadStrategy())
+register(PocketPivotStrategy())
+register(HighTightFlagStrategy())
+register(PowerPlayStrategy())
+register(TtmSqueezeStrategy())
+register(BollingerSqueezeStrategy())
+register(Nr7BreakoutStrategy())
 register(RsiDivergenceStrategy())
 register(TdSequentialStrategy())
 register(WyckoffSpringStrategy())
