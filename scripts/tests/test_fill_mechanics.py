@@ -12,6 +12,10 @@
 Both are off by default, and the defaults are pinned here: a crumb is still bought, a late fill still
 fills. Each trade also records its signal date and how many sessions it waited for a slot.
 
+Reporting only (no trade moves): every unfilled order leaves under a named reason -- including the two
+cancels that were deleted unrecorded (fell to its stop, closed below its cancel level) -- and "all
+position slots full" counts each signal once, with the per-session refusals reported beside it.
+
 Synthetic bars, no database and no cached prices.
 
     PYTHONPATH=. .venv/bin/python -m tests.test_fill_mechanics
@@ -23,8 +27,9 @@ import sys
 import pandas as pd
 
 from swing_screener.backtesting.portfolio_sim import (
-    MIN_FILL_SKIP, SLOT_WAIT_LAPSE, ExitPolicy, Signal, simulate, trades_to_df,
+    CLOSED_BELOW_CANCEL, FELL_TO_STOP, MIN_FILL_SKIP, SLOT_WAIT_LAPSE, ExitPolicy, Signal, simulate, trades_to_df,
 )
+from swing_screener.backtesting.funnel import normalise
 from swing_screener.config import MARKETS
 
 FAILS: list[str] = []
@@ -71,7 +76,7 @@ def crumbs() -> None:
           tb is not None and tb.shares == 5 and res.partial_fills == 1, repr(tb))
 
     res = simulate(sigs, px, CFG, a.index[0], max_positions=5, exit_policy=POLICY, min_fill_frac=0.5)
-    why = MIN_FILL_SKIP.format(pct=50)
+    why = MIN_FILL_SKIP
     check("with 0.5 the crumb is skipped and named", _trade(res, "B") is None and res.skipped.get(why) == 1,
           repr(res.skipped))
     check("...and the session it was refused on is recorded for the funnel",
@@ -146,13 +151,46 @@ def late_fills() -> None:
           and _trade(res, "A").signal_date == a.index[0], repr(_trade(res, "A")))
 
 
+def reporting() -> None:
+    print("reporting: named cancels, slot misses once per signal")
+    a = _frame([FLAT, FLAT, FLAT, FLAT, FLAT, FLAT, (100, 101, 96, 97), FLAT, FLAT, FLAT])
+    up = (106, 108, 105, 107)
+    b = _frame([FLAT, FLAT, FLAT, FLAT, FLAT, FLAT, (99, 100, 98, 99), up, up, up])
+
+    def run(b_meta=None, **kw):
+        sigs = [_sig(a, 0, "A", stop=97.0, order="open"),
+                _sig(b, 1, "B", entry=100.5, stop=95.0, **(b_meta or {}))]
+        return simulate(sigs, {"A": a, "B": b}, CFG, a.index[0], max_positions=1, exit_policy=POLICY, **kw)
+
+    res = run()
+    check("refused four sessions, then filled: a trade, not a slot miss (4 refusals reported)",
+          _trade(res, "B") is not None and res.signals_missed_no_slot == 0 and res.slot_refusals == 4,
+          f"{res.signals_missed_no_slot} {res.slot_refusals}")
+    res = run(b_meta={"expiry_bdays": 3})
+    check("refused until it expired: one slot miss, on the expiry session",
+          _trade(res, "B") is None and res.missed_slot_at == [("B", b.index[5])] and res.slot_refusals == 3,
+          f"{res.missed_slot_at} {res.slot_refusals}")
+
+    c = _frame([FLAT, FLAT, (99, 99.5, 94, 95), FLAT])
+    d = _frame([FLAT, FLAT, (99, 99.5, 97, 97), FLAT])
+    res = simulate([_sig(c, 0, "C", entry=105.0, stop=95.0), _sig(d, 0, "D", entry=105.0, stop=90.0, cancel_close_below=98.0)],
+                   {"C": c, "D": d}, CFG, c.index[0], max_positions=5, exit_policy=POLICY)
+    check("a buy-stop whose stop is reached first is cancelled under a named reason",
+          res.skipped_at.get(FELL_TO_STOP) == [("C", c.index[2])], repr(res.skipped_at))
+    check("...and one closing below its cancel level", res.skipped_at.get(CLOSED_BELOW_CANCEL) == [("D", d.index[2])],
+          repr(res.skipped_at))
+    for r in (MIN_FILL_SKIP, SLOT_WAIT_LAPSE, FELL_TO_STOP, CLOSED_BELOW_CANCEL):
+        check(f"reason reads the same in the funnel: {r!r}", normalise(r) == r, normalise(r))
+
+
 def main() -> None:
     crumbs()
     late_fills()
+    reporting()
     if FAILS:
         print(f"\nFAILED: {len(FAILS)}")
         sys.exit(1)
-    print("\nOK — crumb fills and slot waits are opt-in, and late fills are re-tested at the price paid.")
+    print("\nOK — crumb fills and slot waits are opt-in, and late fills are re-tested at the price paid; every unfilled order is named once.")
 
 
 if __name__ == "__main__":

@@ -1567,7 +1567,7 @@ def run_portfolio_backtest(
         spec_notes.append(
             f"Minimum fill (--min-fill {min_fill_frac:g}): a fill the cash allows less than {min_fill_frac:.0%} of its "
             "planned shares is skipped rather than bought as a crumb that holds a slot (counted under "
-            f"\"{portfolio_sim.MIN_FILL_SKIP.format(pct=round(min_fill_frac * 100, 4))}\").")
+            f"\"{portfolio_sim.MIN_FILL_SKIP}\").")
     if slot_wait_bdays is not None:
         sim_kw["slot_wait_bdays"] = int(slot_wait_bdays)
         spec_notes.append(
@@ -1624,7 +1624,9 @@ def run_portfolio_backtest(
         "Signals are generated and filled on daily bars; intraday path within a bar "
         "is unknown, so a bar touching both stop and target is scored as a stop.",
         f"{result.signals_seen} signals were generated; {result.signals_taken} were taken, "
-        f"{result.signals_missed_no_slot} passed up with all {cap} slots full, "
+        f"{result.signals_missed_no_slot} given up with all {cap} slots full (counted once per signal; orders were "
+        f"refused a slot on {result.slot_refusals} sessions in all, and "
+        f"{int((tdf['slot_waits'] > 0).sum()) if 'slot_waits' in tdf else 0} of the trades filled after waiting for one), "
         f"{result.signals_missed_no_cash} for insufficient cash.",
         f"Exit policy: {policy.label()}.",
     ] + ([group_note] if group_note else []) + spec_notes + (

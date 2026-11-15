@@ -395,7 +395,8 @@ class PortfolioResult:
     costs_paid: float = 0.0
     signals_seen: int = 0
     signals_taken: int = 0
-    signals_missed_no_slot: int = 0
+    signals_missed_no_slot: int = 0   # signals given up for want of a slot, once each
+    slot_refusals: int = 0            # sessions an order was refused a slot, summed over orders
     signals_missed_no_cash: int = 0
     partial_fills: int = 0
     skipped: dict = field(default_factory=dict)   # spec-mode skips by reason (gap, risk, base, adv, open_risk)
@@ -425,8 +426,21 @@ PENDING_EXPIRY_BDAYS = 10
 #   carrying the stop planned at the signal -- past the strategy's own anti-chase and stop-cap tests.
 #   The per-fill re-tests (meta["max_fill"], meta["max_risk_pct"], meta["min_structural_r"]) apply to
 #   every fill, late ones included, whatever this is.
-MIN_FILL_SKIP = "cash buys under {pct:g}% of the planned size"
+# Reasons are phrased without numbers: the funnel folds every number into "#" (funnel.normalise), so a
+# percentage in a reason printed as "#%". The run's notes state the fraction.
+MIN_FILL_SKIP = "cash buys under the minimum share of the planned size"
 SLOT_WAIT_LAPSE = "waited past its slot window"
+# Every order that leaves the book unfilled is recorded once, under the reason it left (`skipped_at`,
+# `missed_slot_at`); before these, the two cancels below were deleted unrecorded and the funnel showed
+# them as "not attributed to a named rule" (1,515 in donchian's US run).
+FELL_TO_STOP = "fell to its stop before the buy-stop triggered"
+CLOSED_BELOW_CANCEL = "closed below its cancel level before filling"
+# A slot refusal is counted once per signal, when the order is given up for want of a slot: dropped on
+# the refusal (open, close and limit orders, or a zero slot wait) or expired after being refused (a
+# capped wait lapses as SLOT_WAIT_LAPSE). Each session an order is refused is also counted, in
+# `slot_refusals` -- an order resting through a full book is refused every session, so that count ran
+# four times the accepted plans in stage_analysis -- and an order refused then filled later is a trade
+# with `slot_waits` > 0, not a drop.
 
 # When in its session an exit or a fill happens, in order. A fill counts only the exits at or before
 # its own moment (step 2 of `simulate`). Two INTRADAY events keep the old convention: the exit counts,
@@ -670,7 +684,7 @@ def simulate(
             px = (spent - cfg.commission_per_order) / (n * (1 + fee_rate))
             fills.append((today, pos.symbol, "BUY", n, px, spent - n * px, at))
     costs_total = 0.0
-    taken = missed_slot = missed_cash = partial_fills = 0
+    taken = missed_slot = missed_cash = partial_fills = slot_refusals = 0
     skipped: dict[str, int] = {}
     skipped_at: dict[str, list] = {}
     missed_slot_at: list = []
@@ -927,8 +941,13 @@ def simulate(
                     del pending[sym]
                 continue
             if today > order["expires"]:
-                skip(SLOT_WAIT_LAPSE if order.get("slot_capped") else "the resting order expired unfilled",
-                     sym, today)
+                if order.get("slot_capped"):
+                    skip(SLOT_WAIT_LAPSE, sym, today)
+                elif order.get("slot_waits"):
+                    missed_slot += 1                     # rested through a full book to its expiry
+                    missed_slot_at.append((sym, today))
+                else:
+                    skip("the resting order expired unfilled", sym, today)
                 del pending[sym]
                 continue
             if bar["high"] >= order["entry"]:
@@ -954,14 +973,17 @@ def simulate(
                 else:
                     triggered.append((sym, order, bar))
             elif bar["low"] <= order["stop"]:
-                del pending[sym]  # fell away before ever filling
+                skip(FELL_TO_STOP, sym, today)   # fell away before ever filling
+                del pending[sym]
             elif float(bar["close"]) < meta.get("cancel_close_below", -math.inf):
-                del pending[sym]  # closed below the tight low: the setup is gone
+                skip(CLOSED_BELOW_CANCEL, sym, today)   # closed below the tight low: the setup is gone
+                del pending[sym]
 
         triggered.sort(key=lambda t: t[1]["quality"], reverse=True)
         for sym, order, bar in triggered:
             meta = order["meta"]
             if sym in positions:
+                skip("already holding this symbol", sym, today)
                 del pending[sym]
                 continue
 
@@ -985,17 +1007,15 @@ def simulate(
             # its slot is still taken (and its cash and shares still the position's, `book_at`).
             slots_used = len(positions) + sum(1 for e in sold_today if e[2] and e[0] > at)
             if slots_used >= slots_today:
-                missed_slot += 1
-                missed_slot_at.append((sym, today))
+                slot_refusals += 1
                 order["slot_waits"] = order.get("slot_waits", 0) + 1
-                if meta.get("order") in ("open", "close", "limit"):
+                wait = meta.get("slot_wait_bdays", slot_wait_bdays)
+                if meta.get("order") in ("open", "close", "limit") or (wait is not None and int(wait) <= 0):
+                    missed_slot += 1     # taken when it triggers or not at all
+                    missed_slot_at.append((sym, today))
                     del pending[sym]
                     continue
-                wait = meta.get("slot_wait_bdays", slot_wait_bdays)
                 if wait is not None:
-                    if int(wait) <= 0:
-                        del pending[sym]     # taken when it triggers or not at all
-                        continue
                     if not order.get("slot_capped"):
                         # the window runs from the first session it was refused a slot
                         lapse = today + pd.tseries.offsets.BDay(int(wait))
@@ -1101,7 +1121,7 @@ def simulate(
             if affordable < shares:
                 if min_fill_frac is not None and affordable >= 1 and affordable < min_fill_frac * shares:
                     # a crumb: too small to matter, big enough to hold a slot for weeks
-                    skip(MIN_FILL_SKIP.format(pct=round(min_fill_frac * 100, 4)), sym, today)
+                    skip(MIN_FILL_SKIP, sym, today)
                     del pending[sym]
                     continue
                 shares = affordable
@@ -1203,7 +1223,7 @@ def simulate(
         cash=pd.Series(cash_rows, index=idx),
         trades=closed, costs_paid=costs_total,
         signals_seen=len(signals), signals_taken=taken,
-        signals_missed_no_slot=missed_slot, signals_missed_no_cash=missed_cash,
+        signals_missed_no_slot=missed_slot, slot_refusals=slot_refusals, signals_missed_no_cash=missed_cash,
         partial_fills=partial_fills, skipped=skipped,
         skipped_at=skipped_at, missed_slot_at=missed_slot_at, missed_cash_at=missed_cash_at,
         fills=fills,
