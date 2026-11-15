@@ -418,6 +418,31 @@
     },
     "version": "1.11"
   },
+  "earnings_premium": {
+    "family": "earnings_premium",
+    "fingerprint": "45071008",
+    "params": {
+      "HOLD_BARS": 10,
+      "LEAD_MAX_DAYS": 9,
+      "LEAD_MIN_DAYS": 5,
+      "MAX_STOP_PCT": 25.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "RECENT_DAYS": 30,
+      "STOP_ATR": 3,
+      "YEAR_DAYS": 364,
+      "_key": "earnings_premium",
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "ema100_trend": {
     "family": "ema100_trend",
     "fingerprint": "0b233039",
