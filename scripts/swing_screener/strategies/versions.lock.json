@@ -1447,6 +1447,30 @@
     },
     "version": "1.6"
   },
+  "turtle_soup": {
+    "family": "turtle_soup",
+    "fingerprint": "5820f943",
+    "params": {
+      "HOLD_BARS": 6,
+      "LOOKBACK": 20,
+      "MAX_STOP_PCT": 12.0,
+      "MIN_PRIOR_AGE": 4,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "TRAIL_ATR": 2,
+      "_key": "turtle_soup",
+      "expiry_bdays": 1,
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "turtle_trend": {
     "family": "turtle_trend",
     "fingerprint": "be6d0583",

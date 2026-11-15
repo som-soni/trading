@@ -61,6 +61,7 @@ from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
 from .stock_reversion import StockReversionStrategy
 from .trend_pullback import TrendPullbackStrategy
+from .turtle_soup import TurtleSoupStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
 
@@ -83,6 +84,10 @@ register(KullamagiStrategy())
 register(MomentumBurstStrategy())
 register(KellCycleStrategy())
 register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion bet
+
+# The swing catalogue's untested setups (research/strategy-catalog-swing.md), added 2026-11-15 on the shared
+# plumbing of strategies/swing_base.py so each can be backtested beside the rest.
+register(TurtleSoupStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection
