@@ -1,4 +1,31 @@
 {
+  "avwap_pullback": {
+    "family": "avwap_pullback",
+    "fingerprint": "441054fe",
+    "params": {
+      "ANCHOR_BARS": 126,
+      "MAX_STOP_PCT": 12.0,
+      "MIN_ANCHOR_AGE": 20,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "PRIOR_ABOVE": 10,
+      "STOP_BELOW_PCT": 2.0,
+      "TOUCH_PCT": 1.0,
+      "TRAIL_ATR": 3,
+      "_key": "avwap_pullback",
+      "expiry_bdays": 2,
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "boucher_bonds_gold": {
     "family": "boucher_bonds_gold",
     "fingerprint": "23b6ad68",
