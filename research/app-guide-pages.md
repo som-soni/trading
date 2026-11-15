@@ -30,7 +30,7 @@ config, so a page always shows the market you picked last.
 | **Today** | Today | Is the data current, how did the market close, and what can I trade? | [Trading plan](learn-process-plan.md) |
 | **Markets** | Post-market · Breadth · Sectors · Movers | How healthy is the market, and where is the strength? | [Breadth](learn-health-breadth.md), [sectors](learn-sectors-groups.md) |
 | **Screens** | Screens (and Quality companies) · Screener picks | Which stocks qualify, and which did the strategies pick? | [Stages](learn-price-stages.md), [system filters](learn-system-filters.md) |
-| **Strategies** | Today's setups · one page per strategy · Paper books | Is there a trade, at what price, with what stop? How has each strategy done forward? | [Strategies overview](learn-strat-overview.md) |
+| **Strategies** | Strategies (every strategy in one table) · Today's setups · Paper books · one page per strategy | Is there a trade, at what price, with what stop? How has each strategy done forward? | [Strategies overview](learn-strat-overview.md) |
 | **Chart** | Chart · Fundamentals · Analysis · News | What does this one stock look like — and what do I make of it? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
 | **Watchlists** | Watchlists | What am I following, and what did the screener pick? | [Journal](learn-process-journal.md) |
 | **Trade desk** | Playbook · Daily review · Sectors → stocks · Longs · Shorts · F&O · Risk · Scans & reports | What is my procedure — what I trade, in what order, how much I risk — and what did the desk find on each day? | [Trading plan](learn-process-plan.md) |
@@ -245,9 +245,57 @@ your own list, is done on **Watchlists** (§7).
 ## 5. Strategies
 
 A strategy draws candidates from one screen and adds the trade: setup, entry, stop, target, exits and
-size. The sidebar groups strategies by market behaviour and by how candidates are selected.
+size. The section has three tabs — **Strategies**, **Today's setups** and **Paper books** — and no left
+panel on any of its pages.
 
-**Today's setups** lists every strategy's tradeable and watch names for the chosen market.
+**Strategies** (`#/strategies`, the landing page; `strategiesHome` in `app.js`) is one full-width table,
+a row per strategy, to compare them and open one:
+
+| Column | What it shows |
+|---|---|
+| **Strategy** | Name, version and a one-line description. Click the row (or the name) to open the strategy |
+| **Setup type** | How it gets into a trade (`strategies/base.py` `STYLES`) |
+| **Behaviour** | The market behaviour it bets on (`BEHAVIOURS`) |
+| **Evidence** | The public-evidence grade A–E and 0–5 credibility (`strategies/evidence.py`): what published tests of the idea found, not its backtests here |
+| **per market: Edge, Excess / yr, Max DD, Sharpe** | The backtest verdict and its numbers, from `server.strategy_edges()`: the current rules' verify run, else the optimise run. The market chosen in the header comes first. **Not run** where there is no backtest in that market — never a zero. A faded dot with a version is an older version's run |
+| **per market: Today** | Tradeable setups / names on watch in the strategy's latest run there; "—" for a portfolio or timing book, which holds positions instead |
+| **Backtests** | Stored runs (not archived), all markets |
+
+Every header sorts (click again to reverse; the arrow shows the direction; a missing value always sorts last).
+The default sort is the chosen market's edge, strongest first. **Filter** opens one menu — setup type,
+behaviour, holding period, kind, evidence grade, and per market the edge and today's activity — and each
+option shows how many strategies ticking it would leave. **Group** offers none (the default), setup type,
+holding period or kind; behaviour is not offered, because most strategies are trend / momentum. The line
+under the controls always states the count, the sort, the grouping and each active filter as a removable
+chip; **Clear all** resets them. The search box matches names (Enter opens the first match). All of it is
+saved in the browser and restored on the next visit. **How to read the table** explains the edge levels and
+grades.
+
+**A strategy's page** uses the full width. Its top line leads back to the table (**← Strategies**, as you left
+it), names the kind, and steps **‹ previous / next ›** through the table's current order — filtered, grouped
+and sorted as you left it ("3 of 6 shown"). **Go to…** (or ⌘K, typing *strategy* and a name) jumps to any
+strategy.
+
+**Today's setups** (`#/setups`) lists every strategy's tradeable and watch names for the chosen market in one
+table that starts at the top; the page's explanation is behind **About this page**. A line above the table
+counts the tradeable setups by the edge of the strategy behind them — how many come from strategies with an
+edge here and how many from strategies whose backtests found none. The columns:
+
+- **Signal** — the setup's state in neutral words, from the strategy's decision: **Triggered** (TRADE - HIGH
+  CONFIDENCE: the entry signal fired), **Buy-stop set** / **Sell-stop set** (TRADE ON TRIGGER: the order waits
+  at the entry), **Watch**. Hover for the strategy's own label. The label is the strategy's tier, not a verdict
+  on the strategy.
+- **Strategy edge** — beside it, the strategy's backtest verdict in this market. Rows whose strategy has an
+  edge (verified, out-of-sample return, or in-sample only) are highlighted; the rest are plain, whatever their
+  signal.
+- **Setup** without the strategy's name, then Price, Entry and Stop (two decimals), **Risk %** (one decimal;
+  above `SETUP_RISK_WIDE_PCT`, 8%, emphasised), Target R, Quality and Wait for. **Sector** stands in for the peer group, and Group RS
+  is left out, when the peer data is missing.
+
+A symbol picked by several strategies keeps its rows together (×2 beside the symbol, a connector on the
+following rows) whatever the sort; untick **Keep a symbol's rows together** for a flat list. Sorting, the
+**Filter** menu (signal, strategy edge, strategy, each with counts), the search box and the choices saved
+across visits work as on the Strategies table. Click a row for its chart.
 
 Each strategy's own page has three tabs:
 
@@ -601,7 +649,7 @@ current.**
 | 2 | **Markets → Post-market** | The six signals; *Sectors today*; *Group leadership changes*; *Unusual volume — up*; new highs; *Your watchlists*; *Earnings in the next 10 days*; *Screener changes* | 5–8 |
 | 3 | **Markets → Breadth** | The cards against history; *What changed in the last 5 sessions*; decide how much exposure | 3 |
 | 4 | **Markets → Sectors** | Leading groups; anything new in Improving; your holdings' groups slipping to Weakening | 3–5 |
-| 5 | **Strategies → Today's setups** | Only your strategies and labels; the downgrade; Risk % within your limit | 5–10 |
+| 5 | **Strategies → Today's setups** | Only your strategies and signals, and the strategy edge beside each; the downgrade; Risk % within your limit | 5–10 |
 | 6 | **Chart**, each candidate | The base and its tight area; stop under structure; overhead supply; the results date; Fundamentals if your plan uses it | 2–3 each |
 | 7 | **Watchlists** | Screener picks: entry, to entry %, stop, target R; move the ones you want to your own list with a note | 5 |
 | 8 | Outside the app | Size each order; place buy-stops and stops with the broker; move stops Open positions raised | 5–10 |
