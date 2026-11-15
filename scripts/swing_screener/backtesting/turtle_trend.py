@@ -691,9 +691,13 @@ DOC = {
         "measured alternatives: the original Turtle unit with pyramiding, and monthly time-series momentum."
     ),
     "status": (
+        "RETIRED 2026-11-15 -- ALL THREE v1.1 TESTS FAIL their criteria written beforehand (owner's decision). "
+        "Optimise stage (2013-2021, in-sample, US): System 2 +2.73% a year, Sharpe 0.24; faithful Turtle unit "
+        "+2.05%, Sharpe 0.21; TSMOM +3.26%, Sharpe 0.35, against the 60/40's +10.8%, Sharpe 1.16. Kept as a "
+        "measured negative result; not run live, no verify run spent. "
         "v1.1 FAILS IN THE OPTIMISE STAGE (2013-2021, US; runs 2128-2130, 2026-11-15); no verify run exists "
         "and none should be. RETIREMENT RECOMMENDED as a standalone strategy: the faithful mode and TSMOM both "
-        "fail their criteria written beforehand (the rule set in the caveats), pending the owner's decision. "
+        "fail their criteria written beforehand (the rule set in the caveats); the owner retired it on 2026-11-15. "
         "v1.1 fixed the three bugs of the 2026-11-14 review: order-free, pro-rata fills when the gross cap "
         "binds; criterion (c) names its long book (momentum_baseline); the runner is US only. "
         "SYSTEM 2 BASELINE (risk unit): +2.73% a year, -33.8% drawdown, Sharpe 0.24, 427 trades, 32% won; fails "
@@ -886,6 +890,7 @@ class TurtleTrendStrategy(PortfolioStrategy):
                   "blend against momentum_baseline in every run."),)
     name = DOC["name"]
     description = DOC["description"]
+    retired = "2026-11-15"
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = tuple(DOC["how_it_works"])

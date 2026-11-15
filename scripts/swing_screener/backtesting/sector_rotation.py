@@ -180,6 +180,10 @@ SR_DOC = {
     "description": "Each month-end hold the {top_n} sectors with the best {lookback_days}-session (about "
                    "six-month) return, equal-weighted.",
     "status": (
+        "RETIRED 2026-11-15 -- NO EDGE IN EITHER MARKET (v1.3, optimise stage 2013-2021, in-sample; owner's "
+        "decision): India 13.45% CAGR against its benchmark's 13.54% (-0.09) with a deeper drawdown (-40.1% "
+        "against -38.3%), failing its pass rule once the illiquid fund was floored out; US 11.47% against SPY's "
+        "14.01% (-2.54). Kept as a measured negative result; not run live, no verify run spent. "
         "v1.3 LIQUIDITY FLOOR, OPTIMISE STAGE (2013-2021, IN-SAMPLE). A review found the India result rested on "
         "the Consumption ETF in years it barely traded, so a fund now ranks only once its trailing traded value "
         "clears a floor, as of each month-end. Expectations written before the runs: US unchanged; India 12-14.5% "
@@ -337,6 +341,7 @@ class SectorRotationStrategy(PortfolioStrategy):
                                        "month-end and hold the top 3, equal-weighted."),)
     name = SR_DOC["name"]
     description = SR_DOC["description"]
+    retired = "2026-11-15"
     status = SR_DOC["status"]
     thesis = SR_DOC["thesis"]
     how_it_works = tuple(SR_DOC["how_it_works"])

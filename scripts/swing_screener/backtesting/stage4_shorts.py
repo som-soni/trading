@@ -739,7 +739,10 @@ DOC = {
         "against an index short at the same beta and beside the best long book, not on its own return."
     ),
     "status": (
-        "FAILS both pass criteria in both markets (v1.5, optimise stage 2013-2021); retirement recommended. "
+        "RETIRED 2026-11-15 -- FAILS BOTH HEDGE CRITERIA IN BOTH MARKETS (v1.5, optimise stage 2013-2021, "
+        "in-sample; owner's decision): as a 20% sleeve beside the long book it cut drawdown by 0.0 points in both "
+        "markets against a 20% cash sleeve, and it barely trades (17 US shorts, 2 in India). Kept as a measured "
+        "negative result; not run live, no verify run spent. "
         "Weinstein's entry (C + P) barely trades once the market itself must be in Stage {MARKET_STAGE} and the "
         "group weak: 17 shorts in the US (avg -0.78R), 2 in India, and none open in the March 2020 crash. "
         "Criterion 1, beat the beta-matched index short with cash on Sharpe and drawdown: US excess Sharpe -0.40 "
@@ -960,6 +963,7 @@ class Stage4ShortsStrategy(PortfolioStrategy):
                   "blend against momentum_baseline in every run."),)
     name = DOC["name"]
     description = DOC["description"]
+    retired = "2026-11-15"
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = tuple(DOC["how_it_works"])

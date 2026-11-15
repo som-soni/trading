@@ -533,6 +533,7 @@ class ChartPatternSpecStrategy(Strategy):
     # stock the screen admits on history alone. Changing it is a behaviour change (version bump).
     min_bars = 260
 
+    retired = "2026-11-15"
     status = (
         "RETIRED 2026-11-14 AS A STANDALONE STRATEGY, by the keep/retire rule below, fixed before its 1.23 runs. "
         "Its detectors stay: they draw the Chart patterns indicator. Kept as a measured negative result; not run "

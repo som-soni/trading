@@ -1366,8 +1366,6 @@ const Studies = (() => {
     setups_stage_analysis: genericSetups("stage_analysis", "learn-strat-stage-analysis", { uptrend: ["30-week line", "#ff9800"],
       base: ["Stage 1 base", "#2962ff"], pivot: ["Resistance", "#26a69a"] }),
     setups_rs_leaders: genericSetups("rs_leaders", "learn-strat-rs-leaders", { base: ["Flat base", "#2962ff"], pivot: ["Pivot", "#ff9800"] }),
-    setups_chart_pattern: genericSetups("chart_pattern", "learn-strat-flags", { base: ["Pattern", "#ab47bc"],
-      pivot: ["Trigger", "#26a69a"], support: ["Support", "#ef5350"] }),
     setups_darvas: genericSetups("darvas", "learn-strat-darvas", { base: ["Darvas box", "#2962ff"], pivot: ["Box top", "#ff9800"] }),
     setups_kullamagi: genericSetups("kullamagi", "learn-strat-kullamagi", { base: ["The rest", "#2962ff"], pivot: ["Rest high", "#ff9800"] }),
     setups_momentum_burst: genericSetups("momentum_burst", "learn-strat-momentum-burst", { base: ["Quiet sessions", "#2962ff"],

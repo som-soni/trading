@@ -232,6 +232,10 @@ class DonchianStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the numeric class attributes (entry_channel, ...), which
     # render_doc fills with the live values. A literal is written where the code uses a literal.
     status = (
+        "US BOOK RETIRED 2026-11-15; INDIA STAYS LIVE (owner's decision on the review "
+        "research/review-donchian-2026-11-15.md, tracker #84). v1.6 US, optimise stage (2013-2021, in-sample): "
+        "6.23% CAGR, max drawdown -44.6%, against the bar set before the run of 9.56% CAGR and -19.3%. The US "
+        "book is not run live and gets no verify run; the strategy itself stays active for India. "
         "v1.6, OPTIMISE STAGE (2013-2021, in-sample), jobs #1768 India and #1769 US, measured 2026-11-15, against "
         "v1.5: India 15.59% CAGR (was 11.85%), excess +2.05, max drawdown -33.2% (was -29.4%), +1.05R a trade over "
         "215 trades; US 6.23% CAGR (was 3.61%), excess -7.78, max drawdown -44.6% (was -42.5%), +0.31R a trade "
