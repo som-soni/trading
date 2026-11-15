@@ -1979,7 +1979,7 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="search wl-search" hidden><input placeholder="Add symbol — any market" spellcheck="false"><ul hidden></ul></div>
       <div class="wlcols">${WL_COLS.map(([k, t]) => `<button data-k="${k}" class="${srt?.k === k ? "on" : ""}">${t}${srt?.k === k ? (srt.d > 0 ? " ↑" : " ↓") : ""}</button>`).join("")}</div>
       <div class="wlrows">${rowsHtml || `<div class="wl-empty">${wlCur?.builtin
-        ? '<b>No screener picks today</b><div class="muted small">Stocks a strategy marks tradeable or on watch land here after the daily run. <a href="#/strategies">See today\'s setups →</a></div>'
+        ? '<b>No screener picks today</b><div class="muted small">Stocks a strategy marks tradeable or on watch land here after the daily run. <a href="#/setups">See today\'s setups →</a></div>'
         : '<b>This list is empty</b><div class="muted small">Track stocks here to see their price and change at a glance.</div><button class="primary wl-empty-add">+ Add a symbol</button><div class="muted small">or press ☆ next to any chart\'s name.</div>'}</div>`}</div>
       <div class="wl-details">${detailsHtml()}</div></div>`;
   }
@@ -2968,7 +2968,7 @@ async function watchlistPage(alive, lid) {
           ${ltpMkts.length ? `<span class="spacer"></span>${ltp ? `<span class="muted small">LTP at ${esc(ltp.at.slice(11, 16))} IST · read from your broker, not stored</span>` : ""}
             <button class="ghost sm" id="wlltp" title="Read the last traded price and the previous close from your broker for this list's ${esc(ltpMkts.map((m) => mktInfo(m).badge || m).join(" / "))} stocks — once, now">${ltp ? "Refresh LTP" : "Pull LTP"}</button>` : ""}</div>` : ""}
         ${screener ? `<p class="sd-lead">Filled automatically after each strategy run: every stock a strategy marked <b>tradeable or on watch</b>, kept until you hide it.
-          Today's verdicts are in <a href="#/strategies">Today's setups</a>; the lists they are drawn from are the <a href="#/screens">Screens</a>.</p>` : ""}
+          Today's verdicts are in <a href="#/setups">Today's setups</a>; the lists they are drawn from are the <a href="#/screens">Screens</a>.</p>` : ""}
         <div id="wlt"></div>
         <p class="muted small">${screener
           ? "Screener picks come from the latest full run of each strategy (tradeable or watchlist candidate) and refresh every run. Removing one hides it until it drops off the screen and is flagged again."
@@ -3045,7 +3045,7 @@ async function watchlistPage(alive, lid) {
   if (!items.length) {
     host.innerHTML = `<div class="empty"><b>${screener ? "No screener picks" : "This list is empty"}</b>
       <div class="muted">${screener ? "Stocks a strategy marks tradeable or on watch appear here after the daily run." : "Type a symbol or company in the box above to add it — or press ☆ next to the name on any chart."}</div>
-      ${screener ? '<a class="btn" href="#/strategies">See today\'s setups →</a>' : ""}</div>`;
+      ${screener ? '<a class="btn" href="#/setups">See today\'s setups →</a>' : ""}</div>`;
     return;
   }
   const ltpCols = ltp ? ["ltp", "prev close", "ltp chg %"] : [];
@@ -5460,7 +5460,7 @@ function screensOverview(main, list, mkt, alive, fs) {
       context: `<span class="muted small">${prettyDate(list.date)} · ${list.tradable?.toLocaleString()} tradable stocks</span>${info(`<p>Which stocks are worth a look today. A screen is a set of conditions over every stock's daily snapshot (about 50 fields) — it only qualifies stocks; a strategy adds the trade.</p><p>${list.tradable?.toLocaleString()} of ${list.universe?.toLocaleString()} stocks clear the tradable floor (price, liquidity, a year of history).</p>`)}`,
       actions: `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` })
     + `<p class="sd-lead">A screen only says <b>which stocks qualify</b> today — conditions over every stock's daily snapshot, no entry or stop.
-        Each strategy draws its candidates from one screen and adds the trade: that is <a href="#/strategies">Today's setups</a>;
+        Each strategy draws its candidates from one screen and adds the trade: that is <a href="#/setups">Today's setups</a>;
         the names a strategy marks tradeable or on watch also collect in <a href="#/watchlist/screener">Screener picks</a>.</p>`
     + staleBanner(list.stale_inputs, mkt, list.updating)
     + `
@@ -5605,204 +5605,515 @@ async function screenStudy(host, alive, key, mkt, d, conds) {
 
 // --------------------------------------------------------- strategies
 
-/** Strategies: one page — Today's setups and every strategy on the left, the chosen one on the right. */
-/** the Strategies sidebar's scroll and the item last clicked in it (see the strategies page) */
-const STRAT_NAV = { top: 0, key: null, y: 0 };
-async function strategiesPage(alive, key, tab, mkt, runKey) {
-  key = key && key !== "setups" ? key : "";
-  $view.innerHTML = LOADING;
-  const [list, tax] = await Promise.all([
-    api("/api/strategies").catch(() => []),
-    api("/api/taxonomy").catch(() => ({ behaviours: [] })),
-    loadEdges(),
-  ]);
-  if (!alive()) return;
-  // one dot per market: has this strategy shown an edge there (server.strategy_edges)
-  const dot = (x) => `<span class="edge-dots">${MKTS.map((m) => edgeDot(x.key, m.key)).join("")}</span>`;
-  const ver = (x) => (x.version && x.version !== "1.0") || !x.is_current ? `<span class="st-ver" title="${esc(x.spec_id || "")}">v${esc(x.version || "1.0")}</span>` : "";
-  // the current rules' full-period run per market (2013 to the latest close): context, never the grade
-  const fullLine = (x) => {
-    const parts = MKTS.map((m) => [m, EDGE?.strategies?.[x.key]?.[m.key]?.full]).filter(([, f]) => f && f.excess != null)
-      .map(([m, f]) => `<span class="${f.excess > 0 ? "pos" : "neg"}">${esc(m.flag || m.name)} ${f.excess > 0 ? "+" : ""}${f.excess.toFixed(1)}%</span>`);
-    return parts.length ? `<span class="sfull" title="Full period (tuning and hold-out years together): excess CAGR over the index. Context, not a verdict.">full ${parts.join(" ")}</span>` : "";
-  };
-  // A tag on every row names the strategy's setup type -- how it gets into a trade (strategies/base.py
-  // STYLES): the first five are triggers of one continuation bet, the rest are different bets.
-  const STRAT_TAG = { rank: "Rank", breakout: "Breakout", squeeze: "Squeeze", pullback: "Pullback", burst: "Burst",
-    trend: "Trend", reversal: "Reversal", snapback: "Snap-back", fade: "Fade", event: "Event", calendar: "Calendar",
-    short: "Short", income: "Income", value: "Value" };
-  const tag = (x) => (STRAT_TAG[x.style]
-    ? `<span class="st-tag st-${esc(x.style)}" title="${esc([x.style_label, x.behaviour_label].filter(Boolean).join(" · "))}">${STRAT_TAG[x.style]}</span>` : "");
-  const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
-      <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b>${fullLine(x)}<span class="muted small sk">${esc(x.screen_name || "")}</span></span>${gradeChip(x)}${tag(x)}${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
-  // Trading strategies group by style (server order). Within a style they group
-  // by FAMILY: the current version heads the group, with older versions and
-  // sibling variants nested under it. Listing every version flat made five
-  // families read as eight unrelated strategies.
-  const scr = list.filter((x) => x.kind === "screener");
-  const famOf = (x) => x.family || x.key;
-  const heads = new Set(scr.filter((x) => x.is_current).map((x) => x.key));
-  const topLevel = (x) => (x.is_current ? true : !scr.some((p) => p.is_current && famOf(p) === famOf(x)));
-  const vnum = (x) => String(x.version || "1.0").split(".").map(Number);
-  const byVersionDesc = (a, b) => (vnum(b)[0] - vnum(a)[0]) || ((vnum(b)[1] || 0) - (vnum(a)[1] || 0));
-  const withVariants = (p) => item(p) + scr
-    .filter((v) => v.key !== p.key && famOf(v) === famOf(p) && !heads.has(v.key))
-    .sort(byVersionDesc)
-    .map((v) => item(v, true)).join("");
-  // Group by HOW CANDIDATES ARE SELECTED, not by entry style. Entry style put
-  // six of eight strategies in one bucket and said nothing about results;
-  // selection is the axis that separated them — ranking the universe beat a
-  // random control by +7.78pp, and it is the only approach here that has
-  // beaten an index. Benchmark and long-term entries join the same grouping
-  // rather than sitting in separate trailing sections, so momentum_baseline
-  // appears next to what it should be compared with.
-  // Two ways to group, picked in the sidebar and remembered: by market behaviour (then by selection
-  // within it), or by holding period (then by behaviour within it) — swing, positional, investment
-  // (strategies/base.py HORIZONS). Groups with no strategy yet are still listed — every strategy here is
-  // a trend/momentum bet, and hiding the blanks would imply the space has been explored when one idea
-  // has been tried several ways — but folded into one "not yet explored" entry, so they map what is
-  // untested without taking the sidebar's room.
-  const AXES = {
-    behaviour: { groups: tax.behaviours || [], sub: "selection", none: "Kinds of market behaviour no strategy here trades yet" },
-    horizon: { groups: tax.horizons || [], sub: "behaviour", none: "Holding periods no strategy here trades yet" },
-    style: { groups: tax.styles || [], sub: "behaviour", none: "Setup types no strategy here uses yet" },
-  };
-  let groupBy = store.get("stratGroupBy", "behaviour");
-  if (!AXES[groupBy]) groupBy = "behaviour";
-  const ax = AXES[groupBy];
-  const all = list.filter((x) => x[`${groupBy}_label`]);
-  const untried = ax.groups.filter((b) => !all.some((x) => x[groupBy] === b.key));
-  // Within each group: by the backtests here (the market picked in the header: a verified edge first,
-  // then excess CAGR over the index, unmeasured last), by public evidence (grade A..E, then
-  // credibility), or in the server's order. Remembered per browser.
-  const SORTS = [["backtest", "Backtest"], ["evidence", "Evidence"], ["default", "Default"]];
-  let sortBy = store.get("stratSort", "backtest");
-  if (!SORTS.some(([k]) => k === sortBy)) sortBy = "backtest";
-  const sm = pageMarket();
-  const LEVEL = { verified: 0, edge_oos: 1, unjudged: 2, in_sample: 3, failed: 4, none: 5 };   // server EDGE_LEVELS
-  const btKey = (x) => { const e = EDGE?.strategies?.[x.key]?.[sm];
-    return e && e.excess != null ? [LEVEL[e.level] ?? 5, -e.excess] : [9, 0]; };
-  const sorter = sortBy === "backtest"
-    ? (p, q) => { const a = btKey(p), b = btKey(q); return a[0] - b[0] || a[1] - b[1]; }
-    : sortBy === "evidence"
-      ? (p, q) => (p.grade || "Z").localeCompare(q.grade || "Z") || (q.credibility ?? -1) - (p.credibility ?? -1)
-      : () => 0;
-  // Each group folds open and shut, remembered per browser; the group holding the open strategy stays open.
-  const closed = new Set(store.get("stratGroupsClosed", []));
-  const group = (gid, label, n, body, hasActive) =>
-    `<details class="nav-grp" data-g="${esc(gid)}"${hasActive || !closed.has(gid) ? " open" : ""}>
-      <summary class="nav-grp-h"><span>${esc(label)}</span><span class="n">${n}</span></summary>${body}</details>`;
-  const stratNav = ax.groups.map((b) => {
-    const mine = all.filter((x) => x[groupBy] === b.key);
-    if (!mine.length) return "";
-    const lab = `${ax.sub}_label`;
-    const subs = [...new Map(mine.map((x) => [x[lab], x[`${ax.sub}_rank`] ?? 99]))].sort((a, b2) => a[1] - b2[1]);
-    const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
-      mine.filter((x) => x[lab] === slabel && (x.kind !== "screener" || topLevel(x)))
-          .sort(sorter)
-          .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
-    const n = mine.filter((x) => x.kind !== "screener" || topLevel(x)).length;
-    return group(`${groupBy}:${b.key}`, b.label, n, body, mine.some((x) => x.key === key));
-  }).join("");
-  const ungrouped = list.filter((x) => !x[`${groupBy}_label`]);
-  const rest = ungrouped.length ? group(`${groupBy}:other`, "Other", ungrouped.length,
-    ungrouped.map((x) => item(x)).join(""), ungrouped.some((x) => x.key === key)) : "";
-  // the sidebar is rebuilt on every click: keep where it was scrolled, so picking a strategy does not
-  // throw the list back to the top
-  // read from STRAT_NAV, recorded when the item was clicked: by the time this runs the old list may
-  // already be gone (the view shows a loading screen in between)
-  const navTop = STRAT_NAV.top;
-  const anchorY = key && STRAT_NAV.key === key ? STRAT_NAV.y : null;
-  $view.innerHTML = `<div class="rep-layout strats-layout"><aside class="rep-nav strat-nav strats-nav">
-      <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
-      <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div><div class="muted small">full: 2013 → latest, excess over the index per year — context, not a verdict</div><div class="muted small" title="${esc((tax.grades || []).map((g) => `${g.key}: ${g.label}`).join("\n"))}">grade A–E · score 0–5: how credible the idea is outside this app (published tests), not its backtests here</div></div>
-      <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["style", "Setup type"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
-      <div class="nav-groupby"><span class="muted small" title="Backtest: a verified edge first, then excess CAGR over the index in the market picked in the header (${esc(sm)}). Evidence: public grade A–E, then credibility.">Sort by</span>${segmented(SORTS, sortBy, "ssort")}</div>
-      ${stratNav}${rest}
-      ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
-        <div class="nav-empty muted small">${ax.none}: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
-    </aside><section id="stmain" class="scr-main">${LOADING}</section></div>`;
-  {
-    const nav = $view.querySelector(".strats-nav");
-    const place = () => {
-      nav.scrollTop = navTop;
-      const a = nav.querySelector(".nav-item.active");
-      if (!a) return;
-      const nr = nav.getBoundingClientRect(), ar = a.getBoundingClientRect();
-      // the clicked strategy stays where it was under the pointer; a deep link is brought into view
-      if (anchorY != null) nav.scrollTop += ar.top - nr.top - anchorY;
-      else if (ar.top < nr.top || ar.bottom > nr.bottom) nav.scrollTop += ar.top - nr.top - nr.height / 3;
-    };
-    place();
-    requestAnimationFrame(place);   // again once the window scroll and layout have settled
-    STRAT_NAV.key = null;
-    nav.addEventListener("scroll", () => { STRAT_NAV.top = nav.scrollTop; }, { passive: true });
-    nav.addEventListener("click", (ev) => {
-      const it = ev.target.closest("a.nav-item[href^='#/strategies/']");
-      if (!it) return;
-      STRAT_NAV.top = nav.scrollTop;
-      STRAT_NAV.key = decodeURIComponent(it.getAttribute("href").slice("#/strategies/".length).split("/")[0]);
-      STRAT_NAV.y = it.getBoundingClientRect().top - nav.getBoundingClientRect().top;
-    });
-  }
-  $view.querySelectorAll(".ssort button").forEach((b) => b.onclick = () => {
-    if (b.dataset.v !== sortBy) { store.set("stratSort", b.dataset.v); route(); } });
-  $view.querySelectorAll(".sgroup button").forEach((b) => b.onclick = () => {
-    if (b.dataset.v !== groupBy) { store.set("stratGroupBy", b.dataset.v); route(); } });
-  $view.querySelectorAll(".nav-grp").forEach((d) => d.addEventListener("toggle", () => {
-    const now = new Set(store.get("stratGroupsClosed", []));
-    d.open ? now.delete(d.dataset.g) : now.add(d.dataset.g);
-    store.set("stratGroupsClosed", [...now]);
-  }));
-  const main = $view.querySelector("#stmain");
-  if (!key) return setupsPage(alive, main);
-  if (key === "quality" && !tab) tab = "rules";
-  return strategyPage(alive, main, key, tab, mkt, runKey);
+/* The Strategies section has three pages, one per tab: Strategies (#/strategies, the home: every strategy in one
+ * table to compare and open), Today's setups (#/setups) and Paper books (#/paper). No page in it has a left panel:
+ * the home table lists the strategies, and a strategy's own page (#/strategies/<key>/<tab>) uses the full width,
+ * with a breadcrumb back to the table and previous / next through the table's current order. */
+
+/** Setup type -- how a strategy gets into a trade (strategies/base.py STYLES): a short tag per row. */
+const STRAT_TAG = { rank: "Rank", breakout: "Breakout", squeeze: "Squeeze", pullback: "Pullback", burst: "Burst",
+  trend: "Trend", reversal: "Reversal", snapback: "Snap-back", fade: "Fade", event: "Event", calendar: "Calendar",
+  short: "Short", income: "Income", value: "Value" };
+const stratTag = (x) => (STRAT_TAG[x.style]
+  ? `<span class="st-tag st-${esc(x.style)}" title="${esc([x.style_label, x.behaviour_label].filter(Boolean).join(" · "))}">${STRAT_TAG[x.style]}</span>` : "");
+/** what kind of strategy: per-stock signals, a portfolio / timing book, or the long-term tracker */
+const STRAT_KIND = { screener: "Per-stock signals", benchmark: "Portfolio / timing book", "long-term": "Long-term investing" };
+/** an edge grade in a few words, for a table cell (the dot alone would be colour only); the tooltip has the full label */
+const EDGE_CELL = { verified: "Verified", edge_oos: "OOS return", unjudged: "OOS unjudged", in_sample: "In-sample only",
+  failed: "Failed verify", none: "No edge", unmeasured: "Not run" };
+const EDGE_RANK = { verified: 0, edge_oos: 1, unjudged: 2, in_sample: 3, failed: 4, none: 5 };   // server EDGE_LEVELS, best first
+/** the levels that count as an edge somewhere (verified out-of-sample, or at least in-sample): Today's setups highlights them */
+const EDGE_SHOWN = new Set(["verified", "edge_oos", "in_sample"]);
+const edgeCell = (e) => (e && e.level !== "unmeasured"
+  ? `<span class="ecell" title="${esc(e.label || "")}"><i class="edge e-${esc(e.level)}${e.current === false ? " old" : ""}"></i>${esc(EDGE_CELL[e.level] || e.level)}${e.current === false ? ` <span class="muted">v${esc(e.version)}</span>` : ""}</span>`
+  : `<span class="notrun">Not run</span>`);
+/** markets in column order: the one picked in the header first, so the table follows the app's market switch */
+const marketsFirst = (sm) => [...MKTS.filter((m) => m.key === sm), ...MKTS.filter((m) => m.key !== sm)];
+
+/** The home table's choices -- search, filters, grouping, sort -- one saved object, restored on every visit, so the
+ *  breadcrumb back from a strategy finds the table exactly as it was. */
+const STRAT_HOME_KEY = "stratHome";
+const stratHomeDefault = () => ({ q: "", f: {}, group: "", sort: null });
+const stratHomeState = () => ({ ...stratHomeDefault(), ...(store.get(STRAT_HOME_KEY, null) || {}) });
+
+/** One row per strategy, from /api/strategies (docs, taxonomy, backtest count, latest runs per market) and
+ *  /api/strategy-edges (server.strategy_edges: the edge grade, excess, drawdown and Sharpe per market). */
+function stratRows(list) {
+  return list.map((x) => {
+    const mk = {};
+    for (const m of MKTS) {
+      const e = EDGE?.strategies?.[x.key]?.[m.key] || null;
+      const run = (x.screens || []).find((s) => s.market === m.key);
+      mk[m.key] = {
+        e, ran: !!e && e.level !== "unmeasured",
+        excess: e?.excess ?? null, dd: e?.risk?.max_drawdown ?? null, bdd: e?.risk?.bench_max_drawdown ?? null,
+        sharpe: e?.risk?.sharpe ?? null, bsharpe: e?.risk?.bench_sharpe ?? null,
+        // today's activity: only a per-stock strategy has setups; a portfolio book holds positions instead
+        today: x.kind !== "screener" ? null : run ? { trade: run.tradeable, watch: run.watch, run: run.run } : { notrun: true },
+      };
+    }
+    return { ...x, mk, kindLabel: STRAT_KIND[x.kind] || x.kind };
+  });
 }
 
+/** The facets the Filter menu offers. Values are what a row shows; each option says how many strategies it would leave. */
+function stratFacets(sm) {
+  const mkF = (m) => [
+    { id: `edge:${m.key}`, label: `Backtest edge · ${m.flag || ""} ${m.name}`, val: (r) => EDGE_CELL[r.mk[m.key].e?.level || "unmeasured"] },
+    { id: `today:${m.key}`, label: `Today · ${m.flag || ""} ${m.name}`,
+      val: (r) => { const t = r.mk[m.key].today; return !t ? "No daily setups (portfolio)" : t.notrun ? "Not run" : t.trade ? "Tradeable setups" : t.watch ? "Watch only" : "Nothing today"; } },
+  ];
+  return [
+    { id: "style", label: "Setup type", val: (r) => r.style_label || "—" },
+    { id: "behaviour", label: "Behaviour", val: (r) => r.behaviour_label || "—" },
+    { id: "horizon", label: "Holding period", val: (r) => r.horizon_label || "—" },
+    { id: "kind", label: "Kind", val: (r) => r.kindLabel },
+    { id: "grade", label: "Public evidence", val: (r) => (r.grade ? `Grade ${r.grade}` : "No grade") },
+    ...marketsFirst(sm).flatMap(mkF),
+  ];
+}
 
-async function setupsPage(alive, root) {
+/** The columns. `v` is the sort value (null always sorts last, whatever the direction); `dir` the first click's direction. */
+function stratColumns(sm) {
+  const cols = [
+    { id: "name", label: "Strategy", v: (r) => r.name.toLowerCase(), dir: 1, cls: "sh-name" },
+    { id: "style", label: "Setup type", v: (r) => r.style_rank ?? 99, dir: 1 },
+    { id: "behaviour", label: "Behaviour", v: (r) => r.behaviour_label || null, dir: 1 },
+    { id: "grade", label: "Evidence", tip: "Public evidence: what published tests of the idea found, grade A (strong) to E (tested and failed), with a 0–5 credibility score. About the idea, not its backtests here.",
+      v: (r) => (r.grade ? (70 - r.grade.charCodeAt(0)) * 10 + (r.credibility ?? 0) : null), dir: -1 },
+  ];
+  for (const m of marketsFirst(sm)) {
+    const k = m.key, g = `${m.flag || ""} ${m.name}`;
+    cols.push(
+      { id: `${k}:edge`, grp: k, glabel: g, label: "Edge", tip: "The backtest verdict for the current rules: verified out-of-sample, in-sample only, or no edge (excess return over the index at or below zero).",
+        v: (r) => (r.mk[k].ran ? (9 - (EDGE_RANK[r.mk[k].e.level] ?? 5)) * 1000 + (r.mk[k].excess ?? 0) : null), dir: -1 },
+      { id: `${k}:excess`, grp: k, label: "Excess / yr", num: true, tip: "Excess CAGR over the market's index, from the run that sets the edge grade (verify, else optimise).",
+        v: (r) => (r.mk[k].ran ? r.mk[k].excess : null), dir: -1 },
+      { id: `${k}:dd`, grp: k, label: "Max DD", num: true, tip: "Largest peak-to-trough fall in that run (the index's in the tooltip). Sorting puts the shallowest first.",
+        v: (r) => (r.mk[k].ran ? r.mk[k].dd : null), dir: -1 },
+      { id: `${k}:sharpe`, grp: k, label: "Sharpe", num: true, tip: "Sharpe ratio of that run (the index's in the tooltip).",
+        v: (r) => (r.mk[k].ran ? r.mk[k].sharpe : null), dir: -1 },
+      { id: `${k}:today`, grp: k, label: "Today", num: true, tip: "From the strategy's latest run in this market: tradeable setups / names on watch. A portfolio book has no daily setups.",
+        v: (r) => { const t = r.mk[k].today; return !t || t.notrun ? null : t.trade * 1000 + t.watch; }, dir: -1 },
+    );
+  }
+  cols.push({ id: "backtests", label: "Backtests", num: true, tip: "Backtest runs stored for this strategy (not archived), all markets and stages.", v: (r) => r.backtests || 0, dir: -1 });
+  return cols;
+}
+
+const GROUPINGS = [["", "No grouping"], ["style", "Setup type"], ["horizon", "Holding period"], ["kind", "Kind"]];
+
+/** Strategies home: every strategy in one table -- what it is, what public research says, what its backtests found in
+ *  each market, what it points at today -- searchable, filterable, groupable and sortable by any column. */
+async function strategiesHome(alive) {
+  document.title = "Strategies · Trading";
+  $view.innerHTML = LOADING;
+  const [list, tax] = await Promise.all([api("/api/strategies").catch(() => []), api("/api/taxonomy").catch(() => ({})), loadEdges()]);
+  if (!alive()) return;
+  const sm = pageMarket();
+  const rows = stratRows(list);
+  const cols = stratColumns(sm), facets = stratFacets(sm);
+  const defSort = () => ({ col: `${sm}:edge`, dir: -1 });
+  let st = stratHomeState();
+  const save = () => store.set(STRAT_HOME_KEY, st);
+  if (!st.sort || !cols.some((c) => c.id === st.sort.col)) st.sort = null;
+  if (!GROUPINGS.some(([k]) => k === st.group)) st.group = "";
+  const legend = `<p><b>Edge</b> — the backtest verdict for the current rules in each market, from its stored runs:</p>
+    <ul class="sh-legend">${["verified", "edge_oos", "unjudged", "in_sample", "failed", "none"].map((l) => `<li><i class="edge e-${l}"></i><b>${EDGE_CELL[l]}</b> — ${esc(EDGE?.levels?.[l] || "")}</li>`).join("")}
+      <li><span class="notrun">Not run</span> — no backtest of this strategy in that market.</li></ul>
+    <p>A faded dot with a version (<i class="edge e-none old"></i><span class="muted">v1.2</span>) is an older version's run: the current rules have not run yet.
+      <b>Excess / yr</b>, <b>Max DD</b> and <b>Sharpe</b> come from the same run; hover a number for the index's.</p>
+    <p><b>Evidence</b> — public evidence for the idea, outside this app: ${(tax.grades || []).map((g) => `<b>${esc(g.key)}</b> ${esc(g.label)}`).join("; ")}. The small number is a 0–5 credibility score.</p>
+    <p><b>Today</b> — tradeable setups / names on watch in the strategy's latest run. “—”: a portfolio book, which holds positions rather than daily setups.</p>`;
+  $view.innerHTML = pageHead("Strategies", {
+      extra: marketSeg(sm),
+      context: `<span class="muted small">${rows.length} strategies</span>${info(legend, "How to read the table")}` }) + `
+    <div class="sh-bar">
+      <label class="filter sh-q"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
+        <input type="search" placeholder="Search strategies" spellcheck="false" aria-label="Search strategies"></label>
+      <span class="menu"><button class="sm sh-fbtn" aria-haspopup="true">Filter</button><div class="menu-pop sh-fpop" hidden></div></span>
+      <label class="sh-grp-sel small"><span class="muted">Group</span><select class="sm">${GROUPINGS.map(([k, t]) => `<option value="${k}">${t}</option>`).join("")}</select></label>
+    </div>
+    <div class="sh-state small" aria-live="polite"></div>
+    <div class="sh-wrap"><table class="sh-table"><thead></thead><tbody></tbody></table></div>`;
+  const qIn = $view.querySelector(".sh-q input"), fBtn = $view.querySelector(".sh-fbtn"), fPop = $view.querySelector(".sh-fpop");
+  const gSel = $view.querySelector(".sh-grp-sel select"), stateEl = $view.querySelector(".sh-state");
+  const thead = $view.querySelector(".sh-table thead"), tbody = $view.querySelector(".sh-table tbody");
+  qIn.value = st.q || "";
+  gSel.value = st.group;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
+
+  const matchesQ = (r) => !st.q || `${r.name} ${r.key}`.toLowerCase().includes(st.q.toLowerCase());
+  const passes = (r, skip) => facets.every((f) => f.id === skip || !(st.f[f.id] || []).length || st.f[f.id].includes(f.val(r)));
+  const sortNow = () => st.sort || defSort();
+  const colOf = (id) => cols.find((c) => c.id === id);
+  const sorted = (xs) => {
+    const { col, dir } = sortNow(), c = colOf(col);
+    return xs.slice().sort((a, b) => {
+      const p = c.v(a), q = c.v(b);
+      if (p == null || q == null) return p == null && q == null ? a.name.localeCompare(b.name) : p == null ? 1 : -1;
+      const d = typeof p === "string" ? p.localeCompare(q) : p - q;
+      return d * dir || a.name.localeCompare(b.name);
+    });
+  };
+  const groupOf = (r) => (st.group === "style" ? [r.style_rank ?? 99, r.style_label || "Other"]
+    : st.group === "horizon" ? [r.horizon_rank ?? 99, r.horizon_label || "Other"]
+    : st.group === "kind" ? [Object.keys(STRAT_KIND).indexOf(r.kind), r.kindLabel] : [0, ""]);
+
+  const head = () => {
+    const { col, dir } = sortNow();
+    const th = (c) => `<th class="${c.num ? "num" : ""} ${c.cls || ""} ${c.grp ? "g-" + esc(c.grp) : ""}${c.id === col ? " sorted" : ""}" data-c="${esc(c.id)}"
+        aria-sort="${c.id === col ? (dir > 0 ? "ascending" : "descending") : "none"}" title="${esc(c.tip || "Sort by " + c.label)}"><button class="sh-sort">${esc(c.label)}<span class="arrow">${c.id === col ? (dir > 0 ? "▲" : "▼") : ""}</span></button></th>`;
+    const lead = cols.filter((c) => !c.grp && c.id !== "backtests").length;
+    thead.innerHTML = `<tr class="sh-g"><th class="sh-name" colspan="1"></th><th colspan="${lead - 1}"></th>${marketsFirst(sm).map((m) => `<th colspan="5" class="g-${esc(m.key)} gh${m.key === sm ? " cur" : ""}">${esc(m.flag || "")} ${esc(m.name)}</th>`).join("")}<th></th></tr>
+      <tr>${cols.map(th).join("")}</tr>`;
+  };
+  const num = (v, d, sign = false) => (v == null ? "" : `${sign && v > 0 ? "+" : ""}${v.toFixed(d)}`);
+  const marketCells = (r, m) => {
+    const x = r.mk[m.key], t = x.today;
+    const today = !t ? `<td class="num muted" title="A portfolio book: it holds positions, not daily setups">—</td>`
+      : t.notrun ? `<td class="num"><span class="notrun">Not run</span></td>`
+      : `<td class="num" title="${esc(`Latest run ${prettyDate(t.run)}: ${t.trade} tradeable, ${t.watch} on watch`)}"><b class="${t.trade ? "" : "zero"}">${t.trade}</b><span class="muted"> / ${t.watch}</span></td>`;
+    if (!x.ran) return `<td class="g-${esc(m.key)} gs" colspan="4">${edgeCell(x.e)}</td>${today}`;
+    return `<td class="g-${esc(m.key)} gs">${edgeCell(x.e)}</td>
+      <td class="num ${x.excess > 0 ? "pos" : x.excess < 0 ? "neg" : ""}">${num(x.excess, 1, true)}${x.excess != null ? "%" : ""}</td>
+      <td class="num" title="${x.bdd != null ? esc(`index ${x.bdd.toFixed(1)}%`) : ""}">${x.dd != null ? `${num(x.dd, 1)}%` : ""}</td>
+      <td class="num" title="${x.bsharpe != null ? esc(`index ${x.bsharpe.toFixed(2)}`) : ""}">${num(x.sharpe, 2)}</td>${today}`;
+  };
+  const rowHtml = (r) => `<tr data-k="${esc(r.key)}" tabindex="-1">
+      <td class="sh-name"><a href="#/strategies/${esc(r.key)}"><b>${esc(r.name)}</b></a>${r.version ? ` <span class="st-ver${r.is_current ? "" : " old"}" title="${esc(r.spec_id || "")}${r.is_current ? "" : " — an older version"}">v${esc(r.version)}</span>` : ""}
+        <div class="sh-desc">${esc(r.description || "")}</div></td>
+      <td>${stratTag(r) || `<span class="muted">—</span>`}</td>
+      <td class="sh-wrapc">${esc(r.behaviour_label || "—")}</td>
+      <td>${r.grade ? gradeChip(r) : `<span class="muted" title="No public-evidence grade">—</span>`}</td>
+      ${marketsFirst(sm).map((m) => marketCells(r, m)).join("")}
+      <td class="num">${r.backtests || `<span class="muted">0</span>`}</td></tr>`;
+
+  const filterChips = () => facets.flatMap((f) => (st.f[f.id] || []).map((v) =>
+    `<button class="fchip" data-f="${esc(f.id)}" data-v="${esc(v)}" title="Remove this filter">${esc(f.label.split(" · ")[0])}${f.id.includes(":") ? ` ${esc(f.label.split(" · ")[1] || "")}` : ""}: <b>${esc(v)}</b> <span aria-hidden="true">×</span></button>`)).join("");
+  const isDefault = () => !st.q && !st.group && !st.sort && !facets.some((f) => (st.f[f.id] || []).length);
+
+  const draw = () => {
+    head();
+    const shown = sorted(rows.filter((r) => matchesQ(r) && passes(r)));
+    const nF = facets.reduce((n, f) => n + (st.f[f.id] || []).length, 0);
+    fBtn.innerHTML = `Filter${nF ? ` <span class="n">${nF}</span>` : ""}`;
+    fBtn.classList.toggle("on-soft", !!nF);
+    const { col, dir } = sortNow(), c = colOf(col);
+    stateEl.innerHTML = `<span><b>${shown.length}</b> of ${rows.length}</span>
+      <span>Sorted by <b>${esc(c.grp ? `${mktInfo(c.grp).name} ${c.label}` : c.label)}</b> ${dir > 0 ? "▲" : "▼"}${st.sort ? "" : ' <span class="muted">(default)</span>'}</span>
+      ${st.group ? `<span>Grouped by <b>${esc(GROUPINGS.find(([k]) => k === st.group)[1].toLowerCase())}</b></span>` : ""}
+      ${st.q ? `<button class="fchip" data-q title="Clear the search">Search: <b>${esc(st.q)}</b> <span aria-hidden="true">×</span></button>` : ""}
+      ${filterChips()}
+      ${isDefault() ? "" : `<button class="ghost sm sh-clear">Clear all</button>`}`;
+    if (!shown.length) {
+      tbody.innerHTML = `<tr><td class="sh-none" colspan="${cols.length}"><b>No strategy matches${st.q ? ` “${esc(st.q)}”` : ""}${nF ? " with these filters" : ""}.</b>
+        <div><button class="sm sh-clear">Clear search and filters</button></div></td></tr>`;
+    } else if (st.group) {
+      const groups = new Map();
+      for (const r of shown) { const [rk, lab] = groupOf(r); if (!groups.has(lab)) groups.set(lab, { rk, xs: [] }); groups.get(lab).xs.push(r); }
+      tbody.innerHTML = [...groups].sort((a, b) => a[1].rk - b[1].rk).map(([lab, g]) =>
+        `<tr class="sh-gh"><td colspan="${cols.length}"><b>${esc(lab)}</b> <span class="n">${g.xs.length}</span></td></tr>${g.xs.map(rowHtml).join("")}`).join("");
+    } else tbody.innerHTML = shown.map(rowHtml).join("");
+    // previous / next on a strategy's page step through exactly this order
+    const order = st.group ? [...tbody.querySelectorAll("tr[data-k]")].map((t) => t.dataset.k) : shown.map((r) => r.key);
+    store.set("stratOrder", order.length ? order : rows.map((r) => r.key));
+    stateEl.querySelectorAll(".sh-clear").forEach((b) => b.onclick = clearAll);
+    tbody.querySelectorAll(".sh-clear").forEach((b) => b.onclick = clearAll);
+  };
+  const clearAll = () => { st = stratHomeDefault(); qIn.value = ""; gSel.value = ""; save(); draw(); };
+
+  const drawFilterMenu = () => {
+    fPop.innerHTML = facets.map((f) => {
+      const vals = [...new Set(rows.map(f.val))].sort((a, b) => a.localeCompare(b));
+      if (vals.length < 2 && !(st.f[f.id] || []).length) return "";
+      const base = rows.filter((r) => matchesQ(r) && passes(r, f.id));
+      return `<fieldset><legend>${esc(f.label)}</legend>${vals.map((v) => {
+        const n = base.filter((r) => f.val(r) === v).length, on = (st.f[f.id] || []).includes(v);
+        return `<label class="${n || on ? "" : "dim"}"><input type="checkbox" data-f="${esc(f.id)}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(v)}</span><span class="n">${n}</span></label>`;
+      }).join("")}</fieldset>`;
+    }).join("") + `<div class="sh-fpop-foot"><button class="ghost sm" data-none>Clear filters</button><span class="muted small">numbers: strategies left if you tick it</span></div>`;
+  };
+  fBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!fPop.hidden) { fPop.hidden = true; return; }
+    drawFilterMenu(); fPop.hidden = false;
+    const close = (ev) => { if (!fPop.contains(ev.target) && ev.target !== fBtn) { fPop.hidden = true; document.removeEventListener("click", close); } };
+    setTimeout(() => document.addEventListener("click", close));
+  };
+  fPop.onchange = (e) => {
+    const i = e.target.closest("input[data-f]"); if (!i) return;
+    const cur = new Set(st.f[i.dataset.f] || []); i.checked ? cur.add(i.value) : cur.delete(i.value);
+    st.f = { ...st.f, [i.dataset.f]: [...cur] }; if (!cur.size) delete st.f[i.dataset.f];
+    save(); draw(); drawFilterMenu();
+  };
+  fPop.onclick = (e) => { if (e.target.closest("[data-none]")) { st.f = {}; save(); draw(); drawFilterMenu(); } };
+  stateEl.onclick = (e) => {
+    const c = e.target.closest(".fchip"); if (!c) return;
+    if (c.hasAttribute("data-q")) { st.q = ""; qIn.value = ""; }
+    else { const xs = (st.f[c.dataset.f] || []).filter((v) => v !== c.dataset.v); if (xs.length) st.f[c.dataset.f] = xs; else delete st.f[c.dataset.f]; }
+    save(); draw();
+  };
+  let qt;
+  qIn.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { st.q = qIn.value.trim(); save(); draw(); }, 80); };
+  qIn.onkeydown = (e) => {   // Enter opens the first match
+    if (e.key !== "Enter") return;
+    const first = tbody.querySelector("tr[data-k]"); if (first) go(`#/strategies/${first.dataset.k}`);
+  };
+  gSel.onchange = () => { st.group = gSel.value; save(); draw(); };
+  thead.onclick = (e) => {
+    const t = e.target.closest("th[data-c]"); if (!t) return;
+    const c = colOf(t.dataset.c), cur = sortNow();
+    st.sort = { col: c.id, dir: cur.col === c.id ? -cur.dir : c.dir };
+    save(); draw();
+  };
+  tbody.onclick = (e) => {
+    const tr = e.target.closest("tr[data-k]");
+    if (!tr || e.target.closest("a, button")) return;
+    go(`#/strategies/${tr.dataset.k}`);
+  };
+  draw();
+}
+
+/** The strategy page's top line: back to the table (as you left it), the kind, and previous / next through the
+ *  table's current order (saved by strategiesHome; the server's order if the table was never opened here). */
+async function stratCrumbs(host, key, kind) {
+  const list = await api("/api/strategies").catch(() => []);
+  if (!host.isConnected) return;
+  const names = Object.fromEntries(list.map((x) => [x.key, x.name]));
+  let order = (store.get("stratOrder", null) || []).filter((k) => names[k]);
+  if (!order.includes(key)) order = list.map((x) => x.key);
+  const i = order.indexOf(key), prev = order[i - 1], next = order[i + 1];
+  const st = stratHomeState();
+  const narrowed = st.q || Object.values(st.f || {}).some((v) => v.length);
+  host.innerHTML = `<nav class="strat-crumbs" aria-label="Breadcrumb"><a href="#/strategies">← Strategies</a><span class="muted">/ ${esc(kind)}</span>
+    <span class="spacer"></span>
+    <span class="sc-pn">${prev ? `<a href="#/strategies/${esc(prev)}" title="Previous in the Strategies table">‹ ${esc(names[prev])}</a>` : '<span class="muted">‹ first</span>'}
+      <span class="muted small" title="${narrowed ? "Position in the Strategies table as filtered there" : "Position in the Strategies table"}">${i + 1} of ${order.length}${narrowed ? " shown" : ""}</span>
+      ${next ? `<a href="#/strategies/${esc(next)}" title="Next in the Strategies table">${esc(names[next])} ›</a>` : '<span class="muted">last ›</span>'}</span>
+    <button class="sm ghost sc-go" title="Jump to any strategy by name (⌘K)">Go to…</button></nav>`;
+  host.querySelector(".sc-go").onclick = () => openPalette("strategy ");
+}
+
+/** #/strategies -> the home table; #/strategies/<key>[/<tab>/...] -> one strategy, full width. */
+async function strategiesPage(alive, key, tab, mkt, runKey) {
+  if (key === "setups") return go("#/setups");   // the old address of Today's setups
+  if (!key) return strategiesHome(alive);
+  $view.innerHTML = `<div class="strat-page"><section id="stmain">${LOADING}</section></div>`;
+  await loadEdges();
+  if (!alive()) return;
+  if (key === "quality" && !tab) tab = "rules";
+  return strategyPage(alive, $view.querySelector("#stmain"), key, tab, mkt, runKey);
+}
+
+/* Today's setups. The strategy's own decision (strategies/base.py LABELS) is its tier -- it says nothing about
+ * whether the strategy has an edge, and "TRADE - HIGH CONFIDENCE" on a strategy whose backtests found none reads
+ * like a recommendation. So the page shows the signal's state in neutral words, the strategy's edge grade beside
+ * it, and highlights the rows whose strategy has shown an edge (the exception), not the label nearly every row has. */
+const SIGNAL_STATE = [
+  [/^TRADE\W*HIGH/i, "Triggered", "trig", "The entry signal has fired: the plan's entry, stop and target apply now."],
+  [/^TRADE ON TRIGGER/i, null, "set", "Valid but not fired: an order at the entry price fills only if price gets there."],
+  [/^WATCH/i, "Watch", "watch", "Forming, or capped by a watch flag: on the list, no order yet."],
+  [/^AVOID/i, "Avoid", "avoid", "A hard gate failed."],
+];
+function signalState(x) {
+  const s = SIGNAL_STATE.find(([re]) => re.test(String(x.decision || ""))) || [null, x.decision || "—", "", ""];
+  const short = x.stop != null && x.entry != null && x.stop > x.entry;
+  return { label: s[1] || (short ? "Sell-stop set" : "Buy-stop set"), cls: s[2], help: s[3] };
+}
+/** a risk (entry to stop) this wide is shown emphasised: wider than most strategies here allow a trade at all */
+const SETUP_RISK_WIDE_PCT = 8;
+
+async function setupsPage(alive) {
   const mkt = pageMarket();
   document.title = "Today's setups · Trading";
-  root.innerHTML = LOADING;
+  $view.innerHTML = LOADING;
   const [r] = await Promise.all([api(`/api/setups?market=${mkt}`).catch((e) => ({ error: e.message })), loadEdges()]);
   if (!alive()) return;
-  let show = store.get("setupsShow", "all");
   const newest = r.runs?.length ? r.runs.map((x) => x.run).sort().at(-1) : null;
-  root.innerHTML = pageHead("Today's setups", {
+  const intro = `<p>Each strategy's verdict for today — entry, stop and target — on the stocks its <a href="#/screens">screen</a> qualified, from the
+    strategy's latest run. Strategies run on demand: <b>Run strategies…</b> adds a run to the job queue. The names marked tradeable or on watch also
+    collect in <a href="#/watchlist/screener">Screener picks</a>.</p>
+    <p><b>Signal</b> is the state of the setup: <b>Triggered</b> (the entry signal fired), <b>Buy-stop set</b> / <b>Sell-stop set</b> (valid, the order
+    waits at the entry price), <b>Watch</b> (forming, or capped by a watch flag). Hover it for the strategy's own decision label.</p>
+    <p><b>Edge</b> is the strategy's backtest verdict in this market, not the stock's: a setup from a strategy with no edge is a rule firing, not evidence.
+    Rows from strategies with an edge (verified, or in-sample only) are highlighted. A risk above ${SETUP_RISK_WIDE_PCT}% is emphasised.</p>`;
+  $view.innerHTML = pageHead("Today's setups", {
       extra: marketSeg(mkt),
-      context: `<span class="muted small">${newest ? `latest run ${prettyDate(newest)}` : "not run yet"}</span>${info("<p>Every strategy's trades and watch names from its latest run. Strategies run on demand — <b>Run strategies…</b> adds a run to the job queue.</p>")}`,
+      context: `<span class="muted small">${newest ? `latest run ${prettyDate(newest)}` : "not run yet"}</span>${info(intro, "About this page")}`,
       actions: `<button class="primary" id="runstrat" title="Run the strategies on today's data (adds a run to the job queue)">Run strategies…</button>` }) + `
-    <p class="sd-lead">Each strategy's <b>verdict for today</b> — entry, stop, target and decision — on the stocks its
-      <a href="#/screens">screen</a> qualified (each strategy's page names its screen). The names marked tradeable or on watch
-      also collect in <a href="#/watchlist/screener">Screener picks</a>, so they stay on hand after today.</p>
     ${r.behind ? `<div class="scr-stale"><b>Newer prices have loaded since these runs — the setups below were decided on older bars.</b>
       <span class="sx refresh-wait">${r.behind.updating ? '<span class="spin"></span> A re-run of every strategy is queued — this page refreshes itself when the new runs land.'
         : "A refresh could not be queued automatically — use <b>Run strategies…</b>"}</span></div>` : ""}
-    ${r.error ? `<div class="empty"><b>Could not load setups</b><div class="muted">${esc(r.error)}</div></div>` : `
-    <div class="setup-runs">${r.runs.map((x) => `<a class="sec-card setup-run" href="#/strategies/${x.strategy}/setups/${mkt}">
-        <b>${edgeDot(x.strategy, mkt)}${esc(x.name)}</b><div class="small"><span class="${x.tradeable ? "pos" : "muted"}">${x.tradeable} tradeable</span> · ${x.watch} on watch</div>
-        <div class="muted small">${x.screened} from ${esc(x.screen || "its screen")} · ${prettyDate(x.run)}</div></a>`).join("")}</div>
-    <div class="chips" id="sshow">${[["all", "All", r.rows.length], ["trade", "Tradeable", r.rows.filter((x) => x.tradeable).length], ["watch", "On watch", r.rows.filter((x) => !x.tradeable).length]]
-      .map(([k, t, n]) => `<button class="chip ${k === show ? "on" : ""}" data-s="${k}">${t}<span>${n}</span></button>`).join("")}</div><div id="sclus"></div><div id="stbl"></div>`}`;
-  root.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
-  root.querySelector("#runstrat").onclick = () => startJob({ title: `Run strategies · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true });
+    ${r.error ? `<div class="empty"><b>Could not load setups</b><div class="muted">${esc(r.error)}</div></div>` : `<div id="sups"></div>`}`;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
+  $view.querySelector("#runstrat").onclick = () => startJob({ title: `Run strategies · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true });
   if (r.behind?.updating) watchRefresh(alive, mkt, "strategies");
   if (r.error) return;
-  const draw = () => {
-    const xs = r.rows.filter((x) => show === "all" || (show === "trade" ? x.tradeable : !x.tradeable));
-    const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r", "setup_quality", "wait_for"];
-    const hide = ["target_r", "setup_quality", "wait_for"];
-    dataTable(root.querySelector("#stbl"), cols, xs.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategy_name, x.decision, x.setup, x.price, x.entry, x.stop, x.risk_pct, x.target_r, x.quality, x.wait_for || ""]), {
-      name: `setups_${mkt}`, sort: ["setup_quality", -1], hidden: hide,
-      html: { strategy: (v) => `${edgeDot(edgeKeyOf(v), mkt)}${esc(v ?? "")}` },
-      rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((y) => y[0]), "Today's setups", location.hash),
-    });
-    root.querySelector("#sclus").innerHTML = clusterChips(xs.map((x) => x.peer_group));
-    wireClusters(root.querySelector("#sclus"), root.querySelector("#stbl"));
+  setupsTable($view.querySelector("#sups"), r.rows, mkt);
+}
+
+/** Today's setups as one table: a symbol several strategies picked is one visually joined block (its rows stay
+ *  together whatever the sort), one Filter menu, a sortable header that shows its column and direction. */
+function setupsTable(host, raw, mkt) {
+  const bare = (s) => { const x = String(s ?? ""); const m = MKTS.find((k) => k.suffix && x.endsWith(k.suffix)); return m ? x.slice(0, -m.suffix.length) : x; };
+  const rows = raw.map((x) => {
+    const e = EDGE?.strategies?.[x.strategy]?.[mkt] || null, sig = signalState(x);
+    // the Setup column without the strategy's name (the Strategy column has it)
+    const setup = setupFmt(x.setup).replace(new RegExp(`^${x.strategy_name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[·:—-]?\\s*`, "i"), "");
+    return { ...x, e, level: e?.level || "unmeasured", sig, setupText: setup, edgeLabel: EDGE_CELL[e?.level || "unmeasured"] };
+  });
+  // peer-group data may be missing for a market: then the column shows the sector, and Group RS is left out
+  const hasPeer = rows.some((x) => x.peer_group), hasRs = rows.some((x) => x.peer_rs != null);
+  const tradeable = rows.filter((x) => x.tradeable);
+  const withEdge = tradeable.filter((x) => EDGE_SHOWN.has(x.level));
+  const lv = (l) => tradeable.filter((x) => x.level === l).length;
+  const summary = tradeable.length
+    ? `<b>${tradeable.length}</b> tradeable setups: <b>${withEdge.length}</b> from strategies with an edge here (${lv("verified") + lv("edge_oos")} out-of-sample, ${lv("in_sample")} in-sample only),
+       <b>${tradeable.length - withEdge.length - lv("unmeasured")}</b> from strategies whose backtests found no edge here${lv("unmeasured") ? `, <b>${lv("unmeasured")}</b> from strategies never backtested here` : ""}.`
+    : "No tradeable setups today.";
+  const FACETS = [
+    { id: "sig", label: "Signal", val: (x) => x.sig.label },
+    { id: "edge", label: "Strategy edge", val: (x) => x.edgeLabel },
+    { id: "strategy", label: "Strategy", val: (x) => x.strategy_name },
+  ];
+  const COLS = [
+    { id: "symbol", label: "Symbol", v: (x) => bare(x.symbol), dir: 1 },
+    { id: "peer", label: hasPeer ? "Peer group" : "Sector", v: (x) => x.peer_group || x.sector || null, dir: 1, tip: hasPeer ? "The peer group (sub-industry, else industry group); the sector where none is known." : "" },
+    ...(hasRs ? [{ id: "grs", label: "Group RS", num: true, v: (x) => x.peer_rs ?? null, dir: -1, tip: COL_HELP.group_rs }] : []),
+    { id: "strategy", label: "Strategy", v: (x) => x.strategy_name, dir: 1 },
+    { id: "sig", label: "Signal", v: (x) => ({ trig: 0, set: 1, watch: 2, avoid: 3 }[x.sig.cls] ?? 4), dir: 1, tip: "The state of the setup. Hover a cell for the strategy's own decision label." },
+    { id: "edge", label: "Strategy edge", v: (x) => (x.level === "unmeasured" ? null : 9 - (EDGE_RANK[x.level] ?? 9)), dir: -1, tip: "The strategy's backtest verdict in this market (not the stock's). ▼ puts the strongest edge first." },
+    { id: "setup", label: "Setup", v: (x) => x.setupText || null, dir: 1 },
+    { id: "price", label: "Price", num: true, v: (x) => x.price ?? null, dir: -1 },
+    { id: "entry", label: "Entry", num: true, v: (x) => x.entry ?? null, dir: -1 },
+    { id: "stop", label: "Stop", num: true, v: (x) => x.stop ?? null, dir: -1 },
+    { id: "risk", label: "Risk %", num: true, v: (x) => x.risk_pct ?? null, dir: 1, tip: `Entry to stop, % of entry. Above ${SETUP_RISK_WIDE_PCT}% is emphasised.` },
+    { id: "tr", label: "Target R", num: true, v: (x) => x.target_r ?? null, dir: -1 },
+    { id: "q", label: "Quality", num: true, v: (x) => x.quality ?? null, dir: -1, tip: "The strategy's setup-quality score (its own scale)." },
+    { id: "wait", label: "Wait for", v: (x) => x.wait_for || null, dir: 1 },
+  ];
+  const ST_KEY = "setupsView";
+  let st = { f: {}, sort: { col: "edge", dir: -1 }, q: "", group: true, ...(store.get(ST_KEY, null) || {}) };
+  if (!COLS.some((c) => c.id === st.sort?.col)) st.sort = { col: "edge", dir: -1 };
+  // the old All / Tradeable / On watch chips, carried over once
+  const old = store.get("setupsShow", null);
+  if (old && old !== "all" && !st.f.sig) st.f.sig = old === "trade" ? [...new Set(rows.filter((x) => x.tradeable).map((x) => x.sig.label))] : ["Watch"];
+  if (old) store.set("setupsShow", null);
+  const save = () => store.set(ST_KEY, st);
+  host.innerHTML = `<p class="sup-sum small">${summary}</p>
+    <div class="sh-bar">
+      <label class="filter sh-q"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
+        <input type="search" placeholder="Search symbol or company" spellcheck="false" aria-label="Search symbol or company"></label>
+      <span class="menu"><button class="sm sh-fbtn" aria-haspopup="true">Filter</button><div class="menu-pop sh-fpop" hidden></div></span>
+      <label class="small sup-grp"><input type="checkbox" ${st.group ? "checked" : ""}> Keep a symbol's rows together</label>
+    </div>
+    <div class="sh-state small" aria-live="polite"></div>
+    <div class="sh-wrap sup-wrap"><table class="sh-table sup-table"><thead></thead><tbody></tbody></table></div>`;
+  const qIn = host.querySelector(".sh-q input"), fBtn = host.querySelector(".sh-fbtn"), fPop = host.querySelector(".sh-fpop");
+  const stateEl = host.querySelector(".sh-state"), thead = host.querySelector("thead"), tbody = host.querySelector("tbody");
+  qIn.value = st.q || "";
+  const passes = (x, skip) => FACETS.every((f) => f.id === skip || !(st.f[f.id] || []).length || st.f[f.id].includes(f.val(x)));
+  const matchesQ = (x) => !st.q || `${bare(x.symbol)} ${x.name || ""}`.toLowerCase().includes(st.q.toLowerCase());
+  const colOf = (id) => COLS.find((c) => c.id === id);
+  const cmp = (a, b) => {
+    const c = colOf(st.sort.col), p = c.v(a), q = c.v(b);
+    if (p == null || q == null) return p == null && q == null ? 0 : p == null ? 1 : -1;
+    return (typeof p === "string" ? p.localeCompare(q) : p - q) * st.sort.dir;
   };
-  root.querySelector("#sshow").onclick = (e) => { const b = e.target.closest("[data-s]"); if (!b) return; show = b.dataset.s; store.set("setupsShow", show);
-    root.querySelectorAll("#sshow .chip").forEach((c) => c.classList.toggle("on", c === b)); draw(); };
+  // tie-break: tradeable first, then quality -- the old default order
+  const tie = (a, b) => (b.tradeable - a.tradeable) || ((b.quality ?? -1) - (a.quality ?? -1)) || bare(a.symbol).localeCompare(bare(b.symbol));
+  const f2 = (v) => (v == null ? "" : Number(v).toFixed(2)), f1 = (v) => (v == null ? "" : Number(v).toFixed(1));
+  const rowHtml = (x, cls = "", n = 0) => `<tr class="${cls} ${EDGE_SHOWN.has(x.level) ? "hl" : ""}" data-s="${esc(x.symbol)}">
+      <td class="sh-name sup-sym">${cls.includes("cont") ? `<span class="sup-cont" aria-hidden="true"></span><span class="sr">${esc(bare(x.symbol))}</span>`
+        : `<b>${esc(bare(x.symbol))}</b>${n > 1 ? ` <span class="sup-n" title="${n} strategies picked it">×${n}</span>` : ""}<div class="sh-desc">${esc(x.name || "")}</div>`}</td>
+      <td class="sh-wrapc">${x.peer_group ? esc(x.peer_group.split(" › ").at(-1)) : `<span class="${hasPeer ? "muted" : ""}">${esc(x.sector || "")}</span>`}</td>
+      ${hasRs ? `<td class="num">${x.peer_rs != null ? `<span class="${x.peer_rs >= 80 ? "pos" : x.peer_rs < 50 ? "neg" : ""}">${Math.round(x.peer_rs)}</span>` : ""}</td>` : ""}
+      <td><a href="#/strategies/${esc(x.strategy)}/setups/${esc(mkt)}">${esc(x.strategy_name)}</a></td>
+      <td><span class="sig sig-${esc(x.sig.cls)}" title="${esc(`${x.sig.help} The strategy's own label: ${x.decision}.${x.tradeable ? "" : " On watch, not tradeable."}`)}">${esc(x.sig.label)}</span></td>
+      <td>${edgeCell(x.e)}</td>
+      <td class="sh-wrapc sup-setup" title="${esc(x.setup || "")}">${esc(x.setupText)}</td>
+      <td class="num">${f2(x.price)}</td><td class="num">${f2(x.entry)}</td><td class="num">${f2(x.stop)}</td>
+      <td class="num">${x.risk_pct != null ? `<span class="${x.risk_pct > SETUP_RISK_WIDE_PCT ? "risk-wide" : ""}" ${x.risk_pct > SETUP_RISK_WIDE_PCT ? `title="Wider than ${SETUP_RISK_WIDE_PCT}%"` : ""}>${f1(x.risk_pct)}</span>` : ""}</td>
+      <td class="num">${f1(x.target_r)}</td><td class="num">${f1(x.quality)}</td>
+      <td class="sh-wrapc sup-wait">${esc(x.wait_for || "")}</td></tr>`;
+  let visible = [];
+  const draw = () => {
+    const { col, dir } = st.sort;
+    thead.innerHTML = `<tr>${COLS.map((c) => `<th class="${c.num ? "num" : ""}${c.id === "symbol" ? " sh-name" : ""}${c.id === col ? " sorted" : ""}" data-c="${c.id}" aria-sort="${c.id === col ? (dir > 0 ? "ascending" : "descending") : "none"}"
+      title="${esc(c.tip || "Sort by " + c.label)}"><button class="sh-sort">${esc(c.label)}<span class="arrow">${c.id === col ? (dir > 0 ? "▲" : "▼") : ""}</span></button></th>`).join("")}</tr>`;
+    const xs = rows.filter((x) => matchesQ(x) && passes(x));
+    let html = "";
+    if (st.group) {
+      const by = new Map();
+      for (const x of xs) { if (!by.has(x.symbol)) by.set(x.symbol, []); by.get(x.symbol).push(x); }
+      const groups = [...by.values()].map((g) => g.sort((a, b) => cmp(a, b) || tie(a, b)));
+      groups.sort((a, b) => cmp(a[0], b[0]) || tie(a[0], b[0]));
+      visible = groups.flat();
+      html = groups.map((g) => g.map((x, i) => rowHtml(x, `${g.length > 1 ? "grp" : ""}${i ? " cont" : ""}${i === g.length - 1 && g.length > 1 ? " gend" : ""}`, g.length)).join("")).join("");
+    } else {
+      visible = xs.slice().sort((a, b) => cmp(a, b) || tie(a, b));
+      const n = (s) => xs.filter((x) => x.symbol === s).length;
+      html = visible.map((x) => rowHtml(x, "", n(x.symbol))).join("");
+    }
+    const syms = new Set(xs.map((x) => x.symbol)).size;
+    tbody.innerHTML = html || `<tr><td class="sh-none" colspan="${COLS.length}"><b>No setup matches${st.q ? ` “${esc(st.q)}”` : ""} with these filters.</b><div><button class="sm sh-clear">Clear search and filters</button></div></td></tr>`;
+    const nF = FACETS.reduce((n, f) => n + (st.f[f.id] || []).length, 0);
+    fBtn.innerHTML = `Filter${nF ? ` <span class="n">${nF}</span>` : ""}`;
+    const c = colOf(col);
+    stateEl.innerHTML = `<span><b>${xs.length}</b> of ${rows.length} setups · ${syms} symbols</span>
+      <span>Sorted by <b>${esc(c.label)}</b> ${dir > 0 ? "▲" : "▼"}</span>
+      ${st.q ? `<button class="fchip" data-q>Search: <b>${esc(st.q)}</b> <span aria-hidden="true">×</span></button>` : ""}
+      ${FACETS.flatMap((f) => (st.f[f.id] || []).map((v) => `<button class="fchip" data-f="${f.id}" data-v="${esc(v)}">${esc(f.label)}: <b>${esc(v)}</b> <span aria-hidden="true">×</span></button>`)).join("")}
+      ${nF || st.q ? `<button class="ghost sm sh-clear">Clear all</button>` : ""}
+      <span class="muted">Click a row for its chart</span>`;
+    host.querySelectorAll(".sh-clear").forEach((b) => b.onclick = () => { st.f = {}; st.q = ""; qIn.value = ""; save(); draw(); });
+  };
+  const drawFilterMenu = () => {
+    fPop.innerHTML = FACETS.map((f) => {
+      const base = rows.filter((x) => matchesQ(x) && passes(x, f.id));
+      const vals = [...new Set(rows.map(f.val))].sort((a, b) => a.localeCompare(b));
+      return `<fieldset><legend>${esc(f.label)}</legend>${vals.map((v) => {
+        const n = base.filter((x) => f.val(x) === v).length, on = (st.f[f.id] || []).includes(v);
+        return `<label class="${n || on ? "" : "dim"}"><input type="checkbox" data-f="${f.id}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(v)}</span><span class="n">${n}</span></label>`;
+      }).join("")}</fieldset>`;
+    }).join("") + `<div class="sh-fpop-foot"><button class="ghost sm" data-none>Clear filters</button><span class="muted small">numbers: setups left if you tick it</span></div>`;
+  };
+  fBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!fPop.hidden) { fPop.hidden = true; return; }
+    drawFilterMenu(); fPop.hidden = false;
+    const close = (ev) => { if (!fPop.contains(ev.target) && ev.target !== fBtn) { fPop.hidden = true; document.removeEventListener("click", close); } };
+    setTimeout(() => document.addEventListener("click", close));
+  };
+  fPop.onchange = (e) => {
+    const i = e.target.closest("input[data-f]"); if (!i) return;
+    const cur = new Set(st.f[i.dataset.f] || []); i.checked ? cur.add(i.value) : cur.delete(i.value);
+    st.f = { ...st.f, [i.dataset.f]: [...cur] }; if (!cur.size) delete st.f[i.dataset.f];
+    save(); draw(); drawFilterMenu();
+  };
+  fPop.onclick = (e) => { if (e.target.closest("[data-none]")) { st.f = {}; save(); draw(); drawFilterMenu(); } };
+  stateEl.onclick = (e) => {
+    const c = e.target.closest(".fchip"); if (!c) return;
+    if (c.hasAttribute("data-q")) { st.q = ""; qIn.value = ""; }
+    else { const xs = (st.f[c.dataset.f] || []).filter((v) => v !== c.dataset.v); if (xs.length) st.f[c.dataset.f] = xs; else delete st.f[c.dataset.f]; }
+    save(); draw();
+  };
+  let qt;
+  qIn.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { st.q = qIn.value.trim(); save(); draw(); }, 80); };
+  host.querySelector(".sup-grp input").onchange = (e) => { st.group = e.target.checked; save(); draw(); };
+  thead.onclick = (e) => {
+    const t = e.target.closest("th[data-c]"); if (!t) return;
+    const c = colOf(t.dataset.c);
+    st.sort = { col: c.id, dir: st.sort.col === c.id ? -st.sort.dir : c.dir };
+    save(); draw();
+  };
+  tbody.onclick = (e) => {
+    const tr = e.target.closest("tr[data-s]");
+    if (!tr || e.target.closest("a, button")) return;
+    const syms = [...new Set(visible.map((x) => x.symbol))];
+    openChartFromList(mkt, tr.dataset.s, syms, "Today's setups", location.hash);
+  };
   draw();
 }
 
@@ -8941,7 +9252,8 @@ const SECTIONS = [
     ["macro", "Macro", "Key macro indicators: rates, inflation, growth, consumption and market stress — current value and history"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"],
     ["picks", "Screener picks", "Every stock a strategy's latest run marks as a trade or on watch — filter by new, decision and strategy"]] },
-  { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"],
+  { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Every strategy in one table: what it is, the public evidence, its backtests per market and today's activity"],
+    ["setups", "Today's setups", "Every strategy's tradeable and on-watch names today, with the strategy's backtest edge beside each"],
     ["paper", "Paper books", "Each strategy traded forward without money: its equity against the benchmark from the start, and every trade"]] },
   { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
     ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"],
@@ -10129,6 +10441,7 @@ async function route() {
     else if (page === "picks") await picksPage(alive, parts[1]);
     else if (page === "watchlist") await watchlistPage(alive, parts[1]);
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
+    else if (page === "setups") await setupsPage(alive);
     else if (page === "paper") await paperPage(alive, parts[1], parts[2]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
     else if (page === "company") await companyPage(alive, parts[1], parts[2]);
