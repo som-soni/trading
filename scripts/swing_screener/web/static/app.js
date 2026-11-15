@@ -897,11 +897,12 @@ async function chartPage(alive, market, symbol, tf) {
   let claimedTrades = new Set();
   const applyAnnotations = () => {
     if (!dr) return;
-    // a trade the setups layer could not place keeps the run's record, drawn lean -- buy, stop, target --
-    // the same three levels every traded setup shows, never the older boxes and callouts
+    // a trade the setups layer could not place (today's rules see no setup there) keeps the run's own record in
+    // full -- the base box, pivot and note the run stored, with its buy, stop and target -- since drawn lean it
+    // showed only its entry and exit, with nothing of the setup it bought
     // "Trade only" (the Backtest trades panel's switch): every trade drawn lean, and nothing else of the run
     const run = tradeOnlyOn() ? tradeItems(() => true, true)
-      : runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date), true) : [...vcpAnnotations, ...tradeItems()];
+      : runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date)) : [...vcpAnnotations, ...tradeItems()];
     // Focus (the toolbar's Focus button): "setup" greys every other drawing out and keeps its words off; "indicators"
     // takes the setup's own labels off (its box and lines stay) so the studies can be read
     const fm = focusMode(), grey = (it) => ({ ...it, color: "#6b708055", text: "", ...(it.type === "text" ? { skip: true } : {}) });

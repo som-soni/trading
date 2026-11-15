@@ -243,7 +243,13 @@ const Studies = (() => {
             // matched on the setup's own span (`_to`: before the backtest view clipped it to an exit), and never
             // to a setup an earlier trade already owns -- a base bought in 2016 whose drawing ran on to 2022
             // claimed a 2021 trade, which then lost its own setup and was drawn inside the old one
-            const cover = all.filter((s) => !taken.has(s) && t.entry_date >= s.base_from && t.entry_date <= (s._to || s.to));
+            // The trade's SIGNAL bar places it first, then its fill: a setup today's rules refuse ends on its last
+            // setup bar, so a run that bought it days later (an order resting) fell outside it, and the next
+            // setup -- the run's next trade's -- claimed it instead, leaving that trade with no setup at all
+            const span = (s, d) => d && d >= s.base_from && d <= (s._to || s.to);
+            const free = all.filter((s) => !taken.has(s));
+            const bySignal = free.filter((s) => span(s, t.signal_date));
+            const cover = bySignal.length ? bySignal : free.filter((s) => span(s, t.entry_date));
             // the setup judged on the bar the run traded (anchored by the selected run) wins, the latest base
             // first; then the latest that passed; then the latest of any
             const best = cover.filter((s) => s.anchored).at(-1) || cover.filter((s) => s.kind !== "fail").at(-1) || cover.at(-1);
