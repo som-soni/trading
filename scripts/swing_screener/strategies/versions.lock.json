@@ -1607,6 +1607,33 @@
     },
     "version": "1.1"
   },
+  "td_sequential": {
+    "family": "td_sequential",
+    "fingerprint": "67b8e48f",
+    "params": {
+      "CD_LOOKBACK": 2,
+      "CD_REF_BAR": 8,
+      "COUNTDOWN": 13,
+      "COUNTDOWN_WINDOW": 60,
+      "HOLD_BARS": 12,
+      "LOOKBACK": 4,
+      "MAX_STOP_PCT": 15.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "PERFECT_LATE_BAR": 8,
+      "PERFECT_REF_A": 6,
+      "PERFECT_REF_B": 7,
+      "SCAN_BARS": 80,
+      "SETUP_COUNT": 9,
+      "_key": "td_sequential",
+      "min_bars": 210,
+      "setup_codes": [
+        "S1",
+        "S2"
+      ]
+    },
+    "version": "1.0"
+  },
   "trend_pullback": {
     "family": "trend_pullback",
     "fingerprint": "dbef83d8",
