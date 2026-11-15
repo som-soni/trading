@@ -278,7 +278,7 @@ class DualMomentumStrategy(PortfolioStrategy):
 
     behaviour = "trend_momentum"
     selection = "cross_sectional"
-    style = "trend"
+    style = "rank"
     horizon = "positional"
     runner = "dual_momentum"          # the module whose main() backtests it
 

@@ -527,7 +527,7 @@ class MeanReversionStrategy(PortfolioStrategy):
     #: `pullback` from the existing taxonomy rather than a new "reversion" style: the guide's own
     #: subtitle is "buying short, sharp dips in an uptrend", which is what pullback already means
     #: here. A new style would be a UI vocabulary change for one strategy.
-    style = "pullback"
+    style = "snapback"
     horizon = "swing"
     runner = "mean_reversion"         # the module whose main() backtests it
 

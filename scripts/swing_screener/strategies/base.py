@@ -45,15 +45,26 @@ DOWNGRADE_MAP = {
     "AVOID": "AVOID",
 }
 
-# Trading-style families, in display order — the Strategies page groups its
-# sidebar by these. Every strategy declares one via `Strategy.style`;
-# docs.check() (and so tests/test_strategy_docs.py) rejects anything else.
+# Setup types -- HOW a strategy gets into a trade, in display order. The Strategies sidebar can group by
+# these ("Setup type"), which is how to see only the breakout strategies. The first five are the triggers
+# of one continuation bet (research/strategy-catalog-swing.md section 1): owning two of them is not
+# diversification. Every strategy declares one via `Strategy.style`; docs.check() (and so
+# tests/test_strategy_docs.py) rejects anything else. Types with no strategy yet are listed on purpose.
 STYLES = {
-    "pullback": "Pullback / continuation",
+    "rank": "Relative-strength rank",
     "breakout": "Breakout from a base",
+    "squeeze": "Volatility squeeze",
+    "pullback": "Pullback in a trend",
+    "burst": "Momentum burst / gap-and-go",
     "trend": "Trend following",
+    "reversal": "Reversal (trend change)",
+    "snapback": "Snap-back (mean reversion)",
+    "fade": "Fade (failed move)",
     "event": "Event / catalyst",
-    "value": "Value (cheap against its fundamentals)",
+    "calendar": "Calendar",
+    "short": "Short side",
+    "income": "Income (option selling)",
+    "value": "Fundamental (value / quality)",
 }
 
 # The market behaviour a strategy tries to exploit — the standard first cut

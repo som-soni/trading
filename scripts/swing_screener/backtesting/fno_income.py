@@ -642,7 +642,7 @@ class FnoIncomeStrategy(PortfolioStrategy):
 
     behaviour = "carry"
     selection = "time_series"
-    style = "pullback"
+    style = "income"
     horizon = "swing"
     runner = "fno_income"
 

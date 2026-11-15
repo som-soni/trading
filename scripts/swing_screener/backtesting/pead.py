@@ -869,7 +869,7 @@ class PeadStrategy(PortfolioStrategy):
     #: Ranked against the other companies reporting the same season, so cross-sectional -- but the
     #: pool is one season's filings rather than the whole tape on a date.
     selection = "cross_sectional"
-    style = "breakout"
+    style = "event"
     horizon = "swing"
     runner = "pead"
 

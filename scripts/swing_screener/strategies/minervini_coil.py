@@ -56,7 +56,7 @@ class MinerviniCoilStrategy(Strategy):
     variant_of = "minervini"
     description = ("Minervini's Trend Template and exits, entered on a breakout from a coil -- a tight, quiet "
                    "stretch near the high -- measured by the contraction gauge instead of the VCP's swings.")
-    style = "breakout"
+    style = "squeeze"
     horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     screen_key = "stage2"

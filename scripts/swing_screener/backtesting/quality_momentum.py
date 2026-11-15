@@ -457,7 +457,7 @@ class QualityMomentumStrategy(PortfolioStrategy):
 
     behaviour = "trend_momentum"
     selection = "cross_sectional"
-    style = "trend"
+    style = "rank"
     horizon = "positional"
     runner = "quality_momentum"
 

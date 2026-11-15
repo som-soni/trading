@@ -67,6 +67,9 @@ Each setup gets a point for each test it passes:
 
 A setup that has been tested and failed is capped at 1, whatever else it has.
 
+The score is computed from these parts, not assigned: `scripts/swing_screener/strategies/evidence.py` holds the
+parts for every strategy built here, and the Strategies page shows the grade and score beside each one.
+
 **Public outcome grade.** This is the sort key within each group:
 
 | Grade | Meaning |
@@ -91,8 +94,8 @@ is noted.
 | 1 | **Cross-sectional momentum** (buy top 12-1 month returns, monthly) | Jegadeesh & Titman (1993), replicated widely | A | 5 | Edge: India momentum beat its benchmark in-sample and out-of-sample (vol-scaled, baseline, combo) |
 | 2 | **Industry / sector momentum** | Moskowitz & Grinblatt (1999); Faber's sector rotation | B | 4 | India marginal (+1.6), US fails |
 | 3 | **Dual momentum** (relative plus absolute, few ETFs) | Antonacci, *Dual Momentum Investing* (2014) | C | 3 | Mixed: failed in-sample, passed out-of-sample on 14 trades |
-| 4 | **RS line at a new high before price** | O'Neil / IBD | D | 2 | Not tested alone |
-| 5 | **RS leaders** (top relative-strength rank plus a setup) | IBD, Minervini | D | 2 | Fails (−9 to −10) |
+| 4 | **RS line at a new high before price** | O'Neil / IBD | D | 1 | Not tested alone |
+| 5 | **RS leaders** (top relative-strength rank plus a setup) | IBD, Minervini | D | 1 | Fails (−9 to −10) |
 
 ### 3.2 Continuation — breakout from a base
 
@@ -100,13 +103,13 @@ is noted.
 |---|---|---|---|---|---|
 | 1 | **52-week-high proximity / breakout** | George & Hwang (2004) | A | 4 | Part of the trend template; not tested alone |
 | 2 | **Donchian channel breakout** (20/55-day) | Turtle rules (Dennis, Faith); Brock et al. (1992) | C | 3 | India +3.7, US −4.7 |
-| 3 | **Volatility contraction pattern (VCP)** | Minervini (US Investing Championship 1997) | D | 2 | US v1.67 passed its own out-of-sample rule but trailed SPY (−0.6); in-sample −2 to −3 |
-| 4 | **Cup-with-handle / CAN SLIM base** | O'Neil, *How to Make Money in Stocks* | D | 2 | Inside chart_pattern: about −1 |
-| 5 | **Qullamaggie breakout** (flag after a big move, opening-range entry) | Kristjan Kullamägi (public account statements, not audited) | D | 2 | US −6.7, India −10 |
+| 3 | **Volatility contraction pattern (VCP)** | Minervini (US Investing Championship 1997) | D | 1 | US v1.67 passed its own out-of-sample rule but trailed SPY (−0.6); in-sample −2 to −3 |
+| 4 | **Cup-with-handle / CAN SLIM base** | O'Neil, *How to Make Money in Stocks* | D | 1 | Inside chart_pattern: about −1 |
+| 5 | **Qullamaggie breakout** (flag after a big move, opening-range entry) | Kristjan Kullamägi (public account statements, not audited) | D | 1 | US −6.7, India −10 |
 | 6 | **High tight flag** | O'Neil; Bulkowski's pattern statistics | B | 2 | Not tested alone |
-| 7 | **Darvas box** | Darvas, *How I Made $2,000,000* (1960) | D | 2 | −1.8 US, −3.7 India |
-| 8 | **Pocket pivot** (volume inside the base) | Morales & Kacher (2010) | D | 2 | Not tested |
-| 9 | **Weinstein stage 2 breakout** | Weinstein (1988) | D | 2 | −2 to −3.6 |
+| 7 | **Darvas box** | Darvas, *How I Made $2,000,000* (1960) | D | 1 | −1.8 US, −3.7 India |
+| 8 | **Pocket pivot** (volume inside the base) | Morales & Kacher (2010) | D | 1 | Not tested |
+| 9 | **Weinstein stage 2 breakout** | Weinstein (1988) | D | 1 | −2 to −3.6 |
 | 10 | **Ascending triangle / flat base / base-on-base** | Bulkowski; Zanger (large claimed returns, unverified) | B | 1 | Inside chart_pattern |
 | 11 | **Volume-surge breakout** | Common blog rule | E | 1 | −7.8 India, −8.6 US |
 
@@ -117,18 +120,18 @@ is noted.
 | 1 | **NR7 / inside-bar breakout** | Crabel (1990) | C | 2 | Not tested |
 | 2 | **Bollinger squeeze** | John Bollinger | D | 1 | Not tested |
 | 3 | **TTM squeeze** (Bollinger inside Keltner) | John Carter, *Mastering the Trade* | D | 1 | Not tested |
-| 4 | **Minervini coil** (tight range before the pivot) | Minervini | D | 2 | Fails in-sample |
+| 4 | **Minervini coil** (tight range before the pivot) | Minervini | D | 1 | Fails in-sample |
 
 ### 3.4 Continuation — pullback in a trend
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **Buy short-term weakness in a long-term uptrend** (RSI(2) under 10 above the 200-day) | Connors & Alvarez (2008) | C | 3 | See snap-back: decayed |
-| 2 | **Holy Grail** (ADX above 30, pullback to the 20-EMA) | Raschke & Connors, *Street Smarts* (1995) | D | 2 | Not tested |
-| 3 | **EMA pullback** (8/21-EMA, 10/20-day touch) | Swing YouTube / X, Kullamägi | D | 2 | In-sample, no edge |
-| 4 | **Kell's EMA crossback / cycle of price action** | Oliver Kell (US Investing Championship 2020) | D | 2 | India +9.4 (with a group-RS floor), US −11 |
-| 5 | **Anchored VWAP pullback** | Brian Shannon | D | 1 | Not tested |
-| 6 | **Trend pullback** (above the 50- and 200-day, dip to the 20) | Common swing rule | D | 2 | US +2.2 only with idle cash in the index; failed out-of-sample (−3.05% CAGR) |
+| 2 | **Holy Grail** (ADX above 30, pullback to the 20-EMA) | Raschke & Connors, *Street Smarts* (1995) | D | 1 | Not tested |
+| 3 | **EMA pullback** (8/21-EMA, 10/20-day touch) | Swing YouTube / X, Kullamägi | D | 1 | In-sample, no edge |
+| 4 | **Kell's EMA crossback / cycle of price action** | Oliver Kell (US Investing Championship 2020) | D | 1 | India +9.4 (with a group-RS floor), US −11 |
+| 5 | **Anchored VWAP pullback** | Brian Shannon | D | 0 | Not tested |
+| 6 | **Trend pullback** (above the 50- and 200-day, dip to the 20) | Common swing rule | D | 1 | US +2.2 only with idle cash in the index; failed out-of-sample (−3.05% CAGR) |
 | 7 | **Elder triple screen** | Alexander Elder, *Trading for a Living* (1993) | D | 1 | Not tested |
 | 8 | **Fibonacci retracement entry** | Widespread | E | 0 | Not tested |
 
@@ -137,7 +140,7 @@ is noted.
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **Episodic pivot** (earnings or news gap of 10%+ on huge volume) | Pradeep Bonde (Stockbee), popularised by Kullamägi | B | 3 | See event: earnings gap |
-| 2 | **Momentum burst** (a 4% day on rising volume, held 3–5 days) | Stockbee | D | 2 | India +5.1 with a 20-day-average exit; US −6.7 |
+| 2 | **Momentum burst** (a 4% day on rising volume, held 3–5 days) | Stockbee | D | 1 | India +5.1 with a 20-day-average exit; US −6.7 |
 | 3 | **Power play** (100% in 8 weeks, then a tight flag) | O'Neil, Minervini | D | 1 | Not tested |
 
 ### 3.6 Trend following (ride the move)
@@ -145,7 +148,7 @@ is noted.
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **Time-series momentum on futures / ETFs** | Moskowitz, Ooi & Pedersen (2012); Hurst, Ooi & Pedersen (2017) | A | 5 | Turtle trend: tsmom −7.6 (US) |
-| 2 | **Moving-average trend** (price above the 200-day, 10-month average) | Faber (2007); Brock et al. (1992) | C | 3 | −1.8 India, −4.4 US |
+| 2 | **Moving-average trend** (price above the 200-day, 10-month average) | Faber (2007); Brock et al. (1992) | C | 4 | −1.8 India, −4.4 US |
 | 3 | **Supertrend / ATR trailing stop** | Popular in India | D | 1 | No edge |
 | 4 | **Golden cross** (50 over 200) | Widespread | E | 1 | Not tested alone |
 | 5 | **MACD crossover** | Widespread | E | 1 | Not tested |
@@ -155,7 +158,7 @@ is noted.
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **Double bottom / inverse head-and-shoulders** | Bulkowski; Lo, Mamaysky & Wang (2000) found some information content | B | 2 | Inside chart_pattern |
-| 2 | **Wyckoff spring** | Richard Wyckoff | D | 1 | Not tested |
+| 2 | **Wyckoff spring** | Richard Wyckoff | D | 0 | Not tested |
 | 3 | **1-2-3 reversal** | Victor Sperandeo | D | 1 | Not tested |
 | 4 | **RSI / MACD divergence** | Widespread | E | 1 | Not tested |
 | 5 | **TD Sequential 9/13** | Tom DeMark | D | 1 | Not tested |
@@ -176,7 +179,7 @@ is noted.
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **Turtle Soup** (fade a failed 20-day breakout) | Raschke & Connors (1995) | D | 2 | Not tested |
+| 1 | **Turtle Soup** (fade a failed 20-day breakout) | Raschke & Connors (1995) | D | 1 | Not tested |
 | 2 | **Gap fill** | Widespread | D | 1 | Not tested |
 
 ### 3.10 Event-driven
@@ -201,8 +204,8 @@ is noted.
 
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
-| 1 | **Parabolic short** (fade an extended run) | Kullamägi | D | 2 | Fails (−0.095R a trade) |
-| 2 | **Stage 4 breakdown short** | Weinstein | D | 2 | −6.6 India, −14 US |
+| 1 | **Parabolic short** (fade an extended run) | Kullamägi | D | 1 | Fails (−0.095R a trade) |
+| 2 | **Stage 4 breakdown short** | Weinstein | D | 1 | −6.6 India, −14 US |
 | 3 | **Failed-breakout short** | Common swing rule | D | 1 | Not tested |
 
 ---

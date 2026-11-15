@@ -454,6 +454,19 @@ function edgeDot(key, mkt, flag = false) {
   return `<i class="edge e-${e.level}${e.current === false ? " old" : ""}" title="${esc(`${mktInfo(mkt).name}: ${e.label}`)}">${flag ? esc(mktInfo(mkt).flag || "") : ""}</i>`;
 }
 /** the same grade as a labelled chip, for a page header */
+/** The public-evidence grade (strategies/evidence.py): what published tests of the idea found (A-E) and
+ *  a 0-5 credibility score computed from four parts. About the idea outside this app -- never its
+ *  backtests here, which the edge dots carry. */
+function gradeChip(x) {
+  if (!x || !x.grade) return "";
+  return `<span class="grade g-${esc(x.grade)}" title="${esc(`Public evidence: grade ${x.grade}, credibility ${x.credibility}/5${x.grade_basis ? ` — ${x.grade_basis}` : ""}`)}">${esc(x.grade)}<i>${x.credibility}</i></span>`;
+}
+function evidenceLine(e) {
+  if (!e) return "";
+  const parts = (e.parts || []).map((p) => `${p.label}: ${p.points}`).join("\n");
+  return `<div class="sd-evidence">${gradeChip({ grade: e.grade, credibility: e.credibility, grade_basis: e.basis })}
+    <span class="small"><b>Public evidence ${esc(e.grade)}</b> — ${esc(e.grade_label)}. <span title="${esc(parts + (e.grade === "E" ? "\nTested and failed: capped at 1" : ""))}" class="dotted">Credibility ${e.credibility}/5</span>. <span class="muted">${esc(e.basis)}</span></span></div>`;
+}
 function edgeChip(key, mkt) {
   const e = EDGE?.strategies?.[key]?.[mkt];
   if (!e) return "";
@@ -5610,16 +5623,15 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
       .map(([m, f]) => `<span class="${f.excess > 0 ? "pos" : "neg"}">${esc(m.flag || m.name)} ${f.excess > 0 ? "+" : ""}${f.excess.toFixed(1)}%</span>`);
     return parts.length ? `<span class="sfull" title="Full period (tuning and hold-out years together): excess CAGR over the index. Context, not a verdict.">full ${parts.join(" ")}</span>` : "";
   };
-  // A tag on every row says what kind of bet the strategy is: for trend/momentum strategies, how it
-  // enters (breakout, trend, pullback, event); for everything else, the behaviour itself, because that
-  // is the difference that matters -- most of the shelf is one trend/momentum bet entered different ways.
-  const STRAT_TAG = { breakout: "Breakout", trend: "Trend", pullback: "Pullback", event: "Event",
-    mean_reversion: "Mean rev.", carry: "Carry", event_driven: "Event", quality_value: "Quality", relative_value: "Pairs" };
-  const tagOf = (x) => (x.behaviour && x.behaviour !== "trend_momentum" ? x.behaviour : x.style);
-  const tag = (x) => { const t = tagOf(x); return STRAT_TAG[t]
-    ? `<span class="st-tag st-${esc(t)}" title="${esc([x.behaviour_label, x.style_label].filter(Boolean).join(" · "))}">${STRAT_TAG[t]}</span>` : ""; };
+  // A tag on every row names the strategy's setup type -- how it gets into a trade (strategies/base.py
+  // STYLES): the first five are triggers of one continuation bet, the rest are different bets.
+  const STRAT_TAG = { rank: "Rank", breakout: "Breakout", squeeze: "Squeeze", pullback: "Pullback", burst: "Burst",
+    trend: "Trend", reversal: "Reversal", snapback: "Snap-back", fade: "Fade", event: "Event", calendar: "Calendar",
+    short: "Short", income: "Income", value: "Value" };
+  const tag = (x) => (STRAT_TAG[x.style]
+    ? `<span class="st-tag st-${esc(x.style)}" title="${esc([x.style_label, x.behaviour_label].filter(Boolean).join(" · "))}">${STRAT_TAG[x.style]}</span>` : "");
   const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
-      <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b>${fullLine(x)}<span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
+      <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b>${fullLine(x)}<span class="muted small sk">${esc(x.screen_name || "")}</span></span>${gradeChip(x)}${tag(x)}${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
   // Trading strategies group by style (server order). Within a style they group
   // by FAMILY: the current version heads the group, with older versions and
   // sibling variants nested under it. Listing every version flat made five
@@ -5650,6 +5662,7 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const AXES = {
     behaviour: { groups: tax.behaviours || [], sub: "selection", none: "Kinds of market behaviour no strategy here trades yet" },
     horizon: { groups: tax.horizons || [], sub: "behaviour", none: "Holding periods no strategy here trades yet" },
+    style: { groups: tax.styles || [], sub: "behaviour", none: "Setup types no strategy here uses yet" },
   };
   let groupBy = store.get("stratGroupBy", "behaviour");
   if (!AXES[groupBy]) groupBy = "behaviour";
@@ -5668,6 +5681,8 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     const subs = [...new Map(mine.map((x) => [x[lab], x[`${ax.sub}_rank`] ?? 99]))].sort((a, b2) => a[1] - b2[1]);
     const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
       mine.filter((x) => x[lab] === slabel && (x.kind !== "screener" || topLevel(x)))
+          // by setup type, strongest public evidence first: grade A..E, then credibility
+          .sort((p, q) => (groupBy !== "style" ? 0 : ((p.grade || "Z").localeCompare(q.grade || "Z") || (q.credibility ?? -1) - (p.credibility ?? -1))))
           .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
     const n = mine.filter((x) => x.kind !== "screener" || topLevel(x)).length;
     return group(`${groupBy}:${b.key}`, b.label, n, body, mine.some((x) => x.key === key));
@@ -5683,8 +5698,8 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const anchorY = key && STRAT_NAV.key === key ? STRAT_NAV.y : null;
   $view.innerHTML = `<div class="rep-layout strats-layout"><aside class="rep-nav strat-nav strats-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
-      <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div><div class="muted small">full: 2013 → latest, excess over the index per year — context, not a verdict</div></div>
-      <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
+      <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div><div class="muted small">full: 2013 → latest, excess over the index per year — context, not a verdict</div><div class="muted small" title="${esc((tax.grades || []).map((g) => `${g.key}: ${g.label}`).join("\n"))}">grade A–E · score 0–5: how credible the idea is outside this app (published tests), not its backtests here</div></div>
+      <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["style", "Setup type"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
       ${stratNav}${rest}
       ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
         <div class="nav-empty muted small">${ax.none}: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
@@ -5817,6 +5832,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
     <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
       ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
     ${EDGE?.strategies?.[key] ? `<div class="edge-row">${MKTS.map((m) => edgeChip(key, m.key)).join("")}</div>` : ""}
+    ${evidenceLine(d.evidence)}
     ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(statusVerdict(d.status))}">${esc(shortStatus(d.status))}</span></div>` : ""}
     <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of ${MKTS.map((m) => edgeDot(d.variant_of.key, m.key)).join("")}<a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}${d.live_variant ? ` The daily screen currently lists them under the variant <b>${esc(d.live_variant.name)}</b> (provisional — see <a href="#/strategies/${encodeURIComponent(key)}/setups">Candidates</a>).` : ""}${d.market_rules ? Object.entries(d.market_rules).map(([m, r]) => ` <b>${esc((MKTS.find((x) => x.key === m) || {}).name || m)} runs its own rules:</b> ${esc(r.name)} (${Object.entries(r.const || {}).map(([k, v]) => `<code>${esc(k)}=${esc(v)}</code>`).join(" ")}) — ${mdInline(r.why)}`).join("") : ""}</p>
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;

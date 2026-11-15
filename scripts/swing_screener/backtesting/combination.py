@@ -216,7 +216,7 @@ class CombinationStrategy(PortfolioStrategy):
 
     behaviour = "trend_momentum"
     selection = "cross_sectional"
-    style = "trend"
+    style = "rank"
     horizon = "positional"
     runner = "combination"           # the module whose main() backtests it
 

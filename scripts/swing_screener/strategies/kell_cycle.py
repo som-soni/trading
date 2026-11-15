@@ -110,7 +110,7 @@ class KellCycleStrategy(Strategy):
         "Leaders in a Trend Template uptrend, bought at three points of Kell's cycle around the 10- and 20-day EMAs "
         "(wedge pop, first crossback, base-n-break), part sold into exhaustion, the rest at the EMA break."
     )
-    style = "trend"
+    style = "pullback"
     horizon = "swing"
     selection = "time_series"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")

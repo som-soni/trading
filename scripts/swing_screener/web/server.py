@@ -960,6 +960,10 @@ def strategies():
         out.append({"key": k, "name": d["name"], "kind": d["kind"], "status": d["status"], "description": d["description"],
                     "screen_name": (d.get("screen") or {}).get("name"),
                     "style": d.get("style") or "", "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
+                    # public-evidence grade and computed credibility (strategies/evidence.py)
+                    "grade": (d.get("evidence") or {}).get("grade"),
+                    "credibility": (d.get("evidence") or {}).get("credibility"),
+                    "grade_basis": (d.get("evidence") or {}).get("basis"),
                     # how candidates are chosen — the sidebar's primary grouping
                     "behaviour": d.get("behaviour") or "",
                     "behaviour_label": d.get("behaviour_label") or "",
@@ -1114,9 +1118,13 @@ def strategy_edges_api():
 @app.get("/api/taxonomy")
 def taxonomy():
     """The full set of groups, including those with no strategies yet."""
-    from ..strategies import BEHAVIOURS, HORIZONS, SELECTION
+    from ..strategies import BEHAVIOURS, HORIZONS, SELECTION, STYLES
+    from ..strategies.evidence import CREDIBILITY_PARTS, GRADES
 
     return {"behaviours": [{"key": k, "label": v} for k, v in BEHAVIOURS.items()],
+            "styles": [{"key": k, "label": v} for k, v in STYLES.items()],
+            "grades": [{"key": k, "label": v} for k, v in GRADES.items()],
+            "credibility_parts": [{"key": k, "label": v} for k, v in CREDIBILITY_PARTS],
             "horizons": [{"key": k, "label": v} for k, v in HORIZONS.items()],
             "selection": [{"key": k, "label": v} for k, v in SELECTION.items()]}
 

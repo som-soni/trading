@@ -153,7 +153,7 @@ class RsLeadersStrategy(Strategy):
     name = "RS leaders"
     description = ("After a correction confirms, buy the strongest stocks in the strongest industry groups as "
                    "they break out of a flat base, with a tight stop.")
-    style = "breakout"
+    style = "rank"
     horizon = "positional"
     behaviour = "trend_momentum"
 

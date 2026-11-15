@@ -85,7 +85,7 @@ class MomentumBurstStrategy(Strategy):
         "Bonde's 4% breakout: a quiet stock in an uptrend has one decisive up day on rising volume; buy that "
         "close with the stop at the day's low and hold a few sessions."
     )
-    style = "breakout"
+    style = "burst"
     horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6")
     screen_key = "near_highs"

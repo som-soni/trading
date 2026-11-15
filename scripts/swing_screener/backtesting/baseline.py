@@ -1649,7 +1649,7 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
 
     behaviour = "trend_momentum"
     selection = "cross_sectional"
-    style = "trend"
+    style = "rank"
     horizon = "positional"
 
     # tunables -- these ARE the strategy
@@ -1754,7 +1754,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
 
     behaviour = "trend_momentum"
     selection = "cross_sectional"
-    style = "trend"
+    style = "rank"
     horizon = "positional"
 
     # tunables — these ARE the strategy

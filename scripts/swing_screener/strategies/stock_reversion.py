@@ -88,7 +88,7 @@ class StockReversionStrategy(Strategy):
     behaviour = "mean_reversion"
     # `pullback` from the existing styles, as the index mean reversion and the parabolic short use:
     # buying a dip inside an uptrend is a pullback entry with a reversion exit.
-    style = "pullback"
+    style = "snapback"
     horizon = "swing"
     version = "1.0"
     changelog = (

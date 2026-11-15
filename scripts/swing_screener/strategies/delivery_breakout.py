@@ -87,7 +87,7 @@ class DeliveryBreakoutStrategy(Strategy):
         "Buy the break of a session when an Indian stock's delivery % and volume jumped far above its "
         "own recent days, stopped under that day's low, with a 1.5–2R target."
     )
-    style = "event"
+    style = "breakout"
     horizon = "swing"
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}

@@ -107,6 +107,12 @@ def _market_rules(key: str, cls) -> dict | None:
 
 
 def strategy_doc(key: str) -> dict:
+    """A strategy's page, with its public-evidence grade (strategies/evidence.py) beside its own docs."""
+    from .evidence import evidence_for
+    return {**_strategy_doc(key), **evidence_for(key)}
+
+
+def _strategy_doc(key: str) -> dict:
     from . import portfolio_strategies
     if key in portfolio_strategies():
         return baseline_doc(key)
@@ -292,6 +298,7 @@ def quality_doc() -> dict:
         "family": "quality", "version": "1.0", "spec_id": "", "is_current": True,
         "selection": "fundamental", "selection_label": SELECTION["fundamental"],
         "selection_rank": list(SELECTION).index("fundamental"),
+        "style": "value", "style_label": STYLES["value"], "style_rank": list(STYLES).index("value"),
         "behaviour": "quality_value", "behaviour_label": BEHAVIOURS["quality_value"],
         "behaviour_rank": list(BEHAVIOURS).index("quality_value"),
         **_horizon("investment"),
@@ -423,6 +430,14 @@ def check() -> list[str]:
                 problems.append(f"{sk}: its page cannot be rendered ({exc!r})")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"portfolio strategies: cannot load docs ({exc})")
+    from .evidence import EVIDENCE, GRADES
+    for key in keys():
+        e = EVIDENCE.get(key)
+        if not e:
+            problems.append(f"{key}: no public-evidence grade -- add it to strategies/evidence.py EVIDENCE "
+                            "(grade and credibility parts, see research/strategy-catalog-swing.md)")
+        elif e["grade"] not in GRADES or not 0 <= e["evidence"] <= 2 or any(e[k] not in (0, 1) for k in ("replicated", "testable", "costs")):
+            problems.append(f"{key}: malformed evidence entry {e}")
     return problems
 
 
