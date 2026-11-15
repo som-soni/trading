@@ -3364,6 +3364,10 @@ async function moversPage(alive, mkt) {
 
 // ------------------------------------------------------------- post-market page
 
+// An index average's direction on the post-market card: ↑ rising / ↓ falling over `bars` sessions (the market
+// snapshot's slope, computed server-side). Absent on days stored before the field existed.
+const pmSlope = (v, n, bars) => v == null ? "" :
+  ` <b class="pm-slope ${v >= 0 ? "pos" : "neg"}" title="${n}-day average ${v >= 0 ? "rising" : "falling"}: ${v >= 0 ? "+" : ""}${v.toFixed(1)}% over ${bars} sessions">${v >= 0 ? "↑" : "↓"}</b>`;
 const TONE_CLS = { Strong: "t-strong", Positive: "t-pos", Mixed: "t-mixed", Weak: "t-weak", Negative: "t-neg" };
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const longDate = (iso) => { const d = new Date(iso + "T00:00:00"); return `${WEEKDAY[d.getDay()]} ${prettyDate(iso)}`; };
@@ -3449,7 +3453,7 @@ async function postmarketPage(alive, mkt, date, tab) {
     </div>
     <div class="pm-idx">${p.indexes.map((x) => `<div class="sec-card pm-i"><div class="muted small">${esc(x.label)}</div>
         <div class="pm-ic"><b>${fmt(+x.close.toFixed(2))}</b><span class="${(x.vol ? -x.pct : x.pct) >= 0 ? "pos" : "neg"}">${pc(x.pct)}</span></div>
-        ${x.vol ? `<div class="muted small">${x.pct >= 0 ? "Fear rising" : "Fear easing"}</div>` : `<div class="pm-chips"><span class="${x.above50 ? "pos" : "neg"}">${x.above50 ? "above" : "below"} 50D</span><span class="${x.above200 ? "pos" : "neg"}">${x.above200 ? "above" : "below"} 200D</span><span class="muted">${x.from_high > -0.5 ? "at 52w high" : pc(x.from_high, 1) + " from high"}</span></div>`}</div>`).join("")}</div>
+        ${x.vol ? `<div class="muted small">${x.pct >= 0 ? "Fear rising" : "Fear easing"}</div>` : `<div class="pm-chips"><span class="${x.above50 ? "pos" : "neg"}">${x.above50 ? "above" : "below"} 50D${pmSlope(x.slope50, 50, x.slope_bars)}</span><span class="${x.above200 ? "pos" : "neg"}">${x.above200 ? "above" : "below"} 200D${pmSlope(x.slope200, 200, x.slope_bars)}</span><span class="muted">${x.from_high > -0.5 ? "at 52w high" : pc(x.from_high, 1) + " from high"}</span></div>`}</div>`).join("")}</div>
     <div class="sec-top">
       <section class="sec-card"><h3>Breadth</h3>${bt ? `<table class="stt"><thead><tr><th></th><th class="num">${prettyDate(p.date)}</th><th class="num">Previous</th><th class="num">10-day avg</th></tr></thead><tbody>
           ${brow("Advancers", "adv")}${brow("Decliners", "dec")}${brow("Up 4%+", "up4")}${brow("Down 4%+", "dn4")}${brow("New 52-week highs", "highs")}${brow("New 52-week lows", "lows")}${brow("Above 50-day average", "above50", true)}${brow("Above 5-day average", "above5", true)}</tbody></table>

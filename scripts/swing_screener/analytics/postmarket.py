@@ -5,7 +5,8 @@ saved as one JSON document per market per day in `postmarket_daily`, so any past
 re-read exactly as it was reported. Sections:
 
   tone        a rule-based read of the day from six signals (TONE_RULES)
-  indexes     benchmark closes and day change, vs their 50/200-day averages and 52-week high; volatility index
+  indexes     benchmark closes and day change, vs their 50/200-day averages (and whether each average is rising,
+              the market snapshot's slope) and 52-week high; volatility index
   breadth     advancers/decliners, big movers, new highs/lows, % above the 50-day — vs the previous day
               and the 10-day average (from breadth_daily)
   sectors     equal-weight day return of every sector and industry group; RS-rating movers and rotation
@@ -36,6 +37,7 @@ import pandas as pd
 from ..config import MARKETS
 from ..marketdata import db, freshness, industries, names
 from . import breadth as br
+from .market_snapshot import SLOPE_BARS, SMA_LONG, SMA_MID
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +126,15 @@ def _indexes(market: str, d) -> list[dict]:
         last, prev = float(s.iloc[-1]), float(s.iloc[-2])
         sma50 = float(s.tail(50).mean()) if len(s) >= 50 else None
         sma200 = float(s.tail(200).mean()) if len(s) >= 200 else None
+
+        def slope(n):   # the market snapshot's slope: the n-day average against its value SLOPE_BARS sessions earlier
+            m = s.rolling(n).mean()
+            return None if len(s) < n + SLOPE_BARS else (float(m.iloc[-1]) / float(m.iloc[-1 - SLOPE_BARS]) - 1) * 100
         out.append({"key": key, "label": label, "vol": key == br.VOL_INDEX[market][0], "date": s.index[-1].isoformat(),
                     "close": last, "chg": last - prev, "pct": (last / prev - 1) * 100,
                     "above50": None if sma50 is None else last > sma50, "above200": None if sma200 is None else last > sma200,
-                    "vs50": None if not sma50 else (last / sma50 - 1) * 100, "from_high": (last / float(s.max()) - 1) * 100})
+                    "vs50": None if not sma50 else (last / sma50 - 1) * 100, "from_high": (last / float(s.max()) - 1) * 100,
+                    "slope50": slope(SMA_MID), "slope200": slope(SMA_LONG), "slope_bars": SLOPE_BARS})
     return out
 
 
