@@ -206,7 +206,7 @@ is noted.
 |---|---|---|---|---|---|
 | 1 | **Parabolic short** (fade an extended run) | Kullamägi | D | 1 | Fails (−0.095R a trade) |
 | 2 | **Stage 4 breakdown short** | Weinstein | D | 1 | −6.6 India, −14 US |
-| 3 | **Failed-breakout short** | Common swing rule | D | 1 | Not tested: needs a short-side simulator for per-stock setups (the per-symbol engine is long-only) |
+| 3 | **Failed-breakout short** | Common swing rule | D | 1 | Implemented as `failed_breakout_short` v1.0 (2026-11-15) on the new generic short book; optimise run queued (US only, #2201), no result yet |
 
 ---
 
