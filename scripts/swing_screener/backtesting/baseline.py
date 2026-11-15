@@ -61,7 +61,12 @@ def _momentum(close: pd.Series, lookback: int, skip: int) -> float:
 # matrices rather than per-symbol-per-date keeps a 2,300 x 3,500 universe fast
 # and makes each definition one readable expression.
 
-RANKERS = ("momentum", "vol_scaled", "residual", "path_quality", "rs_range")
+#: high52's tie-break weight on the 12-1 return (see score_matrix); small enough to act only on ties. Lower
+#: case on purpose: an upper-case constant here would enter the fingerprint of every portfolio strategy
+#: defined in this module. high52_rank imports it as its own HIGH52_TIEBREAK, so it is fingerprinted there.
+high52_tiebreak = 1e-6
+
+RANKERS = ("momentum", "vol_scaled", "residual", "path_quality", "rs_range", "high52", "reversal")
 
 
 def score_matrix(
@@ -72,6 +77,22 @@ def score_matrix(
     if kind == "momentum":
         # 12-1: total return over `lookback`, ending `skip` bars ago
         return px.shift(skip) / px.shift(skip + lookback) - 1
+
+    if kind == "high52":
+        # George & Hwang (2004): nearness to the 52-week high -- the close over the highest close of
+        # the last `lookback` sessions (1.0 = at the high), as of `skip` sessions ago. They found it
+        # explains most of what 12-month momentum earns, and does not reverse in the long run.
+        # Many stocks sit exactly AT the high (score 1.0) on a strong month-end; a stable sort would then
+        # take them alphabetically. high52_tiebreak x the 12-1 return breaks those ties by momentum and is
+        # too small to reorder any two stocks whose ratios differ by more than about 1e-5.
+        ratio = px / px.rolling(lookback, min_periods=lookback).max()
+        mom = (px.shift(21) / px.shift(TRADING_DAYS) - 1).fillna(0.0)
+        return (ratio + high52_tiebreak * mom).shift(skip)
+
+    if kind == "reversal":
+        # Short-term reversal (Jegadeesh 1990; Lehmann 1990): last week's or month's LOSERS rank first,
+        # so the score is minus the return over `lookback` sessions ending `skip` ago.
+        return -(px.shift(skip) / px.shift(skip + lookback) - 1)
 
     rets = px.pct_change()
 
@@ -1091,8 +1112,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--rank", default="momentum", choices=list(RANKERS),
                     help="ranking signal: raw momentum, volatility-scaled "
                          "(Barroso-Santa-Clara), market-residual (Blitz), path "
-                         "quality (share of positive days), or rs_range (position of "
-                         "the relative-strength line in its own range)")
+                         "quality (share of positive days), rs_range (position of "
+                         "the relative-strength line in its own range), high52 (close over its "
+                         "52-week high, George & Hwang) or reversal (minus the recent return)")
     ap.add_argument("--vol-window", type=int, default=63,
                     help="bars of realised volatility for inverse_vol weights and the vol target (vol_scaled ranking uses the lookback)")
     ap.add_argument("--weighting", default="equal", choices=["equal", "inverse_vol"],

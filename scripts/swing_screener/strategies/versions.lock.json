@@ -671,6 +671,21 @@
     },
     "version": "1.0"
   },
+  "high52_rank": {
+    "family": "high52_rank",
+    "fingerprint": "7ec911b4",
+    "params": {
+      "HIGH52_TIEBREAK": 1e-06,
+      "TRADING_DAYS": 252,
+      "_key": "high52_rank",
+      "cost_bps": 20.0,
+      "liquidity_top": 1000,
+      "lookback": 252,
+      "skip": 0,
+      "top_n": 20
+    },
+    "version": "1.0"
+  },
   "high_tight_flag": {
     "family": "high_tight_flag",
     "fingerprint": "92667319",
