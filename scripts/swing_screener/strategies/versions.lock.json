@@ -671,6 +671,33 @@
     },
     "version": "1.0"
   },
+  "high_tight_flag": {
+    "family": "high_tight_flag",
+    "fingerprint": "92667319",
+    "params": {
+      "ADVANCE_BARS": 40,
+      "ADVANCE_MIN_PCT": 90,
+      "FLAG_MAX_BARS": 25,
+      "FLAG_MIN_BARS": 15,
+      "LOSS_CUT_PCT": 8,
+      "MAX_DEPTH_PCT": 25,
+      "MAX_STOP_PCT": 8.0,
+      "MIN_STOP_PCT": 2.0,
+      "NOMINAL_TARGET_R": 2.5,
+      "PROFIT_TAKE_PCT": 20,
+      "_key": "high_tight_flag",
+      "expiry_bdays": 5,
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "holy_grail": {
     "family": "holy_grail",
     "fingerprint": "4a318027",
