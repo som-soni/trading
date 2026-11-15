@@ -227,14 +227,17 @@ def drift(held: set, model: set) -> dict:
     return {"model_only": sorted(model - held), "held_only": sorted(held - model)}
 
 
-def confirm(book: str, market: str) -> dict:
+def confirm(book: str, market: str, request_id: str | None = None) -> dict:
     """Store the rebalance as computed now -- its targets and orders -- so the trades that execute it
-    can be linked to it (`book_trades.rebalance_id`) and read against it later."""
+    can be linked to it (`book_trades.rebalance_id`) and read against it later. A repeat of the same
+    `request_id` returns the rebalance it stored; one open rebalance at a time, checked again under the
+    book's lock after the orders are computed (a second confirm can arrive while the first computes)."""
     from . import ledger
-    if ledger.open_rebalance(book, market):
+    if not (request_id and ledger.rebalance_by_request(book, market, request_id)) and ledger.open_rebalance(book, market):
         raise ValueError("a rebalance is still open: complete it before starting the next")
     o = orders(book, market)
     targets = [{"symbol": r["symbol"], "weight_pct": r["weight_pct"], "shares": r["target"], "price": r["price"]}
                for r in o["rows"] if r["target"] > 0]
-    rid = ledger.save_rebalance(book, market, o["as_of"], o["spec_id"], targets, o["rows"])
+    rid = ledger.save_rebalance(book, market, o["as_of"], o["spec_id"], targets, o["rows"], request_id=request_id,
+                                one_open=True)
     return {"id": rid, "orders": o}

@@ -17,6 +17,12 @@ against what was actually done. It stays OPEN while you execute it: each order l
 partly filled, filled (from the linked trades, `progress`) or skipped (you chose not to trade it),
 and you complete it once you have reviewed what is left. A new ranking never edits it.
 
+Rows are what you traded, at the prices and share counts of the day. The stored bars are back-adjusted
+for every later split and bonus, so every read that sets the ledger against them (holdings, the tracker,
+a paper book, the book's value) goes through `adjusted`: a row dated before a split's ex-date holds the
+split's ratio times its shares at its prices divided by it, from the same split record the backtests read
+(`spec.split_factor_after`). The ledger list itself shows the rows as recorded.
+
 The snapshot tables are kept in step after every write (`_sync_snapshot`), so anything reading them
 still sees the current holdings; the readers in this repo go through `holdings_of`. A book that has a
 snapshot and no ledger rows yet is migrated once, as an opening balance (`migrate_snapshots`).
@@ -79,6 +85,10 @@ ALTER TABLE book_trades ADD COLUMN IF NOT EXISTS meta JSONB;
 -- a rebalance is open until you complete it; an order line you chose not to trade is skipped, not dropped
 ALTER TABLE book_rebalances ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 ALTER TABLE book_rebalances ADD COLUMN IF NOT EXISTS skipped JSONB NOT NULL DEFAULT '[]';
+-- the page's request that stored it: a repeat of the same request (a retry, a second click) returns this row
+ALTER TABLE book_rebalances ADD COLUMN IF NOT EXISTS request_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS book_rebalances_request ON book_rebalances (book, market, request_id)
+    WHERE request_id IS NOT NULL;
 """
 
 
@@ -179,14 +189,61 @@ def diff_trades(held: dict, cash: float, want: dict, want_cash: float | None, pr
     return out
 
 
+# the signal levels a row's `meta` carries that are prices (the exit reads them against the bars), so a split
+# rescales them with the row's price; its other entries are ratios, counts, ids and dates
+META_PRICES = ("pivot", "tight_low", "box_top", "box_bottom", "max_fill", "min_open", "confirm_close_above",
+               "cancel_close_below", "resistance", "limit", "ma30")
+
+
+def split_adjust(rows: list[dict], factor: dict, invert: bool = False) -> list[dict]:
+    """`rows` put on the stored bars' scale: `factor[(symbol, trade_date)]` is the product of the splits
+    after that date (absent = 1), so the row holds that many times its shares at its prices divided by it --
+    the same position, worth the same, in the bars' units. `invert` goes back, from the bars' scale to the
+    prices traded that day. Pure arithmetic, so it is tested without a database; the rows are copied."""
+    out = []
+    for r in rows:
+        k = factor.get((r.get("symbol"), str(r.get("trade_date")))) if r.get("symbol") else None
+        if not k or k == 1.0:
+            out.append(r)
+            continue
+        k = 1.0 / k if invert else k
+        r = {**r, "shares": float(r.get("shares") or 0) * k, "split_factor": k}
+        for c in ("price", "initial_stop", "target"):
+            if r.get(c) is not None:
+                r[c] = float(r[c]) / k
+        if r.get("meta"):
+            r["meta"] = {m: (float(v) / k if m in META_PRICES and isinstance(v, (int, float)) else v)
+                         for m, v in r["meta"].items()}
+        out.append(r)
+    return out
+
+
+def split_factors(market: str, rows: list[dict]) -> dict:
+    """(symbol, trade_date) -> the product of the stored splits after that date, for the rows that have one
+    (`spec.split_factor_after`: the split record the stored bars are adjusted by)."""
+    from .spec import split_factor_after
+    syms = sorted({r["symbol"] for r in rows if r.get("symbol")})
+    if not syms:
+        return {}
+    days = pd.DatetimeIndex(sorted({pd.Timestamp(r["trade_date"]) for r in rows if r.get("symbol")}))
+    k = split_factor_after(market, days, syms)
+    return {(s, d.date().isoformat()): float(k.at[d, s]) for s in k.columns for d in k.index if k.at[d, s] != 1.0}
+
+
+def adjusted(market: str, rows: list[dict], invert: bool = False) -> list[dict]:
+    """`rows` on the stored bars' scale (`split_adjust` with the market's stored splits)."""
+    return split_adjust(rows, split_factors(market, rows), invert=invert)
+
+
 # ------------------------------------------------------------------ storage
 
 _COLS = ("id", "trade_date", "symbol", "side", "shares", "price", "amount", "costs", "rebalance_id", "source",
          "entry_rule", "setup", "initial_stop", "target", "note", "created_at", "meta")
 
 
-def trades(book: str, market: str) -> list[dict]:
-    """Every ledger row of the book, oldest first."""
+def trades(book: str, market: str, adjust: bool = False) -> list[dict]:
+    """Every ledger row of the book, oldest first: as recorded, or on the stored bars' scale (`adjust`, for
+    anything that reads the rows against prices)."""
     with db.get_connection().cursor() as cur:
         cur.execute(f"SELECT {', '.join(_COLS)} FROM book_trades WHERE book=%s AND market=%s "
                     "ORDER BY trade_date, id", (book, market))
@@ -194,13 +251,13 @@ def trades(book: str, market: str) -> list[dict]:
     for r in rows:
         r["trade_date"] = r["trade_date"].isoformat()
         r["created_at"] = r["created_at"].isoformat()
-    return rows
+    return adjusted(market, rows) if adjust else rows
 
 
 def holdings_of(book: str, market: str) -> dict:
     """The book's holdings now, from its ledger, in the shape `rebalance.get_positions` has always
-    returned (plus average cost and realised P&L)."""
-    rows = trades(book, market)
+    returned (plus average cost and realised P&L), split-adjusted to the stored bars."""
+    rows = trades(book, market, adjust=True)
     h = holdings(rows)
     return {"book": book, "market": market, "positions": h["positions"], "cash": h["cash"],
             "avg_cost": h["avg_cost"], "since": h["since"], "realised": h["realised"], "costs": h["costs"],
@@ -247,18 +304,21 @@ def _clean(market: str, t: dict, source: str, default_date) -> dict:
     return out
 
 
-def record(book: str, market: str, rows: list[dict], source: str = "manual") -> list[int]:
+def record(book: str, market: str, rows: list[dict], source: str = "manual", stored_scale: bool = False) -> list[int]:
     """Append trades to the book, in one transaction, after checking they leave no short position.
-    Returns the new rows' ids."""
+    Returns the new rows' ids. `stored_scale`: the rows' shares and prices are on the stored bars' scale (a
+    paper fill read off them), so they are put back on the day's own before they are stored."""
     if not rows:
         return []
     today = market_today(market)
     clean = [_clean(market, t, source, today) for t in rows]
+    if stored_scale:
+        clean = [{k: v for k, v in r.items() if k != "split_factor"} for r in adjusted(market, clean, invert=True)]
     with _tx() as cur:
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"book:{book}:{market}",))
         existing = trades(book, market)
         merged = sorted(existing + clean, key=lambda r: (r["trade_date"], r.get("id") or float("inf")))
-        holdings(merged)      # raises on a sale of shares the book does not hold
+        holdings(adjusted(market, merged))      # raises on a sale of shares the book does not hold
         ids = []
         for t in clean:
             cur.execute(
@@ -275,7 +335,7 @@ def record(book: str, market: str, rows: list[dict], source: str = "manual") -> 
 
 def delete_trade(book: str, market: str, trade_id: int) -> bool:
     """Remove one mistaken row, if what remains still adds up (no sale of shares never held)."""
-    rest = [t for t in trades(book, market) if t["id"] != trade_id]
+    rest = [t for t in trades(book, market, adjust=True) if t["id"] != trade_id]
     holdings(rest)
     with db.get_connection().cursor() as cur:
         cur.execute("DELETE FROM book_trades WHERE id=%s AND book=%s AND market=%s", (trade_id, book, market))
@@ -287,7 +347,7 @@ def delete_trade(book: str, market: str, trade_id: int) -> bool:
 def _sync_snapshot(book: str, market: str) -> None:
     """Write the derived holdings back to `book_positions` / `book_cash`, so the snapshot never
     disagrees with the ledger."""
-    h = holdings(trades(book, market))
+    h = holdings(trades(book, market, adjust=True))
     with _tx() as cur:
         cur.execute("DELETE FROM book_positions WHERE book=%s AND market=%s", (book, market))
         for sym, sh in h["positions"].items():
@@ -333,12 +393,37 @@ def migrate_snapshots() -> list[tuple]:
 # ------------------------------------------------------------------ rebalances
 
 def save_rebalance(book: str, market: str, as_of: str, spec_id: str | None, targets: list, orders: list,
-                   note: str | None = None) -> int:
-    with db.get_connection().cursor() as cur:
-        cur.execute("INSERT INTO book_rebalances (book, market, as_of, spec_id, targets, orders, note) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-                    (book, market, as_of, spec_id, json.dumps(targets), json.dumps(orders), note))
+                   note: str | None = None, request_id: str | None = None, one_open: bool = False) -> int:
+    """Store a rebalance; returns its id. Under the book's lock, so two confirms cannot race past the checks:
+    a `request_id` already stored returns that rebalance instead of a second one, and `one_open` refuses
+    while another is still open (ValueError)."""
+    with _tx() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"book:{book}:{market}",))
+        if request_id:
+            cur.execute("SELECT id FROM book_rebalances WHERE book=%s AND market=%s AND request_id=%s",
+                        (book, market, request_id))
+            r = cur.fetchone()
+            if r:
+                return r[0]
+        if one_open:
+            cur.execute("SELECT id FROM book_rebalances WHERE book=%s AND market=%s AND completed_at IS NULL",
+                        (book, market))
+            r = cur.fetchone()
+            if r:
+                raise ValueError(f"rebalance #{r[0]} is still open: complete it before starting the next")
+        cur.execute("INSERT INTO book_rebalances (book, market, as_of, spec_id, targets, orders, note, request_id) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (book, market, as_of, spec_id, json.dumps(targets), json.dumps(orders), note, request_id))
         return cur.fetchone()[0]
+
+
+def rebalance_by_request(book: str, market: str, request_id: str) -> int | None:
+    """The rebalance a page's request stored, if it has."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT id FROM book_rebalances WHERE book=%s AND market=%s AND request_id=%s",
+                    (book, market, request_id))
+        r = cur.fetchone()
+    return r[0] if r else None
 
 
 def progress(orders: list[dict], trades_: list[dict], rebalance_id: int, skipped=()) -> list[dict]:

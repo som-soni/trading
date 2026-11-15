@@ -6438,6 +6438,16 @@ async function portfolioTab(host, alive, d, key) {
   paint();
 }
 
+/** Run `fn` (a write to the books) with `btn` disabled until it settles, so a second click cannot send the same
+ * trade or rebalance twice while the first is still in flight. */
+async function inFlight(btn, fn) {
+  if (!btn || btn.disabled) return undefined;
+  btn.disabled = true;
+  try { return await fn(); } finally { btn.disabled = false; }
+}
+/** An id for one confirm on the page: the server stores it with the rebalance, so a retry returns that one. */
+const requestId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
 /** Money in the market's currency, whole units. */
 const bookMoney = (mkt, v) => v == null ? "—" : `${v < 0 ? "−" : ""}${mktInfo(mkt).currency || ""}${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
 const bookSym = (mkt, s) => { const sfx = mktInfo(mkt).suffix || ""; return s && sfx && s.endsWith(sfx) ? s.slice(0, -sfx.length) : (s || ""); };
@@ -6560,10 +6570,12 @@ async function pfRebalance(body, ctx) {
       <span id="serr"></span></div>`;
   driftNote(body.querySelector("#drift"), o.drift, o.hold_rank, o.replayed_rebalances, mkt);
   pfGroups(body.querySelector("#groups"), ctx, lines, null);
+  const req = requestId();
   body.querySelector("#start").onclick = async (e) => {
-    if (!lines.some((l) => l.side)) return;
+    if (!lines.some((l) => l.side) || e.target.disabled) return;
     e.target.disabled = true;
-    try { await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}/confirm`, { method: "POST" }); ctx.refresh(); }
+    try { await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}/confirm`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_id: req }) }); ctx.refresh(); }
     catch (err) { e.target.disabled = false; body.querySelector("#serr").innerHTML = pfErr(err); }
   };
 }
@@ -6656,10 +6668,10 @@ function tradeDialog(ctx, init = {}) {
           note: val("note") || null, rebalance_id: l ? reb.id : null };
     const err = dlg.querySelector(".t-err");
     if (side === "CASH" ? !t.amount : !(t.symbol && t.shares > 0 && t.price > 0)) { err.innerHTML = pfErr(side === "CASH" ? "Enter an amount." : "Enter the stock, shares and price."); return; }
-    try {
-      await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trades: [t], source: "manual" }) });
-    } catch (x) { err.innerHTML = pfErr(x); return; }
+    const sent = await inFlight(f.querySelector('button[type="submit"]'), () => api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trades: [t], source: "manual" }) })
+      .then(() => true, (x) => { err.innerHTML = pfErr(x); return false; }));
+    if (!sent) return;
     close();
     toast(side === "CASH" ? "Cash recorded" : `Recorded: ${side === "BUY" ? "bought" : "sold"} ${t.shares} ${t.symbol}`);
     ctx.refresh();
@@ -6918,9 +6930,9 @@ function proposedFills(host, key, mkt, rows, opts = {}) {
             note: r.note || null, rebalance_id: opts.rebalanceId || null });
     });
     if (!out.length) { host.querySelector("#recerr").textContent = "Nothing ticked."; return; }
-    const ok = await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades`, { method: "POST",
+    const ok = await inFlight(host.querySelector("#rec"), () => api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trades: out, source: opts.source || "manual" }) })
-      .catch((e) => { host.querySelector("#recerr").textContent = String(e.message || e); return null; });
+      .catch((e) => { host.querySelector("#recerr").textContent = String(e.message || e); return null; }));
     if (ok) { host.innerHTML = `<div class="sd-intro small"><b>Recorded ${ok.recorded.length} ledger entr${ok.recorded.length === 1 ? "y" : "ies"}.</b></div>`; opts.onDone && opts.onDone(); }
   };
 }
@@ -6995,6 +7007,30 @@ function driftNote(host, d, holdRank, replayed, mkt) {
  */
 const COMBO_KEY = "momentum_dual_combo";
 
+/** The combination's open rebalance: how far it is filled, the outstanding fills to record, and Complete. A new
+ * rebalance can be confirmed only once this one is completed. */
+function comboOpenRebalance(box, ctx, reb) {
+  const { key, mkt } = ctx;
+  const act = reb.lines.filter((l) => l.side), out = act.filter((l) => l.state === "pending" || l.state === "partial");
+  box.innerHTML = `<div class="muted small sd-intro"><b>Rebalance #${reb.id} is open</b> — the orders as computed on the ${esc(prettyDate(reb.as_of))} close,
+      stored ${esc(prettyDate(reb.created_at.slice(0, 10)))}: ${act.length - out.length} of ${act.length} momentum-sleeve lines filled or skipped.
+      Record the fills, then complete it; the next rebalance can be confirmed after that.</div>
+    <div class="pf-actions">${out.length ? `<button class="sm" id="cbulk">Record the outstanding fills…</button>` : ""}
+      <button class="primary sm" id="ccomplete">Complete rebalance…</button><span id="ccerr"></span></div><div id="cbox"></div>`;
+  const bulk = box.querySelector("#cbulk");
+  if (bulk) bulk.onclick = () => proposedFills(box.querySelector("#cbox"), key, mkt,
+    out.map((l) => ({ side: l.side, symbol: l.symbol, shares: l.remaining, price: l.price, price_from: "close", costs: 0,
+      note: `rebalance #${reb.id}` })), { source: "manual", rebalanceId: reb.id, onDone: ctx.refresh,
+      intro: `<b>Not recorded yet.</b> The outstanding momentum-sleeve orders of rebalance #${reb.id} at its close — correct each price and cost to the contract note.` });
+  box.querySelector("#ccomplete").onclick = async (e) => {
+    if (!confirm(out.length ? `${out.length} order${out.length === 1 ? " is" : "s are"} not fully filled. Complete anyway? They stay on record as not filled.`
+      : "Complete this rebalance? Its orders and fills stay on record.")) return;
+    const ok = await inFlight(e.target, () => api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/rebalances/${reb.id}/complete`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: "{}" }).then(() => true, (x) => { box.querySelector("#ccerr").innerHTML = pfErr(x); return false; }));
+    if (ok) ctx.refresh();
+  };
+}
+
 async function comboOrders(host, ctx) {
   const { key, mkt } = ctx;
   const paint = async () => {
@@ -7043,17 +7079,22 @@ async function comboOrders(host, ctx) {
     driftNote(host.querySelector("#odrift"), r.drift, null, ms.replayed_rebalances, mkt);
     if (own && r.other.length) host.querySelector("#oother").innerHTML = `<div class="muted small sd-intro"><b>Other holdings in this book:</b>
       ${r.other.map((x) => `${esc(bookSym(mkt, x.symbol))} ${x.shares}`).join(", ")} — the dual sleeve's fund, or a stock the momentum sleeve no longer holds (sell it).</div>`;
-    if (r.capital && r.capital_from === "the book") {
+    const reb = ctx.book.open_rebalance;
+    if (reb) comboOpenRebalance(host.querySelector("#oconfirm"), ctx, reb);
+    else if (r.capital && r.capital_from === "the book") {
       const box = host.querySelector("#oconfirm");
       box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
         <button class="sm" id="confirmreb">Confirm rebalance…</button>
         <span class="muted small">Stores these targets and orders as computed now, then lets you record the fills against them.</span></div><div id="rebfills"></div>`;
-      box.querySelector("#confirmreb").onclick = async () => {
+      const req = requestId();   // one rebalance per showing of these orders, however often the button is pressed
+      box.querySelector("#confirmreb").onclick = async (e) => {
         const fb = box.querySelector("#rebfills");
         fb.innerHTML = LOADING;
-        let c;
-        try { c = await api(`/api/combo-orders/${mkt}/confirm`, { method: "POST" }); }
-        catch (e) { fb.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(e.message || e))}</span>`; return; }
+        const c = await inFlight(e.target, () => api(`/api/combo-orders/${mkt}/confirm`, { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: req }) })
+          .catch((x) => { fb.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(x.message || x))}</span>`; return null; }));
+        if (!c) return;
+        e.target.hidden = true;
         const fills = c.orders.orders.filter((o) => o.change).map((o) => ({ side: o.change > 0 ? "BUY" : "SELL", symbol: o.symbol,
           shares: Math.abs(o.change), price: o.price, costs: 0, price_from: "close", note: `rebalance #${c.id}` }))
           .concat(c.orders.other.filter((x) => !c.orders.orders.some((o) => o.symbol === x.symbol))
@@ -10279,7 +10320,7 @@ async function openPositionsCard(host, mkt, alive, trade) {
       "Not yet tracked — refreshed with the next positions run", x.entry_date, x.entry_price, x.shares, x.initial_stop, x.initial_stop, null, null, null, "", null]));
     dataTable(tbl, ["symbol", "book", "status", "entry_date", "entry", "shares", "initial_stop", "stop", "to_stop_pct", "r_now", "close", "exit", "as_of"], rows, {
       name: `open_positions_${mkt}`, noStack: true, sort: ["status", 1],
-      html: { status: (v) => `<span class="tag ${/^Hold/.test(v) ? "neutral" : /raised/.test(v) ? "warn" : /^Not yet/.test(v) ? "neutral" : "neg"}">${esc(v)}</span>` },
+      html: { status: (v) => `<span class="tag ${/^Hold/.test(v) ? "neutral" : /raised/.test(v) ? "warn" : /^Not yet/.test(v) ? "neutral" : /^Target/.test(v) ? "pos" : "neg"}">${esc(v)}</span>` },
       rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[0])}`),
     });
   }
@@ -10307,8 +10348,9 @@ async function openPositionsCard(host, mkt, alive, trade) {
       const x = trade[+f.querySelector("#tk-s").value];
       const body = { strategy: x.strategy, symbol: x.symbol, shares: parseFloat(f.querySelector("#tk-n").value), price: parseFloat(f.querySelector("#tk-p").value),
         costs: parseFloat(f.querySelector("#tk-c").value) || 0, initial_stop: parseFloat(f.querySelector("#tk-st").value), trade_date: f.querySelector("#tk-d").value };
-      const ok = await api(`/api/open-positions/${mkt}/take`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        .catch((e) => { f.querySelector("#tk-err").textContent = String(e.message || e); return null; });
+      const ok = await inFlight(f.querySelector("#tk-go"), () => api(`/api/open-positions/${mkt}/take`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .catch((e) => { f.querySelector("#tk-err").textContent = String(e.message || e); return null; }));
       if (ok) openPositionsCard(host, mkt, alive, trade);
     };
   };
@@ -10338,7 +10380,9 @@ function recordExitForm(f, mkt, r, onDone) {
     f.querySelector("#ex-n").value = x.sell_shares || x.shares;
     f.querySelector("#ex-p").value = x.sell_price ?? x.last_close ?? "";
     f.querySelector("#ex-hint").textContent = x.status === "stopped" ? "Prefilled at the stop the low reached — if your resting stop order filled, that is about the price; otherwise the open you sold at."
-      : x.status === "partial" ? "Prefilled with the part the exit ladder sold." : x.sell_shares ? "Prefilled with the whole position, at the latest close — change it to your fill at the open."
+      : x.status === "target" ? "Prefilled at the target the high reached — if your resting limit order filled, that is about the price; otherwise the open you sold at."
+      : x.status === "partial" ? "Prefilled with the part the exit ladder sold."
+      : x.status === "partial_queued" ? "Prefilled with the part the exit ladder sells at the next open, at the latest close — change it to your fill." : x.sell_shares ? "Prefilled with the whole position, at the latest close — change it to your fill at the open."
       : "This trade's exit has not fired: prefilled with the whole position at the latest close.";
   };
   fill();
@@ -10349,8 +10393,9 @@ function recordExitForm(f, mkt, r, onDone) {
     const body = { trade_id: x.trade_id, shares: parseFloat(f.querySelector("#ex-n").value), price: parseFloat(f.querySelector("#ex-p").value),
       costs: parseFloat(f.querySelector("#ex-c").value) || 0, trade_date: f.querySelector("#ex-d").value };
     if (!(body.shares > 0 && body.price > 0)) { f.querySelector("#ex-err").textContent = "Enter the shares and the fill price."; return; }
-    const ok = await api(`/api/open-positions/${mkt}/exit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .catch((e) => { f.querySelector("#ex-err").textContent = String(e.message || e); return null; });
+    const ok = await inFlight(f.querySelector("#ex-go"), () => api(`/api/open-positions/${mkt}/exit`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .catch((e) => { f.querySelector("#ex-err").textContent = String(e.message || e); return null; }));
     if (ok) { toast(`Recorded: sold ${body.shares} ${bareSymbol(x.symbol)} from ${x.book}`); onDone(); }
   };
 }
@@ -10387,8 +10432,9 @@ async function paperPage(alive, mkt, book) {
     });
   $view.querySelector("#pgo").onclick = async () => {
     const body = { strategy: $view.querySelector("#pstrat").value, capital: parseFloat($view.querySelector("#pcap").value) || null };
-    const ok = await api(`/api/paper/${mkt}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .catch((e) => { $view.querySelector("#perr").textContent = String(e.message || e); return null; });
+    const ok = await inFlight($view.querySelector("#pgo"), () => api(`/api/paper/${mkt}`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .catch((e) => { $view.querySelector("#perr").textContent = String(e.message || e); return null; }));
     if (ok) go(`#/paper/${mkt}/${encodeURIComponent(ok.book)}`);
   };
 }

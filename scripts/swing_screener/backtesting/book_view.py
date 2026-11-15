@@ -56,7 +56,7 @@ def chained(equity: pd.Series, flow: pd.Series) -> pd.Series:
 
 def valuation(book: str, market: str) -> dict:
     from . import paper
-    rows = ledger.trades(book, market)
+    rows = ledger.trades(book, market, adjust=True)   # on the stored closes' scale
     h = ledger.holdings(rows)
     out = {"book": book, "market": market, "positions": [], "cash": h["cash"], "realised": h["realised"],
            "costs": h["costs"], "trades": len(rows), "as_of": None, "value": h["cash"], "invested": 0.0,

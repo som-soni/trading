@@ -9,11 +9,18 @@ position stands after the latest close:
 
     hold            nothing fired; the stop is where it was
     stop_raised     the stop moved up on the latest session -- move your stop order
-    partial         the exit ladder sold part of the position on the latest session
+    partial         the exit ladder has sold part of the position that the ledger still holds: sell that part
+    partial_queued  the latest close queued a step of the exit ladder: sell that part at the next open
     exit_next_open  a close-based exit fired (or one is queued for the open): sell at the next open
     sell_stop_armed the ma_low exit is armed: the latest session closed below the line, so the next one
                     sells if it trades under that session's low -- rest a sell-stop there for one session
-    stopped         the stop or target was reached intraday: your resting order filled, or sell at the open
+    stopped         the stop was reached intraday: your resting order filled, or sell at the open
+    target          the target was reached: your resting limit order filled, or sell at the open
+
+The position is replayed from the shares it was opened with, as the backtest holds it, so a step of the
+ladder you have already sold is not asked for again: what the ledger holds beyond what the ladder leaves
+open is the part still to sell. The ledger's rows are read split-adjusted (ledger.adjusted), on the scale
+of the stored bars.
 
 An open signal trade is a book's holding whose opening BUY carries an `initial_stop` (recorded when a
 setup is "taken"; ledger.py). The `positions` job (jobs/registry.py, screening layer, after `prices`)
@@ -58,15 +65,19 @@ CREATE TABLE IF NOT EXISTS position_status (
 );
 -- the shares the exit leaves open after the latest session: below `shares` when the ladder sold part
 ALTER TABLE position_status ADD COLUMN IF NOT EXISTS open_shares DOUBLE PRECISION;
+-- partial_queued: the shares the ladder's queued step sells at the next open
+ALTER TABLE position_status ADD COLUMN IF NOT EXISTS queued_shares DOUBLE PRECISION;
 """
 
 STATUS_TEXT = {
     "hold": "Hold",
     "stop_raised": "Stop raised — move your stop order",
     "partial": "Sell part at the next open",
+    "partial_queued": "Sell part at the next open — the close queued the exit ladder's next step",
     "exit_next_open": "Exit triggered — sell at the next open",
     "sell_stop_armed": "Closed below the line — rest a sell-stop at today's low for the next session",
     "stopped": "Stop reached — sell at the open unless your stop order filled",
+    "target": "Target reached — sell at the open unless your limit order filled",
 }
 
 
@@ -77,23 +88,25 @@ def init_schema() -> None:
 
 @dataclass
 class Opening:
-    """An open signal trade as the ledger records it."""
+    """An open signal trade as the ledger records it (split-adjusted to the stored bars)."""
     trade_id: int
     book: str
     market: str
     symbol: str
     entry_date: pd.Timestamp
     entry_price: float
-    shares: float
+    shares: float                 # held now
     initial_stop: float
     target: float
     setup: str
     meta: dict
+    opening_shares: float = 0.0   # bought into the position: what the exit is replayed on
 
 
 def track(df: pd.DataFrame, policy: "ps.ExitPolicy", cfg, *, symbol: str, entry_date, entry_price: float,
           initial_stop: float, shares: float, target: float = math.inf, meta: dict | None = None,
-          fee_rate: float = 0.0, entry_at: int = ps.INTRADAY, setup: str = "", frame: pd.DataFrame | None = None) -> dict:
+          fee_rate: float = 0.0, entry_at: int = ps.INTRADAY, setup: str = "", frame: pd.DataFrame | None = None,
+          held: float | None = None) -> dict:
     """Replay `df` (enriched daily bars) from `entry_date` through the strategy's exit, exactly as
     `simulate` manages a held position, and say where the position stands after the last bar.
 
@@ -102,7 +115,10 @@ def track(df: pd.DataFrame, policy: "ps.ExitPolicy", cfg, *, symbol: str, entry_
     bar is not tested). Fills here are the raw levels: your own fills carry the slippage and costs.
 
     `frame`: `df` already through `ps.exit_frames` for this policy -- a caller replaying many entries in one
-    stock (the chart's setup outcomes, strategies/setup_outcomes.py) builds it once."""
+    stock (the chart's setup outcomes, strategies/setup_outcomes.py) builds it once.
+
+    `shares` is the position as opened; `held`, what the ledger holds now (None: the same). A step of the
+    exit ladder the replay sold and the ledger still holds reads `partial` until its sale is recorded."""
     entry_date = pd.Timestamp(entry_date)
     if frame is None:
         frame = ps.exit_frames({symbol: df}, policy)[symbol]
@@ -144,17 +160,23 @@ def track(df: pd.DataFrame, policy: "ps.ExitPolicy", cfg, *, symbol: str, entry_
     if last is None:
         return {"status": "hold", "stop": float(initial_stop), "as_of": None, "stops": [], "policy": policy.label(),
                 "last_close": None, "r_now": None, "dist_pct": None, "exit": None, "partials": [],
-                "open_shares": float(shares), "note": "no stored bar on or after the entry date yet"}
+                "open_shares": float(shares), "queued_shares": 0.0, "note": "no stored bar on or after the entry date yet"}
     today, bar = last
     close = float(bar["close"])
     risk = float(entry_price) - float(initial_stop)
     on_last = [x for x in partials if x["date"] == str(today.date())]
+    # a step of the ladder is owed while the ledger holds more than the replay leaves open
+    owed = on_last if held is None else float(held) > float(pos.held) + 1e-9
+    queued = ps.queued_partial(pos, policy) if policy.mode == "minervini" else 0
     if exit_:
-        status = "exit_next_open" if exit_["at"] == ps.AT_CLOSE else "stopped"
+        status = ("exit_next_open" if exit_["at"] == ps.AT_CLOSE else
+                  "target" if exit_["reason"] == "TARGET" else "stopped")
     elif pos.queued_exit:
         status, exit_ = "exit_next_open", {"date": None, "reason": pos.queued_exit, "price": None, "at": ps.AT_OPEN}
-    elif on_last:
+    elif owed:
         status = "partial"
+    elif queued:
+        status = "partial_queued"
     elif _ma_low_armed(policy, bar):
         status = "sell_stop_armed"
     elif pos.stop > prev_stop + 1e-9:
@@ -167,7 +189,8 @@ def track(df: pd.DataFrame, policy: "ps.ExitPolicy", cfg, *, symbol: str, entry_
     return {"status": status, "stop": stop, "as_of": str(today.date()), "stops": stops, "policy": policy.label(),
             "last_close": close, "r_now": (close - float(entry_price)) / risk if risk > 0 else None,
             "dist_pct": (close - stop) / close * 100 if stop is not None and close else None,
-            "exit": exit_ or None, "partials": partials, "open_shares": float(pos.held)}
+            "exit": exit_ or None, "partials": partials, "open_shares": float(pos.held),
+            "queued_shares": float(queued) if status == "partial_queued" else 0.0}
 
 
 def _ma_low_armed(policy: "ps.ExitPolicy", bar) -> bool:
@@ -183,15 +206,15 @@ def _ma_low_armed(policy: "ps.ExitPolicy", bar) -> bool:
 
 def openings(book: str, market: str) -> list[Opening]:
     """The book's open signal trades: each held symbol whose position was opened by a BUY carrying an
-    initial stop. The entry is that BUY; the shares and average cost are the ledger's now."""
+    initial stop. The entry is that BUY; the shares held and average cost are the ledger's now, and the
+    opening shares every buy of the position since it was last flat. Split-adjusted to the stored bars."""
     from . import ledger
-    rows = ledger.trades(book, market)
+    rows = ledger.trades(book, market, adjust=True)
     h = ledger.holdings(rows)
     out = []
     for sym, n in h["positions"].items():
-        since = h["since"].get(sym) or ""
-        first = next((r for r in rows if r["symbol"] == sym and r["side"] == "BUY" and r["trade_date"] >= since
-                      and r["initial_stop"] is not None), None)
+        ep = _episode(rows, sym)
+        first = next((r for r in ep if r["side"] == "BUY" and r["initial_stop"] is not None), None)
         if first is None:
             continue
         out.append(Opening(trade_id=first["id"], book=book, market=market, symbol=sym,
@@ -199,8 +222,23 @@ def openings(book: str, market: str) -> list[Opening]:
                            entry_price=float(h["avg_cost"].get(sym) or first["price"]), shares=n,
                            initial_stop=float(first["initial_stop"]),
                            target=float(first["target"]) if first["target"] else math.inf,
-                           setup=first["setup"] or first["entry_rule"] or "", meta=first.get("meta") or {}))
+                           setup=first["setup"] or first["entry_rule"] or "", meta=first.get("meta") or {},
+                           opening_shares=sum(float(r["shares"]) for r in ep if r["side"] in ("OPEN", "BUY"))))
     return out
+
+
+def _episode(rows: list[dict], sym: str) -> list[dict]:
+    """The rows of `sym`'s current position: every OPEN, BUY and SELL since the book last held none."""
+    from .ledger import EPS
+    ep, have = [], 0.0
+    for r in rows:
+        if r.get("symbol") != sym or r["side"] == "CASH":
+            continue
+        if have <= EPS:
+            ep = []
+        ep.append(r)
+        have += float(r["shares"]) * (-1 if r["side"] == "SELL" else 1)
+    return ep
 
 
 def fee_rate_for(strategy_key: str, market: str) -> float:
@@ -251,8 +289,8 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
             at = (ps.AT_CLOSE if om.get("order") == "close" or om.get("confirm_close_above") is not None
                   else ps.AT_OPEN if om.get("order") == "open" else ps.INTRADAY)
             r = track(df, policy, cfg, symbol=o.symbol, entry_date=o.entry_date, entry_price=o.entry_price,
-                      initial_stop=o.initial_stop, shares=o.shares, target=o.target, meta=o.meta,
-                      fee_rate=fee, entry_at=at, setup=o.setup)
+                      initial_stop=o.initial_stop, shares=o.opening_shares or o.shares, target=o.target, meta=o.meta,
+                      fee_rate=fee, entry_at=at, setup=o.setup, held=o.shares)
             if r["as_of"] is None:
                 stats["no_bars"] += 1
                 continue
@@ -264,18 +302,18 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
                 cur.execute("""
                     INSERT INTO position_status (trade_id, book, market, symbol, as_of, entry_date, entry_price, shares,
                         initial_stop, stop, status, reason, exit_date, exit_price, last_close, r_now, dist_pct, policy,
-                        stops, open_shares, updated_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
+                        stops, open_shares, queued_shares, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
                     ON CONFLICT (trade_id) DO UPDATE SET as_of=EXCLUDED.as_of, entry_date=EXCLUDED.entry_date,
                         entry_price=EXCLUDED.entry_price, shares=EXCLUDED.shares, initial_stop=EXCLUDED.initial_stop,
                         stop=EXCLUDED.stop, status=EXCLUDED.status, reason=EXCLUDED.reason, exit_date=EXCLUDED.exit_date,
                         exit_price=EXCLUDED.exit_price, last_close=EXCLUDED.last_close, r_now=EXCLUDED.r_now,
                         dist_pct=EXCLUDED.dist_pct, policy=EXCLUDED.policy, stops=EXCLUDED.stops,
-                        open_shares=EXCLUDED.open_shares, updated_at=now()""",
+                        open_shares=EXCLUDED.open_shares, queued_shares=EXCLUDED.queued_shares, updated_at=now()""",
                             (o.trade_id, book, market, o.symbol, r["as_of"], o.entry_date.date(), o.entry_price,
                              o.shares, o.initial_stop, r["stop"], r["status"], ex.get("reason"), ex.get("date"),
                              ex.get("price"), r["last_close"], r["r_now"], r["dist_pct"], r["policy"],
-                             json.dumps(r["stops"][-60:]), r["open_shares"]))
+                             json.dumps(r["stops"][-60:]), r["open_shares"], r["queued_shares"]))
     with db.get_connection().cursor() as cur:   # trades no longer open, in the books this run covered
         cur.execute("DELETE FROM position_status WHERE market=%s AND NOT (trade_id = ANY(%s))"
                     + (" AND book = ANY(%s)" if books is not None else ""),
@@ -288,7 +326,7 @@ def statuses(market: str) -> list[dict]:
     init_schema()
     cols = ("trade_id", "book", "symbol", "as_of", "entry_date", "entry_price", "shares", "initial_stop", "stop",
             "status", "reason", "exit_date", "exit_price", "last_close", "r_now", "dist_pct", "policy", "open_shares",
-            "updated_at")
+            "queued_shares", "updated_at")
     with db.get_connection().cursor() as cur:
         cur.execute(f"SELECT {', '.join(cols)} FROM position_status WHERE market=%s ORDER BY book, symbol", (market,))
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]

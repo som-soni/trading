@@ -1350,6 +1350,19 @@ def manage_exit(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy
     close_out(sym, pos, raw, reason, today, at=at)
 
 
+def queued_partial(pos: PortfolioTrade, policy: ExitPolicy) -> int:
+    """The shares a part queued on the latest close sells at the next open (`_manage_minervini`'s first two
+    steps, sized as they size it), 0 when none is queued or a queued exit sells everything first. The
+    open-position tracker reads it, so a queued step reads "sell part at the next open", not "hold"."""
+    m = pos.meta
+    if pos.queued_exit:
+        return 0
+    queued = ((m.get("_queued_partial") and not pos.partial_shares)
+              or (m.get("_queued_second") and pos.partial_shares and not m.get("_second_sold")))
+    n = int(pos.shares * policy.partial_frac) if queued else 0
+    return n if 0 < n < pos.held else 0
+
+
 def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, policy: ExitPolicy,
                       close_out, sell, fee_rate: float, cfg: MarketConfig, entry_day: bool = False,
                       at: int | None = None) -> None:

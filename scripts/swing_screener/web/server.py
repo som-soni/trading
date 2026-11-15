@@ -1800,10 +1800,15 @@ def open_positions(market: str):
         left = r.get("open_shares")
         r["sold_since_refresh"] = held < float(r["shares"]) - 1e-9
         r["shares"] = held
-        # what the exit says to sell: all of it, or the part the ladder sold (less any part already recorded)
-        r["sell_shares"] = (held if r["status"] in ("exit_next_open", "stopped") else
-                            max(0.0, held - float(left)) if r["status"] == "partial" and left is not None else None)
-        r["sell_price"] = r["exit_price"] if r["status"] == "stopped" and r.get("exit_price") else r["last_close"]
+        # what the exit says to sell: all of it, the part the ladder sold (less any part already recorded), or
+        # the part it queued for the next open
+        queued = float(r.get("queued_shares") or 0)
+        r["sell_shares"] = (held if r["status"] in ("exit_next_open", "stopped", "target") else
+                            max(0.0, held - float(left)) if r["status"] == "partial" and left is not None else
+                            max(0.0, held - (float(left) - queued)) if r["status"] == "partial_queued"
+                            and left is not None else None)
+        r["sell_price"] = (r["exit_price"] if r["status"] in ("stopped", "target") and r.get("exit_price")
+                           else r["last_close"])
     seen = {r["trade_id"] for r in rows}
     pending = [{"trade_id": o.trade_id, "book": o.book, "symbol": o.symbol, "entry_date": o.entry_date.date().isoformat(),
                 "entry_price": o.entry_price, "shares": o.shares, "initial_stop": o.initial_stop}
@@ -1845,7 +1850,7 @@ def record_exit(market: str, body: dict):
     return {"book": o.book, "symbol": o.symbol, "queued": queued}
 
 
-# the signal's own levels the exits read, copied from the strategy's stored run row when it carries them
+# a run row stored before the rows carried their `order` (2026-11-14): the signal's own levels the exits read, from its columns
 _TAKE_META = {"box_top": "box_top", "box_bottom": "box_bottom", "pivot": "pivot", "box_top_date": "setup_start"}
 
 
@@ -1959,7 +1964,11 @@ def position_size(market: str, entry: float, stop: float):
 def take_setup(market: str, body: dict):
     """Take a tradeable setup into its strategy's book: a BUY at your fill, with the setup's initial stop (and
     target), recorded in the ledger; then ask the queue for a `positions` refresh. {strategy, symbol, shares,
-    price, trade_date?, initial_stop?, costs?, refresh?}. Nothing is ordered: you buy at the broker."""
+    price, trade_date?, initial_stop?, costs?, refresh?}. Nothing is ordered: you buy at the broker.
+
+    The trade's meta is the signal's own (the run row's `order`, the strategy's `signal_meta`: the order type, a
+    light-volume check, the box or pivot), so the tracker manages it with the exit settings the backtest gave the
+    same signal -- a close order (kullamagi) is tracked from the close."""
     from ..backtesting import ledger, rebalance
 
     strategy = str(body.get("strategy") or "")
@@ -1971,11 +1980,21 @@ def take_setup(market: str, body: dict):
         raise HTTPException(400, f"{sym} is not in {strategy}'s latest run: give the initial stop")
     fr = fr or {}
     stop = float(body.get("initial_stop") or fr.get("stop") or 0)
+    try:
+        price = float(body.get("price"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "give the fill price")
+    if not 0 < stop < price:
+        raise HTTPException(400, f"the initial stop ({stop:g}) must be above zero and below the fill ({price:g})")
     entry, tr = fr.get("entry"), fr.get("target_r")
     target = (float(entry) + float(tr) * (float(entry) - stop)) if entry and tr and float(entry) > stop else None
-    meta = {v: fr[k] for k, v in _TAKE_META.items() if fr.get(k) is not None}
-    if "box_top_date" in fr:
-        meta["base_id"] = f"darvas:{fr['box_top_date']}"
+    # as a paper book copies a replayed trade's meta (backtesting/paper.py): its plain values, not the simulator's own
+    meta = {k: v for k, v in ((fr.get("order") or {}).get("meta") or {}).items()
+            if not str(k).startswith("_") and isinstance(v, (str, int, float, bool, type(None)))}
+    if not meta:
+        meta = {v: fr[k] for k, v in _TAKE_META.items() if fr.get(k) is not None}
+        if "box_top_date" in fr:
+            meta["base_id"] = f"darvas:{fr['box_top_date']}"
     try:
         ids = ledger.record(strategy, market, [{
             "side": "BUY", "symbol": sym, "shares": body.get("shares"), "price": body.get("price"),
@@ -2064,9 +2083,10 @@ def dual_pick(market: str):
 
 
 @app.post("/api/rebalance/{strategy}/{market}/confirm")
-def rebalance_confirm(strategy: str, market: str):
+def rebalance_confirm(strategy: str, market: str, body: dict | None = None):
     """Store this rebalance as computed now (book_rebalances: targets and orders), so the fills you record
-    next carry its id. Nothing is traded: the orders are placed by hand at the broker."""
+    next carry its id. Nothing is traded: the orders are placed by hand at the broker. {request_id?}: a
+    repeat of the same request returns the rebalance it stored."""
     from ..backtesting import rebalance
     from ..strategies import portfolio_strategies
 
@@ -2075,7 +2095,7 @@ def rebalance_confirm(strategy: str, market: str):
     if not hasattr(portfolio_strategies()[strategy], "lookback"):
         raise HTTPException(400, f"{strategy} does not rank stocks")
     try:
-        return rebalance.confirm(strategy, market)
+        return rebalance.confirm(strategy, market, request_id=(body or {}).get("request_id") or None)
     except ValueError as e:
         raise HTTPException(409, str(e))
 
@@ -2111,20 +2131,29 @@ def combo_orders(market: str, capital: float | None = None):
 
 
 @app.post("/api/combo-orders/{market}/confirm")
-def combo_confirm(market: str):
-    """Store the combination's rebalance as computed now, against its book's value."""
+def combo_confirm(market: str, body: dict | None = None):
+    """Store the combination's rebalance as computed now, against its book's value. {request_id?}: a repeat of
+    the same request (a retry, a second click) returns the rebalance it stored rather than a second one; a new
+    one is refused while an earlier rebalance is open (complete it first), checked under the book's lock."""
     from ..backtesting import combination, ledger
 
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
+    book, req = combination.CombinationStrategy.key, (body or {}).get("request_id") or None
+    done = ledger.rebalance_by_request(book, market, req) if req else None
+    if done is None and (open_ := ledger.open_rebalance(book, market)):
+        raise HTTPException(409, f"rebalance #{open_['id']} is still open: complete it before starting the next")
     o = _combo(market, None)
     if not o.get("capital"):
         raise HTTPException(400, "the combination's book holds nothing yet: record its cash first")
     targets = [{"symbol": x["symbol"], "label": x.get("label"), "sleeve": x["sleeve"], "weight_pct": x["account_pct"],
                 "shares": x.get("shares"), "amount": x.get("amount"), "price": x.get("price")} for x in o["orders"]]
-    rid = ledger.save_rebalance(combination.CombinationStrategy.key, market, o["as_of"], o["spec_id"], targets,
-                                o["orders"] + [{"other": x} for x in o["other"]])
-    return {"id": rid, "orders": o}
+    try:
+        rid = ledger.save_rebalance(book, market, o["as_of"], o["spec_id"], targets,
+                                    o["orders"] + [{"other": x} for x in o["other"]], request_id=req, one_open=True)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return {"id": rid, "orders": o, "repeat": done is not None}
 
 
 _generic_cache: dict = {}   # (strategy, spec, market, symbol, last bar, years) -> response

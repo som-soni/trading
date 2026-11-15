@@ -314,7 +314,7 @@ def step(book: str, market: str, today: date | None = None) -> dict:
                 tg = cur.fetchone()[0]
             weights = {t["symbol"]: t["weight_pct"] / 100 for t in tg}
             rows = fill_rebalance(book, market, strategy, weights, day, o["rebalance_id"], px_cache)
-            ledger.record(book, market, rows, source="paper")
+            ledger.record(book, market, rows, source="paper", stored_scale=True)   # sized off the stored bars
             _close_order(o["id"], "filled", day.date())
             done["filled"] += 1
             continue
@@ -438,7 +438,8 @@ def _step_signal(book: str, market: str, strategy: str, sess: pd.DatetimeIndex, 
     if res is None:
         return done
     have = Counter((r["trade_date"], r["symbol"], r["side"], round(float(r["shares"]), 6))
-                   for r in ledger.trades(book, market) if r["source"] == "paper" and r["side"] in ("BUY", "SELL"))
+                   for r in ledger.trades(book, market, adjust=True)   # on the replay's scale: the stored bars'
+                   if r["source"] == "paper" and r["side"] in ("BUY", "SELL"))
     first = {}                               # (symbol, entry date) -> the trade, for a buy's levels
     for t in res.trades:
         first[(t.symbol, pd.Timestamp(t.entry_date).date().isoformat())] = t
@@ -463,7 +464,7 @@ def _step_signal(book: str, market: str, strategy: str, sess: pd.DatetimeIndex, 
         rows.append(row)
     done["diverged"] = sum(max(0, n - seen.get(k, 0)) for k, n in have.items())
     if rows:
-        ledger.record(book, market, rows, source="paper")
+        ledger.record(book, market, rows, source="paper", stored_scale=True)   # back to each day's own scale
         done["filled"] += len(rows)
     tracker.refresh(market, books=[book])     # the open positions' status, for the Trade desk
     return done
@@ -522,7 +523,7 @@ def record(book: str, market: str) -> dict:
     """The paper book's forward record: its value each session from the start against the benchmark rebased
     to the same capital, every trade, and the decisions still pending."""
     from ..marketdata import cache
-    rows = ledger.trades(book, market)
+    rows = ledger.trades(book, market)                # as traded, for the list
     started = _started(book, market)
     if not rows or started is None:
         return {"book": book, "market": market, "equity": [], "benchmark": [], "trades": [], "pending": []}
@@ -534,7 +535,8 @@ def record(book: str, market: str) -> dict:
     full = pd.DataFrame({s: d["close"] for s, d in got.items() if d is not None})
     if not full.empty:
         closes = full.reindex(full.index.union(idx)).ffill().reindex(idx)
-    eq = equity_curve(rows, closes) if len(idx) else pd.Series(dtype=float)
+    # valued against the stored closes, so on their scale: a row before a later split holds its ratio x shares
+    eq = equity_curve(ledger.adjusted(market, rows), closes) if len(idx) else pd.Series(dtype=float)
     cap = float(sum(t["amount"] or 0 for t in rows if t["side"] == "CASH"))
     # the strategy's own benchmark, as its backtest is judged (baseline.benchmark_for); the calendar
     # (`sessions`) stays on the market's benchmark

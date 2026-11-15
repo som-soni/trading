@@ -116,17 +116,26 @@ under the strategy's `backtest_args`) and stores where it stands (`position_stat
 |---|---|---|
 | Hold | Nothing fired; the stop is unchanged | Nothing |
 | Stop raised — move your stop order | The trailing rule lifted the stop on the latest session | Move the stop order on Kite to the new stop |
-| Sell part at the next open | The exit ladder sold part of the position (Minervini) | Sell that part |
+| Sell part at the next open | The exit ladder has sold part of the position (Minervini, a partial at the target) and the ledger still holds it | Sell that part, then record it: the status clears once the SELL is in |
+| Sell part at the next open — the close queued the exit ladder's next step | The latest close queued a step of the ladder (selling into strength, a climax) for the next open | Sell the shown part at the open |
 | Closed below the line — rest a sell-stop at today's low for the next session | The `ma_low` exit (100-day EMA trend) is armed: the session closed below its line, so the next one sells if it trades under that session's low | Place a sell-stop at the shown stop for one session. A close back above the line cancels it |
 | Exit triggered — sell at the next open | A close-based exit fired (a close below the line, a turned Supertrend, a failed breakout) | Sell at the next open. The backtest sold at that close; you sell at the next open |
 | Stop reached — sell at the open unless your stop order filled | The low reached the stop | If your stop order rested, it filled: record the SELL. If not, sell at the open |
+| Target reached — sell at the open unless your limit order filled | The high reached the target | If your limit order rested, it filled: record the SELL. If not, sell at the open |
+
+The exit is replayed from the shares the trade was opened with, as the backtest holds it, so a part you have
+already sold is not asked for again. Ledger rows are read split-adjusted (`ledger.adjusted`, from the stored
+splits): a stock bought before a split is tracked on the same scale as its bars, while the ledger still lists the
+trade as you made it.
 
 *To stop* is how far the latest close is above the stop, in percent. *R now* is the open gain in units of the
 risk you entered with: (close − entry) ÷ (entry − initial stop).
 
 A taken setup is listed as *Not yet tracked* until the next positions run; taking one asks the queue for that
-run. The Darvas box's levels come with the setup, so its trailing boxes start from the box you bought. Setups
-whose exit reads levels the stored run does not carry fall back to the strategy's defaults.
+run. The trade keeps the strategy's own order and exit details for the setup (the strategy's `signal_meta`, in
+the `order` stored on the run's row): the order type — a close order is tracked from the close, as its backtest
+buys it — a light-volume check, the Darvas box or the pivot. A run stored before 2026-11-14, when the rows began
+carrying their order, gives only the box or pivot. The stop must be below the fill.
 
 ## 4. Paper books
 

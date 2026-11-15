@@ -136,8 +136,8 @@ def test_signal_book_replays_the_backtest_orders() -> None:
         backtest.sim_settings_for = lambda st, m: {"cfg": cfg, "rank_by": "setup", "spec_costs": False,
                                                    "simulate": {"exit_policy": ExitPolicy(mode="minervini", use_target=False)}}
         corporate_actions.Credits.for_market = classmethod(lambda cls, m, syms=None: None)
-        ledger.trades = lambda b, m: [dict(r, source="paper") for r in store]
-        ledger.record = lambda b, m, rows, source="manual": store.extend(rows) or []
+        ledger.trades = lambda b, m, adjust=False: [dict(r, source="paper") for r in store]   # no splits here
+        ledger.record = lambda b, m, rows, source="manual", stored_scale=False: store.extend(rows) or []
         tracker.refresh = lambda m, books=None: {}
         d1 = paper._step_signal("x@paper", "india", "minervini", idx[:5], {"filled": 0, "skipped": 0, "decided": 0})
         buys = [r for r in store if r["side"] == "BUY"]
