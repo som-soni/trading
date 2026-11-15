@@ -166,8 +166,9 @@ class StockReversionStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "**Base rule failed its pass criteria, in both markets (in-sample, optimise stage 2013-2021, "
-        "v1.0, measured 2026-11-15).** The criteria were written before any run: excess CAGR above 0 "
+        "MEASURED AND IT FAILS: v1.0, OPTIMISE STAGE (2013-2021, in-sample), jobs #1790 US and #1791 "
+        "India, measured 2026-11-15. The base rule failed its pass criteria in both markets. The "
+        "criteria were written before any run: excess CAGR above 0 "
         "against the index held at the same exposure, OR a positive CAGR with monthly-return correlation "
         "below 0.3 to both Momentum baseline and Minervini SEPA, with at least 200 trades.\n\n"
         "| v1.0, optimise stage | US | India |\n"
