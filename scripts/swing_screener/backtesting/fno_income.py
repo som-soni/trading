@@ -85,7 +85,10 @@ STOP_CREDIT_MULT = 2.0       # close the side when it costs this many times the 
 CLOSE_DAYS_BEFORE = 6        # exit this many days before expiry regardless (guide: 5-7)
 RISK_PCT = 1.5               # percent of capital at risk per structure, by MAXIMUM LOSS
 
-STRUCTURES = ("put_spread", "condor", "both_sides")
+#: put_spread: a put spread above the trend average, a call spread below a falling one (the guide).
+#: put_only:   the put side alone -- flat where put_spread would sell calls (call spreads lost before
+#:             costs on clean prices, 2026-11-14 review). condor: both sides whatever the trend.
+STRUCTURES = ("put_spread", "put_only", "condor")
 
 
 def _norm_cdf(x: float) -> float:
@@ -371,7 +374,7 @@ def run(market: str, start: str, structure: str = "put_spread", short_delta: flo
                                 want = ["PE", "CE"]
                             elif S > ma:
                                 want = ["PE"]
-                            elif falling:
+                            elif falling and structure != "put_only":
                                 want = ["CE"]
                             picks = [pick_spread(legs_df, k, S, width_pct, short_delta) for k in want]
                             picks = [p for p in picks if p]
@@ -424,6 +427,13 @@ FNO_DOC = {
                    "call spread below a falling one. Take half the credit, stop at "
                    "{STOP_CREDIT_MULT}x it, or close {CLOSE_DAYS_BEFORE} days before expiry.",
     "status": (
+        "PASS CRITERIA FOR THE 1.2 PUT-ONLY RUNS, fixed 2026-11-15 before either run: put_only, no VIX gate "
+        "(vix_percentile 0), defaults otherwise, OPTIMISE stage, run once at 2 and once at 3 points per leg. "
+        "It is kept, with paper trading as the next gate, only if ALL hold: (1) net mean R per structure "
+        "has t >= 2.0 at 2 points; (2) break-even cost >= 3.0 points per leg (50% above the 2 assumed), "
+        "and net P&L >= 0 in the 3-point run; (3) at least 5 of 9 years positive at 2 points, and net "
+        "P&L excluding 2020 > 0; (4) at least 150 structures; (5) realised max drawdown no worse than "
+        "-6%. Any failure retires the strategy; the thresholds are not revisited after the runs. "
         "NO EDGE AS BUILT, ON CLEAN PRICES. Version 1.1 fixes the option prices (see the changelog); every "
         "earlier figure rested on bad settle prints. OPTIMISE stage (2013-2021, in-sample), default rules, "
         "2 points per leg: 128 structures, net P&L -Rs 42,177 on a Rs 20 lakh book (CAGR -0.24%), net mean "
@@ -480,7 +490,9 @@ FNO_DOC = {
         "- **Close below it, the average not falling:** no trade.\n"
         "- **`condor`:** sells a put spread and a call spread together whatever the trend; both "
         "sides must pass every test below or neither is sold.\n"
-        "- **`both_sides`:** currently behaves exactly like the default.",
+        "- **`put_only`:** the put side alone — a put spread above the average, no trade below it. "
+        "Call spreads lost money before costs on clean prices, which fits index puts carrying "
+        "the richest premium.",
         "Open interest. Only strikes with open interest of at least {MIN_OPEN_INTEREST} are "
         "considered, for both legs. The bhavcopy counts open interest in units of the index, not in "
         "contracts, so this is a floor of a few lots — a loose one. The long strike is the nearest "
@@ -607,8 +619,13 @@ class FnoIncomeStrategy(PortfolioStrategy):
     key = FNO_DOC["key"]
     doc = FNO_DOC
     family = "fno_income"
-    version = "1.1"
-    changelog = (("1.1", "2026-11-14",
+    version = "1.2"
+    changelog = (("1.2", "2026-11-15",
+                  "New structure put_only: the put side alone, flat where put_spread would sell a call "
+                  "spread. On clean prices call spreads lost before costs (2026-11-14 review), and index "
+                  "puts carry the richest premium. both_sides is retired: it behaved exactly like "
+                  "put_spread. The default (put_spread, VIX >= 40th percentile) is unchanged."),
+                 ("1.1", "2026-11-14",
                   "Option prices fixed; every v1.0 figure is void. (1) A strike that traded is priced at "
                   "its close, held inside the day's low-high; the settle only for an untraded strike. "
                   "v1.0 used the settle for every strike, and on traded strikes it fell outside the "
@@ -654,7 +671,7 @@ class FnoIncomeStrategy(PortfolioStrategy):
     cost_points = 2.0
 
     param_docs = (
-        ("Structure", "structure", "put_spread sells one side by trend; condor sells both."),
+        ("Structure", "structure", "put_spread sells one side by trend; put_only only the put side; condor both."),
         ("Short delta", "short_delta", "Target delta of the sold leg; the guide suggests 0.15-0.30."),
         ("Spread width", "width_pct", "Strike gap as a percent of the index."),
         ("Risk per trade", "risk_pct", "Percent of capital at MAXIMUM LOSS, never at margin."),
