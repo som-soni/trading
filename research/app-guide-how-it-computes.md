@@ -9,7 +9,7 @@
   per trade. Everything else is reported, not acted on.
 - RS ratings for stocks and for groups use the same weights: 40% on the last three months, 20% each on
   6, 9 and 12 months, ranked 1–99.
-- Backtests do not apply the downgrade, high-volatility sizing, the sector cap or the earnings gates.
+- Backtests do not apply the downgrade, high-volatility sizing, the sector cap or the live earnings gates; Minervini (under `--spec`) skips signals with results due through the results blackout instead.
 - What each page shows, and how to read it, is in [the pages guide](app-guide-pages.md). Paths are
   relative to `scripts/swing_screener/` unless they start with `fundamentals/` or `jobs/`.
 
@@ -430,21 +430,28 @@ The screener counts days to the next earnings date as **weekdays** (`days_away`,
 holidays not modelled). The snapshot's *Days to earnings* field and Post-market's list count calendar
 days. **An unknown date passes every gate.**
 
-| Strategy (`key`) | Earnings rule in live screening |
-|---|---|
-| Trend pullback (`trend_pullback`) | Hard gate D2: no setup with earnings ≤ 10 days away; under 15 days blocks HIGH CONFIDENCE |
-| Volume breakout (`breakout`) | Hard gate B7: no setup ≤ 10 days; ≤ 15 days blocks HIGH CONFIDENCE |
-| Chart patterns (`chart_pattern`) | Hard gate S3: no setup within `EARNINGS_DAYS` = 10 days |
-| Minervini SEPA (`minervini`) | Watch flag B4: earnings within `EARNINGS_WARN_DAYS` = 10 days; flagged, not rejected |
-| Donchian channel (`donchian`) | No earnings rule |
+| Strategy (`key`) | Earnings rule in live screening | In its backtest |
+|---|---|---|
+| Trend pullback (`trend_pullback`) | Hard gate G9: no setup with results 10 or fewer trading days away; under 15 keeps a plan from HIGH CONFIDENCE | Not applied |
+| Volume breakout (`breakout`) | Hard gate G7: no setup with results 10 or fewer business days away; 11 to 15 keeps a plan from HIGH CONFIDENCE | Not applied |
+| Chart patterns (`chart_pattern`) | Hard gate G3: no setup with results within `EARNINGS_DAYS` = 10 weekdays | Not applied |
+| Minervini SEPA (`minervini`) | Watch flag W4: results within `EARNINGS_BLACKOUT_DAYS` = 14 days hold a valid plan at WATCH | The results blackout (below), 14 days, under `--spec` |
+| Darvas box, Donchian channel, Stage analysis, RS leaders and the rest | No earnings rule | None (Kell cycle runs with `--results-blackout 0`) |
 
-Backtests apply none of these: no history of past earnings dates is stored, so tested trades hold through
-results. No strategy looks at macro dates. See [the calendar](learn-macro-calendar.md).
+**The results blackout** (`backtesting/spec.py results_blackout`) is how a backtest avoids results: it drops a
+signal whose company announces results within the set number of calendar days after the signal date. The dates are
+the results **announcements** (`results_announcements`: NSE's broadcast of each results filing and the results board
+meetings, and each US 8-K with Item 2.02, back to 2005), which are published weeks ahead, so knowing the next one on
+the signal date is not look-ahead. An Indian quarter counts once, on its earliest record; each US 8-K counts on its
+own date (minervini 1.69). A company with no recorded announcement falls back to its filing dates; one with neither
+is kept. The live gates above read the earnings calendar instead (`marketdata/earnings.py`, Yahoo's next date plus a
+manual override file), which holds only the next date, so it cannot be replayed historically: a gate that reads it
+always passes in a backtest. No strategy looks at macro dates. See [the calendar](learn-macro-calendar.md).
 
 ## 14. What a backtest does differently
 
 A backtest (`backtesting/backtest.py`, `portfolio_sim.py`) does not apply the downgrade, high-volatility
-sizing, the earnings gates or the sector cap. It sizes off its current equity, with at most 10 positions (8 in the Minervini spec runs).
+sizing, the live earnings gates or the sector cap (the results blackout, section 13, is its own rule). It sizes off its current equity, with at most 10 positions (8 in the Minervini spec runs).
 Minervini's spec runs use their own market filter instead (`--market-filter`, MKT-01 in
 `backtesting/spec.py`): no new buys while the benchmark is below its 200-day, or its 50-day is below its
 200-day.
