@@ -103,6 +103,7 @@ EVIDENCE = {
     "rs_line_lead": _e("D", 1, 0, 1, 0, "O'Neil / Investor's Business Daily: the RS line at a new high before the price; the publisher's examples, no published test of the rule alone."),
     # short side
     "parabolic_short": _e("D", 0, 0, 1, 0, "Kullamägi's parabolic short: examples, no published test."),
+    "failed_breakout_short": _e("D", 0, 0, 1, 0, "A common swing rule (short a breakout that closes back inside its base): practitioner examples, no published test."),
     "stage4_shorts": _e("D", 0, 0, 1, 0, "Weinstein's stage 4 short (1988): examples, no published test."),
     # income and value
     "fno_income": _e("A", 2, 1, 1, 0, "The variance risk premium: index options price more movement than arrives (Carr & Wu 2009; Bakshi & Kapadia 2003). Tail losses make costs and sizing decisive."),

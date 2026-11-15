@@ -602,6 +602,30 @@
     },
     "version": "1.0"
   },
+  "failed_breakout_short": {
+    "family": "failed_breakout_short",
+    "fingerprint": "8ac9a298",
+    "params": {
+      "BASE_BARS": 20,
+      "BASE_MAX_DEPTH_PCT": 25.0,
+      "BORROW_PCT": 1.0,
+      "COST_BPS": 10.0,
+      "DIVIDEND_PCT": 1.5,
+      "FAIL_WINDOW": 3,
+      "LIQ_BARS": 20,
+      "MAX_OPEN_RISK_PCT": 3.0,
+      "MAX_POSITIONS": 10,
+      "MAX_POSITION_PCT": 20.0,
+      "MAX_STOP_PCT": 12.0,
+      "MIN_BARS": 120,
+      "MIN_STOP_PCT": 1.0,
+      "RISK_PCT": 0.5,
+      "TARGET_R": 2.0,
+      "TIME_STOP": 10,
+      "_key": "failed_breakout_short"
+    },
+    "version": "1.0"
+  },
   "fno_income": {
     "family": "fno_income",
     "fingerprint": "e5d9049d",

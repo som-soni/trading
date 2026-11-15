@@ -188,6 +188,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.combination import CombinationStrategy
     from ..backtesting.dual_momentum import DualMomentumStrategy
     from ..backtesting.etf_swing import EtfSwingStrategy
+    from ..backtesting.failed_breakout_short import FailedBreakoutShortStrategy
     from ..backtesting.fno_income import FnoIncomeStrategy
     from ..backtesting.high52_rank import High52RankStrategy
     from ..backtesting.ibs_reversion import IbsReversionStrategy
@@ -219,6 +220,7 @@ def portfolio_strategies() -> dict:
                                 TurnOfMonthStrategy,
                                 PreHolidayStrategy,
                                 IbsReversionStrategy,
+                                FailedBreakoutShortStrategy,
                                 )}
 
 
