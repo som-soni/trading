@@ -232,8 +232,12 @@ class DonchianStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the numeric class attributes (entry_channel, ...), which
     # render_doc fills with the live values. A literal is written where the code uses a literal.
     status = (
-        "v1.6 NOT YET RUN: one-session orders, the stop cap re-tested at the fill, no crumb fills and a 50-day "
-        "live exit (changelog); its optimise runs are queued. Every figure below is v1.5 and not comparable. "
+        "v1.6, OPTIMISE STAGE (2013-2021, in-sample), jobs #1768 India and #1769 US, measured 2026-11-15, against "
+        "v1.5: India 15.59% CAGR (was 11.85%), excess +2.05, max drawdown -33.2% (was -29.4%), +1.05R a trade over "
+        "215 trades; US 6.23% CAGR (was 3.61%), excess -7.78, max drawdown -44.6% (was -42.5%), +0.31R a trade "
+        "over 295 trades. Against the pass criteria written before the run: average R and excess rose in both "
+        "markets and the gain is spread over six of nine years, but India's drawdown is 3.8 points deeper (limit "
+        "3), a miss. Still no return edge in the US. Verify not run. Figures further on are earlier versions'. "
         "IN-SAMPLE ONLY -- NO RETURN EDGE IN EITHER MARKET. v1.5, optimise stage (2013-2021, in-sample), with "
         "its own backtest_args: India 11.85% CAGR, excess -1.69 points a year over its benchmark (-2.74 at the "
         "standard India cost), max drawdown -29.4% against -38.3%, Sharpe 0.69, 269 trades; US 3.61% CAGR, "

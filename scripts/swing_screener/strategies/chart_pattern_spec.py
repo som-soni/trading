@@ -516,7 +516,12 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "v1.22 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.21's, not comparable. "
+        "v1.22, OPTIMISE STAGE (2013-2021, in-sample), jobs #1788 India and #1789 US, measured 2026-11-15, against "
+        "v1.21: India 7.51% CAGR (was 7.40%), excess -6.03, max drawdown -20.4% (was -20.4%), +0.33R a trade over "
+        "213 trades; US 7.82% CAGR (was 4.95%), excess -6.19, max drawdown -20.9% (was -25.6%), +0.42R a trade "
+        "over 308 trades. CAGR, average R and drawdown better in both markets. The one criterion missed: the share "
+        "of capital in use fell slightly (India 64.0% to 63.9%, US 94.0% to 92.4%), because a skipped crumb leaves "
+        "its cash idle. Verify not run. Figures further on are earlier versions'. "
         "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.18, measured 2026-11-02); verify "
         "not run. US 4.79% CAGR, excess -9.22 points a year over the benchmark, max drawdown -29.6%, Sharpe 0.40, "
         "497 trades at +0.07R, profit factor 1.15; India 2.43% CAGR, excess -11.10, max drawdown -31.5%, Sharpe "

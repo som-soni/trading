@@ -215,7 +215,12 @@ class TrendPullbackStrategy(Strategy):
     # attributes (max_stop_*), not constants of this module, so most are written out as numbers.
     # Keep them in sync by hand; adding a module constant here would move the fingerprint.
     status = (
-        "v1.6 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.5's, not comparable. "
+        "v1.6, OPTIMISE STAGE (2013-2021, in-sample), jobs #1770 India and #1771 US, measured 2026-11-15, against "
+        "v1.5: India 2.83% CAGR (was 2.67%), excess -10.71, max drawdown -16.7% (was -17.4%), +0.19R a trade over "
+        "137 trades; US 10.44% CAGR (was 11.45%), excess -3.57, max drawdown -19.5% (was -18.6%), +0.29R a trade "
+        "over 391 trades. Average R rose in both markets; US excess fell 1.01 points (limit 1), a marginal miss, "
+        "with the change spread unevenly over the years (2017 and 2020 worse, 2014 and 2018 better). Verify not "
+        "run. Figures further on are earlier versions'. "
         "THE US IDLE-CASH VARIANT FAILED ITS VERIFY RUN (2026-11-10, run once). Out-of-sample, 2022-01-03 to "
         "2026-11-09, with idle cash held in the index (`--idle-index`): -3.05% CAGR against SPY's 9.30%, max "
         "drawdown -23.3% against -25.4%. The criterion, written before the run, was CAGR at least 1 point above "

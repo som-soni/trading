@@ -165,7 +165,12 @@ class MomentumBurstStrategy(Strategy):
     )
 
     status = (
-        "v1.1 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.0's, not comparable. "
+        "v1.1, OPTIMISE STAGE (2013-2021, in-sample), jobs #1784 India and #1785 US, measured 2026-11-15, against "
+        "v1.0: India 3.84% CAGR (was 3.68%), excess -9.70, max drawdown -31.2% (was -32.5%), +0.04R a trade over "
+        "994 trades; US -1.29% CAGR (was -2.15%), excess -15.30, max drawdown -61.0% (was -61.8%), +0.00R a trade "
+        "over 1992 trades. CAGR up and drawdown shallower in both markets; the share of capital in use fell "
+        "slightly (35.9% to 35.6%, 62.5% to 61.9%), the one criterion missed. Still no edge. Verify not run. "
+        "Figures further on are earlier versions'. "
         "MEASURED, OPTIMISE STAGE ONLY (2013-2021, IN-SAMPLE) -- AND IT FAILS ITS OWN TEST IN BOTH MARKETS. The "
         "rules were fixed from the Learn guide's definition before its event study was run, and not changed "
         "after it. Pass criterion, set before any backtest result, judged per market: in the optimise stage the "

@@ -208,7 +208,12 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
-        "v1.5 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.4's, not comparable. "
+        "v1.5, OPTIMISE STAGE (2013-2021, in-sample), jobs #1782 India and #1783 US, measured 2026-11-15, against "
+        "v1.3: India 1.69% CAGR (was 1.81%), excess -11.85, max drawdown -21.3% (was -21.4%), +0.07R a trade over "
+        "303 trades; US 6.79% CAGR (was 5.85%), excess -7.22, max drawdown -41.8% (was -41.4%), +0.10R a trade "
+        "over 1008 trades. CAGR and drawdown within the criteria; the share of capital in use fell slightly (14.4% "
+        "to 14.3%, 40.1% to 39.7%), the one criterion missed. Still no edge. Verify not run. Figures further on "
+        "are earlier versions'. "
         "v1.4 is v1.3's rules plus an entry ADR floor that is off by default; v1.3's results below stand for it. "
         "v1.4 variants (optimise, 2013-2021, in-sample: all were chosen from v1.3's US optimise trades) all FAIL the "
         "criterion. Quarter size while the last 20 closed trades lose (--pe --pe-window 20 --pe-pilot 0.25 "

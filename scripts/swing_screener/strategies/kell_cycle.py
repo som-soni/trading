@@ -204,7 +204,12 @@ class KellCycleStrategy(Strategy):
         "page's backtest command adds them).",
     )
     status = (
-        "v1.3 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.2's, not comparable. "
+        "v1.4, OPTIMISE STAGE (2013-2021, in-sample), jobs #1780 India and #1781 US, measured 2026-11-15, against "
+        "v1.2: India 14.25% CAGR (was 15.18%), excess +0.72, max drawdown -22.1% (was -20.9%), +0.25R a trade over "
+        "347 trades; US -5.19% CAGR (was -3.18%), excess -19.20, max drawdown -56.0% (was -40.0%), -0.18R a trade "
+        "over 592 trades. These runs carry two changes, 1.3's crumb rule and 1.4's RS-rating universe, which they "
+        "cannot separate. India passes (CAGR -0.9 points); the US misses badly (CAGR -2.0 points, drawdown 16 "
+        "points deeper). Verify not run. Figures further on are earlier versions'. "
         "Draft 1, built 2026-11-10. First optimise-stage runs of 1.0 (2013-2021, in-sample): India 15.3% CAGR, "
         "-35.2% max drawdown, +0.27R a trade; US 2.3%, -24.1%, +0.00R; neither market passed all three criteria. "
         "The US stopped out 49% of trades (India 37%); the MIN_STOP_ATR variant is queued. Pass "

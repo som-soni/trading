@@ -714,7 +714,12 @@ class StageAnalysisStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "v2.13 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v2.12's, not comparable. "
+        "v2.13, OPTIMISE STAGE (2013-2021, in-sample), jobs #1774 India and #1775 US, measured 2026-11-15, against "
+        "v2.12: India 2.45% CAGR (was 3.86%), excess -11.08, max drawdown -18.3% (was -18.5%), +0.28R a trade over "
+        "91 trades; US 6.10% CAGR (was 9.27%), excess -7.91, max drawdown -22.0% (was -21.2%), +0.37R a trade over "
+        "170 trades. It had no crumbs, so the change is the stop cap re-tested at late fills: CAGR fell 1.4 points "
+        "in India and 3.2 in the US, and average R fell (0.40R to 0.28R, 0.59R to 0.37R). That misses the criteria "
+        "written before the run; flagged for its review. Verify not run. Figures further on are earlier versions'. "
         "FAILED VERIFY in both markets (v2.11, out-of-sample 2022-01-03 to 2026-11-06, criteria fixed before the run "
         "in research/stage-analysis-verify-plan.md: drawdown at least 5 points shallower than the index's, Sharpe not "
         "lower, at least 30 closed trades). US: 2.84% CAGR against SPY's 9.32%, max drawdown -13.0% against -25.4% "

@@ -219,7 +219,12 @@ class RsLeadersStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "v1.5 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.4's, not comparable. "
+        "v1.6, OPTIMISE STAGE (2013-2021, in-sample), jobs #1786 India and #1787 US, measured 2026-11-15, against "
+        "v1.4 (India 1.2): India 1.75% CAGR (was 1.43%), excess -11.78, max drawdown -16.3% (was -17.5%), +0.44R a "
+        "trade over 40 trades; US 4.14% CAGR (was 3.68%), excess -9.87, max drawdown -14.6% (was -15.9%), +0.48R a "
+        "trade over 101 trades. These runs carry 1.5's crumb rule and 1.6's RS-rating universe together. CAGR and "
+        "average R up, drawdown shallower in both markets. Still no edge. Verify not run. Figures further on are "
+        "earlier versions'. "
         "MEASURED in the optimise stage (2013-2021), v1.2. US: 115 trades, profit factor 2.18, an average "
         "+0.59R, CAGR 5.26% at 23% invested -- and against the index held at that exposure, +2.32, with a "
         "-13.9% maximum drawdown and the gain spread across 2013, 2018, 2019 and 2020 (no year more than 42% "

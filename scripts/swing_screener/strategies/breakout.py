@@ -208,7 +208,12 @@ class BreakoutStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the module constants and `min_structural_r`; a literal is
     # written where the code uses a literal.
     status = (
-        "v1.7 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.6's, not comparable. "
+        "v1.7, OPTIMISE STAGE (2013-2021, in-sample), jobs #1772 India and #1773 US, measured 2026-11-15, against "
+        "v1.6: India 0.26% CAGR (was 0.67%), excess -13.27, max drawdown -17.6% (was -15.0%), +0.03R a trade over "
+        "118 trades; US 1.26% CAGR (was 0.20%), excess -12.75, max drawdown -26.0% (was -31.5%), +0.05R a trade "
+        "over 341 trades. US better on every measure; India's average R fell (0.06R to 0.03R), a miss against the "
+        "pass criteria written before the run. Still no edge in either market. Verify not run. Figures further on "
+        "are earlier versions'. "
         "Not validated, no demonstrated edge: thresholds are untuned defaults. LEGACY (before stages, "
         "never a verdict): full US backtest from 2013 (v1.1, bracket exits, measured 2026-10-12 after the "
         "cost fix): 2.15% CAGR against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."

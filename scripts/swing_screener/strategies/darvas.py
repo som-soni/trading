@@ -173,7 +173,12 @@ class DarvasStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "v1.1 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.0's, not comparable. "
+        "v1.1, OPTIMISE STAGE (2013-2021, in-sample), jobs #1778 India and #1779 US, measured 2026-11-15, against "
+        "v1.0: India 6.91% CAGR (was 8.07%), excess -6.62, max drawdown -26.4% (was -27.5%), +0.18R a trade over "
+        "461 trades; US 2.75% CAGR (was 6.76%), excess -11.26, max drawdown -41.7% (was -38.2%), +0.05R a trade "
+        "over 750 trades. Worse: CAGR fell 1.2 points in India and 4.0 in the US and the US drawdown deepened 3.5 "
+        "points, misses against the pass criteria written before the run. Removing the crumbs changed which later "
+        "signals got a slot; flagged for its review. Verify not run. Figures further on are earlier versions'. "
         "FAILS ITS IN-SAMPLE CRITERION in both markets. Pass criterion, written before the runs: excess "
         "CAGR over the market's benchmark above 0 in-sample, on more than 50 trades. v1.0, optimise stage "
         "(2013-2021, in-sample), as configured (every switch off), measured 2026-11-05: US 6.76% CAGR, "

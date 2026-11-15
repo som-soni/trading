@@ -385,7 +385,11 @@ class EarningsGapStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "v1.11 NOT YET RUN: the shared simulator's order mechanics changed (changelog); its optimise runs are queued, and the figures below are v1.10's, not comparable. "
+        "v1.11, OPTIMISE STAGE (2013-2021, in-sample), jobs #1776 India and #1777 US, measured 2026-11-15, against "
+        "v1.10: India 0.95% CAGR (was 0.95%), excess -12.59, max drawdown -7.8% (was -7.8%), +0.16R a trade over "
+        "56 trades; US 5.06% CAGR (was 4.20%), excess -8.95, max drawdown -16.9% (was -20.3%), +0.10R a trade over "
+        "520 trades. India unchanged (it had no crumbs); US better on every measure. Passes the criteria written "
+        "before the run; still no edge. Verify not run. Figures further on are earlier versions'. "
         "INDIA: TOO FEW TRADES TO JUDGE. In-sample (optimise, 2013-2021) at v1.4, with board-meeting "
         "dates linking results to their reaction day, India makes 9 trades from 41 signals across 452 "
         "eligible stocks, against v1.3's 3 trades from 15: 0.35% CAGR at 5.8% exposure, max drawdown "
