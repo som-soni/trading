@@ -1428,6 +1428,34 @@
     },
     "version": "1.7"
   },
+  "pocket_pivot": {
+    "family": "pocket_pivot",
+    "fingerprint": "e7cc1bf0",
+    "params": {
+      "MAX_EXT_PCT": 5,
+      "MAX_STOP_PCT": 10.0,
+      "MIN_STOP_PCT": 1.0,
+      "NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH": 15.0,
+      "NOMINAL_TARGET_R": 2,
+      "PP_BARS": 10,
+      "SMA200_FALLING_PCT": 0.5,
+      "SMA200_SLOPE_BARS": 20,
+      "SMA_SHORT": 10,
+      "STOP_PCT": 8,
+      "_key": "pocket_pivot",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "power_play": {
     "family": "power_play",
     "fingerprint": "a16e06a0",
