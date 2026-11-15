@@ -1447,6 +1447,17 @@
     },
     "version": "1.6"
   },
+  "turn_of_month": {
+    "family": "turn_of_month",
+    "fingerprint": "d4db0dad",
+    "params": {
+      "_key": "turn_of_month",
+      "cost_bps": 5.0,
+      "days_after": 3,
+      "days_before": 1
+    },
+    "version": "1.0"
+  },
   "turtle_soup": {
     "family": "turtle_soup",
     "fingerprint": "5820f943",

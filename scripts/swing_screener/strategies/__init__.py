@@ -161,6 +161,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.quality_momentum import QualityMomentumStrategy
     from ..backtesting.sector_rotation import SectorRotationStrategy
     from ..backtesting.stage4_shorts import Stage4ShortsStrategy
+    from ..backtesting.turn_of_month import TurnOfMonthStrategy
     from ..backtesting.turtle_trend import TurtleTrendStrategy
     from ..backtesting.value_ranking import ValueRankingStrategy
 
@@ -171,7 +172,10 @@ def portfolio_strategies() -> dict:
                                 Stage4ShortsStrategy, TurtleTrendStrategy, EtfSwingStrategy,
                                 ParabolicShortStrategy, MasonsonTqqqStrategy,
                                 BoucherStocksStrategy, BoucherBondsGoldStrategy, BoucherBookStrategy,
-                                ValueRankingStrategy)}
+                                ValueRankingStrategy,
+                                # the swing catalogue's ranking and index-timing setups (2026-11-15)
+                                TurnOfMonthStrategy,
+                                )}
 
 
 def expand_all(keys, portfolio: bool = True) -> list[str]:
