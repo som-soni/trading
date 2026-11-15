@@ -17,9 +17,11 @@ Two rules make the verify window worth anything, and both are enforced rather th
 * It is never read while optimising. Inside a stage, `marketdata.asof.boundary` stops every loader a
   backtest uses at the stage's end, so an optimise run cannot see 2022 through a price, an indicator,
   a universe filter or a "latest" lookup.
-* It is used once per candidate. A verify run is refused if the same strategy version with the same
-  options already has one (`verify_runs`). Run it again with `--again` and the repeat is recorded as
-  a repeat: a verify result looked at twice and acted on is in-sample.
+* It is used once per candidate. A verify run is refused if the same rules with the same options
+  already have one (`verify_runs`). "The same rules" is the spec id's fingerprint, not its version
+  label: minervini 1.55 restored 1.53's rules, and a new label on rules that have already met the
+  hold-out does not make them unseen. Run it again with `--again` and the repeat is recorded as a
+  repeat: a verify result looked at twice and acted on is in-sample.
 
 A verify run's verdict is recorded too (`judge`: `passed` and the `criterion` it was judged against).
 Positive excess is not a pass: the criterion written before the run is, and the Strategies page grades
@@ -231,17 +233,130 @@ def signature(opts: dict) -> str:
     return json.dumps(overrides(opts), sort_keys=True, default=str)
 
 
+# Options a portfolio run honours: `--bt` passthroughs, and `--const`, which the job runner applies around
+# the run (jobs/registry.py `_backtest_steps`, variants.overridden). Anything else -- a `--sample 200`, a
+# `--symbols` -- runs the shipped rules; counted in the signature, such an option made a "new" candidate and
+# re-verified those rules as a first look.
+_PORTFOLIO_HONOURS = {"bt", "const"}
+
+
+def ignored_by_portfolio(opts: dict) -> list[str]:
+    """The options in `opts` a portfolio runner would drop ("sample", "symbols"): refused on a verify run,
+    and kept out of an optimise run's recorded overrides, which would otherwise name a variant that never ran."""
+    return [k for k in overrides(opts) if k not in _PORTFOLIO_HONOURS]
+
+
+def rules_of(spec_id: str) -> str:
+    """The effective rules in a spec id (`v<version>-<fingerprint>`): the fingerprint, without the label."""
+    return str(spec_id).split("-", 1)[-1]
+
+
+# Options that move the fingerprint itself: a run with them carries their spec id, so once the gate keys on
+# that spec id they are already counted, and left in the signature too they would make minervini 1.54 with
+# `--const LIGHT_VOLUME_EXIT=1` a different candidate from 1.55, whose own constant is that 1.
+_RULE_OPTS = ("const", "vcp", "pp")
+_RULE_SETTERS = {"vcp": "VCP", "pp": "POWER_PLAY"}
+
+
+def _rule_overrides(opts: dict) -> dict[str, list[str]]:
+    """{"const": ["NAME=V", ...], "vcp": [...], "pp": [...]}, given directly or through `--bt` passthroughs."""
+    import shlex
+    out = {k: [str(x) for x in (opts or {}).get(k) or []] for k in _RULE_OPTS}
+    for extra in (opts or {}).get("bt") or []:
+        toks = shlex.split(str(extra))
+        for i, t in enumerate(toks):
+            flag, eq, v = t.partition("=")
+            k = flag[2:] if flag.startswith("--") else None
+            if k in out:
+                if eq:
+                    out[k].append(v)
+                elif i + 1 < len(toks):
+                    out[k].append(toks[i + 1])
+    return out
+
+
+def _rules_free(over: dict) -> dict:
+    """An `overrides()` dict without the options that move the fingerprint (`_RULE_OPTS`, in `bt` too)."""
+    import shlex
+    out = {k: v for k, v in (over or {}).items() if k not in _RULE_OPTS}
+    if "bt" in out:
+        kept = []
+        for extra in out["bt"]:
+            toks, i, keep = shlex.split(str(extra)), 0, []
+            while i < len(toks):
+                flag = toks[i].split("=", 1)[0]
+                if flag.startswith("--") and flag[2:] in _RULE_OPTS:
+                    i += 1 if "=" in toks[i] else 2
+                    continue
+                keep.append(toks[i]); i += 1
+            if keep:
+                kept.append(" ".join(keep))
+        if kept:
+            out["bt"] = kept
+        else:
+            out.pop("bt")
+    return out
+
+
+def effective_spec_id(strategy_key: str, opts: dict, market: str | None = None) -> str:
+    """The spec id a per-symbol backtest with `opts` will carry: the strategy's own -- under `market`'s
+    declared rules (`market_consts`) when a market is given -- with any `--const`, `--vcp` or `--pp` applied
+    on top (backtest.main applies them the same way and in that order, strategies/variants.py; a `--const`
+    wins over the market's value). Applied and put back, so the process that asks is left with the shipped
+    rules."""
+    import importlib
+    from ..strategies import get_strategy
+    from ..strategies.variants import apply_consts, apply_market_consts, apply_params
+    cls = type(get_strategy(strategy_key))
+    rules = _rule_overrides(opts)
+    if market is None and not any(rules.values()):
+        return cls.spec_id()
+    mod = importlib.import_module(cls.__module__)
+    saved = {k: getattr(mod, k) for k in dir(mod) if k.isupper()}
+    try:
+        if market is not None:
+            apply_market_consts(strategy_key, market, skip=[x.partition("=")[0].strip() for x in rules["const"]])
+        if rules["const"]:
+            apply_consts(strategy_key, dict(x.partition("=")[::2] for x in rules["const"]))
+        for opt, attr in _RULE_SETTERS.items():
+            if rules[opt]:
+                apply_params(strategy_key, attr, rules[opt])
+        return cls.spec_id()
+    finally:
+        for k, v in saved.items():
+            setattr(mod, k, v)
+
+
+_ready = False
+_LOCK = "verify_runs:schema"
+
+
 def _init() -> None:
+    """Create or migrate verify_runs, once per process. One statement string runs as one transaction, and
+    the advisory lock serialises it against other processes: two checks starting together otherwise each
+    took the index's lock and then waited on the other's for the ALTER (a deadlock killed the 8 Nov
+    `test_backtest_stages --all` run; one inside `record()` would lose the verify row)."""
+    global _ready
+    if _ready:
+        return
     with db.get_connection().cursor() as cur:
-        cur.execute(_SCHEMA)
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s));" + _SCHEMA, (_LOCK,))
+    _ready = True
 
 
 def previous(market: str, strategy: str, spec_id: str, opts: dict) -> list[dict]:
+    """Earlier verify runs of the same rules with the same options, under any version label.
+
+    `spec_id` is the run's effective one (`effective_spec_id`), so the options that move the fingerprint
+    are compared through it and left out of the signature comparison."""
     _init()
+    want = _rules_free(overrides(opts))
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT ran_at, repeat, run_dir FROM verify_runs WHERE market=%s AND strategy=%s "
-                    "AND spec_id=%s AND signature=%s ORDER BY ran_at", (market, strategy, spec_id, signature(opts)))
-        return [{"ran_at": r[0], "repeat": r[1], "run_dir": r[2]} for r in cur.fetchall()]
+        cur.execute("SELECT ran_at, repeat, run_dir, spec_id, signature FROM verify_runs WHERE market=%s "
+                    "AND strategy=%s AND split_part(spec_id, '-', 2)=%s ORDER BY ran_at",
+                    (market, strategy, rules_of(spec_id)))
+        return [{"ran_at": r[0], "repeat": r[1], "run_dir": r[2], "spec_id": r[3]} for r in cur.fetchall()
+                if _rules_free(json.loads(r[4])) == want]
 
 
 def check(market: str, strategy: str, spec_id: str, opts: dict) -> bool:
@@ -251,11 +366,14 @@ def check(market: str, strategy: str, spec_id: str, opts: dict) -> bool:
     done = previous(market, strategy, spec_id, opts)
     if done and not (opts or {}).get("again"):
         first = done[0]
+        same = "" if first["spec_id"] == spec_id else (
+            f" as {first['spec_id']}: {spec_id} carries the same rules under a new label")
         raise RuntimeError(
-            f"{strategy} {spec_id} ({market}) was already verified on {first['ran_at']:%Y-%m-%d}"
+            f"{strategy} {spec_id} ({market}) was already verified on {first['ran_at']:%Y-%m-%d}{same}"
             f"{' -> ' + first['run_dir'] if first['run_dir'] else ''}. A hold-out looked at twice and acted "
             f"on is in-sample. Change the rules (a new version) and verify that, or pass --again to repeat "
-            f"this one knowingly; the repeat is recorded as one.")
+            f"this one knowingly; the repeat is recorded as one. (A version whose change the fingerprint "
+            f"cannot see -- a new code path, no constant moved -- also needs --again, and reads as a repeat.)")
     return bool(done)
 
 
@@ -275,10 +393,22 @@ def judge(run_dir: str, passed: bool, criterion: str) -> int:
     if not (criterion or "").strip():
         raise ValueError("a verdict needs the criterion it was judged against")
     _init()
+    name = run_dir.rstrip("/").rsplit("/", 1)[-1]
     with db.get_connection().cursor() as cur:
-        cur.execute("UPDATE verify_runs SET passed=%s, criterion=%s, judged_at=now() "
-                    "WHERE run_dir=%s OR run_dir LIKE %s",
-                    (bool(passed), criterion.strip(), run_dir, "%/" + run_dir.rstrip("/").rsplit("/", 1)[-1]))
+        # A full path names one run. A bare name may not: the US and India runs of one version share it,
+        # and matching both wrote one market's verdict onto the other's row.
+        cur.execute("SELECT id, run_dir FROM verify_runs WHERE run_dir=%s", (run_dir,))
+        hits = cur.fetchall()
+        if not hits:
+            cur.execute("SELECT id, run_dir FROM verify_runs WHERE run_dir LIKE %s", ("%/" + name,))
+            hits = cur.fetchall()
+        if len(hits) > 1:
+            raise ValueError(f"{run_dir} names {len(hits)} verify runs ({', '.join(r[1] for r in hits)}); "
+                             f"pass the full directory")
+        if not hits:
+            return 0
+        cur.execute("UPDATE verify_runs SET passed=%s, criterion=%s, judged_at=now() WHERE id=%s",
+                    (bool(passed), criterion.strip(), hits[0][0]))
         return cur.rowcount
 
 
@@ -312,7 +442,10 @@ def main() -> None:
     v.add_argument("--failed", action="store_true")
     j.add_argument("--criterion", required=True, help="the pass criterion, as written before the run")
     a = ap.parse_args()
-    n = judge(a.run_dir, a.passed, a.criterion)
+    try:
+        n = judge(a.run_dir, a.passed, a.criterion)
+    except ValueError as e:
+        ap.error(str(e))
     print(f"{n} verify run(s) recorded as {'passed' if a.passed else 'failed'}" if n
           else f"no verify run recorded at {a.run_dir}")
 

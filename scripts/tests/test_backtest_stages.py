@@ -10,7 +10,10 @@ What is checked, and why each one matters:
   stage nothing is tagged;
 * `--stage` survives the trip through `queue.command_for` to the worker -- an option missing there is
   dropped silently, which is how a `--vcp` variant once ran the shipped rules looking successful;
-* a verify run is refused the second time, unless asked for knowingly;
+* a verify run is refused the second time, unless asked for knowingly -- and the same rules under a
+  new version label count as the second time;
+* verify checks from several processes at once do not deadlock on the table's schema;
+* a portfolio verify with an option its runner ignores (`--sample`) is refused, not run as the shipped rules;
 * a real runner, run inside the optimise stage, ends at the boundary.
 
 `--all` also runs EVERY registered strategy inside the optimise stage (per-symbol ones on a sample)
@@ -136,11 +139,104 @@ def verify_once() -> None:
             refused = True
         check("the second is refused", refused)
         check("...unless asked for knowingly, and then it is a repeat", windows.check(*key, {"again": True}) is True)
-        check("different options are a different candidate", windows.check(*key, {"const": ["X=1"]}) is False)
+        check("different options are a different candidate", windows.check(*key, {"bt": ["--top 5"]}) is False)
         check("the window does not make a different candidate", windows.signature({"start": "2023-01-01"}) == windows.signature({}))
+        relabelled = False
+        try:
+            windows.check(key[0], key[1], "v0.1-00000000", {})
+        except RuntimeError:
+            relabelled = True
+        check("the same rules under a new version label are refused (minervini 1.55 = 1.53)", relabelled)
+        check("other rules are a different candidate", windows.check(key[0], key[1], "v0.1-11111111", {}) is False)
+        # a --const run carries its own spec id: 1.54 with --const LIGHT_VOLUME_EXIT=1 is 1.55 plain
+        windows.record(key[0], key[1], "v0.0-22222222", {"const": ["X=1"]}, False, "/tmp/y")
+        folded = False
+        try:
+            windows.check(key[0], key[1], "v0.2-22222222", {})
+        except RuntimeError:
+            folded = True
+        check("a --const variant's rules, verified, refuse the version that adopts them", folded)
     finally:
         with db.get_connection().cursor() as cur:
             cur.execute("DELETE FROM verify_runs WHERE strategy=%s", (key[1],))
+    from swing_screener.strategies import get_strategy
+    cls = type(get_strategy("minervini"))
+    shipped = cls.spec_id()
+    moved = windows.effective_spec_id("minervini", {"const": ["LIGHT_VOLUME_EXIT=0"]})
+    check("effective_spec_id carries a --const variant's fingerprint", moved != shipped, moved)
+    check("...given through --bt too", windows.effective_spec_id("minervini", {"bt": ["--const LIGHT_VOLUME_EXIT=0"]}) == moved)
+    check("...and puts the shipped rules back", cls.spec_id() == shipped, cls.spec_id())
+    # the market's declared rules (market_consts) come first, a --const on top -- backtest.main's order
+    from swing_screener.strategies.variants import market_spec_id
+    for m in (getattr(cls, "market_consts", None) or {}):
+        check(f"effective_spec_id under {m}'s rules is the market's spec id",
+              windows.effective_spec_id("minervini", {}, market=m) == market_spec_id("minervini", m))
+        mv = windows.effective_spec_id("minervini", {"const": ["EARNINGS_BLACKOUT_DAYS=7"]}, market=m)
+        check(f"...and a --const variant under {m}'s rules has its own", mv != market_spec_id("minervini", m), mv)
+    check("...and the shipped rules are back after them", cls.spec_id() == shipped, cls.spec_id())
+
+
+def _concurrent_check(key, barrier, out) -> None:
+    """One process's first verify check: the schema, then the lookup (spawned, so `_init` runs again)."""
+    from swing_screener.backtesting import windows as w
+    barrier.wait()
+    try:
+        w.check(*key, {})
+        out.put("ok")
+    except Exception as e:   # noqa: BLE001
+        out.put(f"{type(e).__name__}: {e}"[:200])
+
+
+def concurrent_checks(n: int = 6, rounds: int = 3) -> None:
+    """Several processes making their first verify check at once. Each used to run the schema's index and
+    ALTERs unguarded, and two lanes (or this test beside another) deadlocked on the table's lock."""
+    import multiprocessing as mp
+    print(f"verify checks from {n} processes at once, {rounds} rounds")
+    ctx = mp.get_context("spawn")
+    key = ("us", "__stage_test__", "v0.0-33333333")
+    errors = []
+    for _ in range(rounds):
+        barrier, out = ctx.Barrier(n), ctx.Queue()
+        procs = [ctx.Process(target=_concurrent_check, args=(key, barrier, out)) for _ in range(n)]
+        for p in procs:
+            p.start()
+        got = [out.get(timeout=120) for _ in procs]
+        for p in procs:
+            p.join(timeout=60)
+        errors += [g for g in got if g != "ok"]
+    check("no check fails when they run together", not errors, "; ".join(errors[:3]))
+
+
+def portfolio_refusals() -> None:
+    from jobs import registry
+    from swing_screener.strategies import portfolio_strategies
+    print("a portfolio verify with an option its runner ignores is refused")
+    key = sorted(portfolio_strategies())[0]
+
+    class Reached(Exception):
+        pass
+
+    def stop(*a, **k):
+        raise Reached
+    # if the refusal ever breaks, the step reaches the gate and stops there: no verify run starts
+    real, windows.check = windows.check, stop
+    try:
+        for opts in ({"sample": 200}, {"symbols": "AAPL"}):
+            (_, _, fn), = registry._backtest_steps(registry.Ctx("us", {"strategies": [key]}))
+            ctx = registry.Ctx("us", {"strategies": [key], "stage": "verify", **opts})
+            try:
+                fn(ctx)
+                what = "ran"
+            except ValueError as e:
+                what = "refused" if "ignores" in str(e) else f"ValueError: {e}"
+            except Reached:
+                what = "reached the gate"
+            check(f"{key} --stage verify {windows.describe(opts)[0]} is refused", what == "refused", what)
+        check("--bt passthroughs are not refused", windows.ignored_by_portfolio({"bt": ["--top 5"]}) == [])
+        # --const is applied around a portfolio run (jobs/registry.py, variants.overridden), so it is honoured
+        check("--const is not refused (the job runner applies it)", windows.ignored_by_portfolio({"const": ["X=1"]}) == [])
+    finally:
+        windows.check = real
 
 
 def one_runner() -> None:
@@ -232,6 +328,8 @@ def main() -> int:
     tagging()
     command_round_trip()
     verify_once()
+    concurrent_checks()
+    portfolio_refusals()
     one_runner()
     if "--all" in sys.argv:
         every_strategy()

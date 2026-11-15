@@ -748,19 +748,35 @@ def _backtest_steps(ctx: Ctx) -> list:
             # the run will carry. backtest.main applies them itself (after its version gate, which reads the
             # shipped rules); the block restores the shared rules after it, because this process goes on to the
             # next market.
-            from swing_screener.strategies import get_strategy as _get
-            from swing_screener.strategies.variants import market_rules, market_spec_id
+            # A --const / --vcp / --pp variant is keyed on its own spec id (windows.effective_spec_id), not the
+            # shipped rules': the gate compares the rules that run.
+            from swing_screener.backtesting import windows
+            from swing_screener.strategies.variants import market_rules
             shared = any("--shared-rules" in str(x) for x in (c.opt("bt") or []))
             with market_rules(key, c.market, apply=False):
-                spec = (type(_get(key)).spec_id() if shared else
-                        market_spec_id(key, c.market, skip=[str(kv).partition("=")[0] for kv in (c.opt("const") or [])]))
+                spec = windows.effective_spec_id(key, c.opts, market=None if shared else c.market)
                 return body(c, spec)
 
         def body(c: Ctx, spec: str) -> None:
             from swing_screener.backtesting import windows
             from swing_screener.strategies import get_strategy as _get
             stage, start, end = windows.resolve(c.opt("stage"), c.opt("start"))
-            repeat = windows.check(c.market, key, spec, c.opts) if stage == "verify" else False
+            opts, note = c.opts, ""
+            if key in portfolio_strategies():
+                # A portfolio runner is handed `--bt` passthroughs and `--const` (applied around the run, above)
+                # only, so --sample, --symbols ... would run the shipped rules while the signature counted them:
+                # a `--sample 200` verify re-verified momentum_dual_combo as a first look. Refused on verify;
+                # elsewhere dropped from what the run records, so overrides.json never names a variant that did
+                # not run.
+                dropped = windows.ignored_by_portfolio(opts)
+                if dropped and stage == "verify":
+                    raise ValueError(f"{key} is a portfolio strategy: its runner ignores "
+                                     f"{', '.join(windows.describe({k: opts[k] for k in dropped}))}, so this "
+                                     f"verify run would test the shipped rules under another name. Drop them, or "
+                                     f"pass the runner's own flags through --bt.")
+                opts = {k: v for k, v in opts.items() if k not in dropped}
+                note = f"ignored by a portfolio runner: {', '.join(dropped)} · " if dropped else ""
+            repeat = windows.check(c.market, key, spec, opts) if stage == "verify" else False
             with windows.active(stage, start, end):
                 out = _run(c, start)
             if out:
@@ -776,12 +792,12 @@ def _backtest_steps(ctx: Ctx) -> list:
                     own = windows.runner_defaults(importlib.import_module(f"swing_screener.backtesting.{mod}").main)
                 else:
                     own = type(_get(key)).backtest_args or ""
-                over = windows.overrides(c.opts, own)
+                over = windows.overrides(opts, own)
                 (Path(out) / "overrides.json").write_text(json.dumps(
                     {"overrides": over, "described": windows.describe(over), "stage": stage}, indent=1))
             if stage == "verify":
-                windows.record(c.market, key, spec, c.opts, repeat, out)
-            c.step.detail = f"[{stage} {start} → {end or 'latest'}] " + (c.step.detail or "")
+                windows.record(c.market, key, spec, opts, repeat, out)
+            c.step.detail = f"[{stage} {start} → {end or 'latest'}] " + note + (c.step.detail or "")
             if c.step.stats is not None:
                 c.step.stats.update(stage=stage, end=end)
 

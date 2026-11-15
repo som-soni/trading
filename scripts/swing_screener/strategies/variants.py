@@ -142,6 +142,27 @@ def apply_consts(strategy_key: str, consts: dict) -> dict:
     return applied
 
 
+def apply_params(strategy_key: str, attr: str, items) -> dict:
+    """Rebind a strategy module's parameter dataclass (`VCP`, `POWER_PLAY`) with fields replaced, for this
+    process -- `backtest --vcp` / `--pp`. `items` are "field=value" strings. Returns {field: new value}.
+    Raises ValueError when the module has no such dataclass or the dataclass no such field."""
+    import dataclasses
+    from . import get_strategy
+    mod = importlib.import_module(type(get_strategy(strategy_key)).__module__)
+    if not hasattr(mod, attr):
+        raise ValueError(f"{strategy_key} has no {attr} parameters to override")
+    cur, kw = getattr(mod, attr), {}
+    for item in items:
+        k, _, v = str(item).partition("=")
+        k = k.strip()
+        if not hasattr(cur, k):
+            raise ValueError(f"unknown {type(cur).__name__} field {k!r}")
+        old = getattr(cur, k)
+        kw[k] = type(old)(float(v)) if isinstance(old, (int, float)) else v
+    setattr(mod, attr, dataclasses.replace(cur, **kw))
+    return kw
+
+
 def split_signal_exempt(strategy_key: str, consts: dict) -> tuple[dict, dict]:
     """(overrides the signal scan reads, overrides it never reads) -- the second part is the
     strategy's `signal_exempt_consts`. Applying the first alone gives the run whose cached

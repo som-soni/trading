@@ -1113,8 +1113,10 @@ def strategy_edges() -> dict:
             if st == "verify":
                 test = verdicts.get((m, k, sp, r)) or {"passed": None, "criterion": None}
                 passed = test["passed"]
-                level = ("verified" if passed is True else "edge_oos" if ex > 0
-                         else "failed" if passed is False else "unjudged")
+                # no recorded verdict is "unjudged" whatever the excess: positive excess with none read as
+                # "pre-set test not passed", a verdict nobody gave
+                level = ("verified" if passed is True else "unjudged" if passed is None
+                         else "edge_oos" if ex > 0 else "failed")
             else:
                 level = "in_sample" if ex > 0 else "none"
             ver = (sp or "").split("-")[0].lstrip("v")

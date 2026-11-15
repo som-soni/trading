@@ -2153,45 +2153,25 @@ def main(argv: list[str] | None = None) -> dict | None:
         # Rebind the strategy module's VCP before anything reads it. spec_params()
         # expands that dataclass, so the fingerprint -- and therefore the signal cache
         # namespace and the run directory -- change automatically: an experiment cannot
-        # silently reuse or overwrite the shipped rules' results.
-        import dataclasses as _dc
-        import importlib
-
-        # The module, not the key: renaming minervini_spec's key to "minervini" left
+        # silently reuse or overwrite the shipped rules' results. The module, not the key
+        # (strategies/variants.apply_params): renaming minervini_spec's key to "minervini" left
         # the module as minervini_spec.py, so importing by key silently loaded the
         # RETIRED minervini.py instead of the registered strategy's own module.
-        mod = importlib.import_module(type(get_strategy(args.strategy)).__module__)
-        if not hasattr(mod, "VCP"):
-            parser.error(f"--vcp: {args.strategy} has no VCP parameters to override")
-        kw = {}
-        for item in args.vcp:
-            k, _, v = item.partition("=")
-            k = k.strip()
-            if not hasattr(mod.VCP, k):
-                parser.error(f"--vcp: unknown VcpParams field {k!r}")
-            cur = getattr(mod.VCP, k)
-            kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
-        mod.VCP = _dc.replace(mod.VCP, **kw)
+        from ..strategies.variants import apply_params
+        try:
+            kw = apply_params(args.strategy, "VCP", args.vcp)
+        except ValueError as e:
+            parser.error(f"--vcp: {e}")
         logger.info("VCP override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
     if args.pp:
         # --vcp's twin for the power play's own dataclass (POWER_PLAY = PowerPlayParams(...)), whose fields
         # spec_params fingerprints the same way; a module constant baked into it (PP_TIGHT_PCT) cannot be
         # moved by --const, which refuses it.
-        import dataclasses as _dc
-        import importlib
-
-        mod = importlib.import_module(type(get_strategy(args.strategy)).__module__)
-        if not hasattr(mod, "POWER_PLAY"):
-            parser.error(f"--pp: {args.strategy} has no power-play parameters to override")
-        kw = {}
-        for item in args.pp:
-            k, _, v = item.partition("=")
-            k = k.strip()
-            if not hasattr(mod.POWER_PLAY, k):
-                parser.error(f"--pp: unknown PowerPlayParams field {k!r}")
-            cur = getattr(mod.POWER_PLAY, k)
-            kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
-        mod.POWER_PLAY = _dc.replace(mod.POWER_PLAY, **kw)
+        from ..strategies.variants import apply_params
+        try:
+            kw = apply_params(args.strategy, "POWER_PLAY", args.pp)
+        except ValueError as e:
+            parser.error(f"--pp: {e}")
         logger.info("power-play override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
     if args.const:
         # Same contract as --vcp, for the tunables that are module constants rather

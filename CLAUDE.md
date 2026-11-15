@@ -270,8 +270,15 @@ keeps its old meaning — a full run to today — and is labelled context.
 
 - **Never tune on verify results.** Look at a verify run, change a rule, and those years are
   in-sample now. A changed rule is a new version; verify *that*.
-- **Verify once.** A second verify of the same version and options is refused
-  (`verify_runs` table); `--again` runs it knowingly and records it as a repeat.
+- **Verify once.** A second verify of the same rules and options is refused
+  (`verify_runs` table); `--again` runs it knowingly and records it as a repeat. "The same rules" is
+  the run's spec-id fingerprint, not its version label (a `--const` variant's own): a version that
+  restores rules already verified (minervini 1.55 = 1.53) is refused too. A version whose change the
+  fingerprint cannot see (a new code path, no constant moved) needs `--again` as well. A portfolio
+  strategy's verify refuses options its runner ignores (`--sample`, `--symbols`; `--const` is applied).
+- **Record the verdict** after a verify run, against the criterion written before it:
+  `python -m swing_screener.backtesting.windows judge <run dir> --passed|--failed --criterion "..."`.
+  An unjudged run reads "no recorded verdict" on the Strategies page, never as a pass or a fail.
 - **Decide the pass criteria before the verify run**, and report the result even when it fails.
 - **The boundary is in the data layer, not the runners.** Inside a stage,
   `marketdata/asof.py` stops every loader a backtest reads through at the stage's end, and
