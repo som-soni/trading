@@ -5669,6 +5669,21 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const ax = AXES[groupBy];
   const all = list.filter((x) => x[`${groupBy}_label`]);
   const untried = ax.groups.filter((b) => !all.some((x) => x[groupBy] === b.key));
+  // Within each group: by the backtests here (the market picked in the header: a verified edge first,
+  // then excess CAGR over the index, unmeasured last), by public evidence (grade A..E, then
+  // credibility), or in the server's order. Remembered per browser.
+  const SORTS = [["backtest", "Backtest"], ["evidence", "Evidence"], ["default", "Default"]];
+  let sortBy = store.get("stratSort", "backtest");
+  if (!SORTS.some(([k]) => k === sortBy)) sortBy = "backtest";
+  const sm = pageMarket();
+  const LEVEL = { verified: 0, edge_oos: 1, unjudged: 2, in_sample: 3, failed: 4, none: 5 };   // server EDGE_LEVELS
+  const btKey = (x) => { const e = EDGE?.strategies?.[x.key]?.[sm];
+    return e && e.excess != null ? [LEVEL[e.level] ?? 5, -e.excess] : [9, 0]; };
+  const sorter = sortBy === "backtest"
+    ? (p, q) => { const a = btKey(p), b = btKey(q); return a[0] - b[0] || a[1] - b[1]; }
+    : sortBy === "evidence"
+      ? (p, q) => (p.grade || "Z").localeCompare(q.grade || "Z") || (q.credibility ?? -1) - (p.credibility ?? -1)
+      : () => 0;
   // Each group folds open and shut, remembered per browser; the group holding the open strategy stays open.
   const closed = new Set(store.get("stratGroupsClosed", []));
   const group = (gid, label, n, body, hasActive) =>
@@ -5681,8 +5696,7 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     const subs = [...new Map(mine.map((x) => [x[lab], x[`${ax.sub}_rank`] ?? 99]))].sort((a, b2) => a[1] - b2[1]);
     const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
       mine.filter((x) => x[lab] === slabel && (x.kind !== "screener" || topLevel(x)))
-          // by setup type, strongest public evidence first: grade A..E, then credibility
-          .sort((p, q) => (groupBy !== "style" ? 0 : ((p.grade || "Z").localeCompare(q.grade || "Z") || (q.credibility ?? -1) - (p.credibility ?? -1))))
+          .sort(sorter)
           .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
     const n = mine.filter((x) => x.kind !== "screener" || topLevel(x)).length;
     return group(`${groupBy}:${b.key}`, b.label, n, body, mine.some((x) => x.key === key));
@@ -5700,6 +5714,7 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div><div class="muted small">full: 2013 → latest, excess over the index per year — context, not a verdict</div><div class="muted small" title="${esc((tax.grades || []).map((g) => `${g.key}: ${g.label}`).join("\n"))}">grade A–E · score 0–5: how credible the idea is outside this app (published tests), not its backtests here</div></div>
       <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["style", "Setup type"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
+      <div class="nav-groupby"><span class="muted small" title="Backtest: a verified edge first, then excess CAGR over the index in the market picked in the header (${esc(sm)}). Evidence: public grade A–E, then credibility.">Sort by</span>${segmented(SORTS, sortBy, "ssort")}</div>
       ${stratNav}${rest}
       ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
         <div class="nav-empty muted small">${ax.none}: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
@@ -5727,6 +5742,8 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
       STRAT_NAV.y = it.getBoundingClientRect().top - nav.getBoundingClientRect().top;
     });
   }
+  $view.querySelectorAll(".ssort button").forEach((b) => b.onclick = () => {
+    if (b.dataset.v !== sortBy) { store.set("stratSort", b.dataset.v); route(); } });
   $view.querySelectorAll(".sgroup button").forEach((b) => b.onclick = () => {
     if (b.dataset.v !== groupBy) { store.set("stratGroupBy", b.dataset.v); route(); } });
   $view.querySelectorAll(".nav-grp").forEach((d) => d.addEventListener("toggle", () => {
