@@ -724,6 +724,26 @@
     },
     "version": "2.5"
   },
+  "macd_cross": {
+    "family": "macd_cross",
+    "fingerprint": "5bd0dcd0",
+    "params": {
+      "FAST": 12,
+      "MACD_TAIL": 300,
+      "MAX_STOP_PCT": 15.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "SIGNAL": 9,
+      "SLOW": 26,
+      "STOP_ATR": 2,
+      "_key": "macd_cross",
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "masonson_tqqq": {
     "family": "masonson_tqqq",
     "fingerprint": "f48d6a36",
