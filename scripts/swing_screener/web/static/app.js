@@ -5647,7 +5647,7 @@ function stratRows(list) {
       const run = (x.screens || []).find((s) => s.market === m.key);
       mk[m.key] = {
         e, ran: !!e && e.level !== "unmeasured",
-        excess: e?.excess ?? null, dd: e?.risk?.max_drawdown ?? null, bdd: e?.risk?.bench_max_drawdown ?? null,
+        cagr: e?.cagr ?? null, excess: e?.excess ?? null, dd: e?.risk?.max_drawdown ?? null, bdd: e?.risk?.bench_max_drawdown ?? null,
         sharpe: e?.risk?.sharpe ?? null, bsharpe: e?.risk?.bench_sharpe ?? null,
         // today's activity: only a per-stock strategy has setups; a portfolio book holds positions instead
         today: x.kind !== "screener" ? null : run ? { trade: run.tradeable, watch: run.watch, run: run.run } : { notrun: true },
@@ -5688,6 +5688,8 @@ function stratColumns(sm) {
     cols.push(
       { id: `${k}:edge`, grp: k, glabel: g, label: "Edge", tip: "The backtest verdict for the current rules: verified out-of-sample, in-sample only, or no edge (excess return over the index at or below zero).",
         v: (r) => (r.mk[k].ran ? (9 - (EDGE_RANK[r.mk[k].e.level] ?? 5)) * 1000 + (r.mk[k].excess ?? 0) : null), dir: -1 },
+      { id: `${k}:cagr`, grp: k, label: "CAGR", num: true, tip: "Compound annual return of the run that sets the edge grade (verify, else optimise); its stage and the index's CAGR on hover.",
+        v: (r) => (r.mk[k].ran ? r.mk[k].cagr : null), dir: -1 },
       { id: `${k}:excess`, grp: k, label: "Excess / yr", num: true, tip: "Excess CAGR over the market's index, from the run that sets the edge grade (verify, else optimise).",
         v: (r) => (r.mk[k].ran ? r.mk[k].excess : null), dir: -1 },
       { id: `${k}:dd`, grp: k, label: "Max DD", num: true, tip: "Largest peak-to-trough fall in that run (the index's in the tooltip). Sorting puts the shallowest first.",
@@ -5723,7 +5725,7 @@ async function strategiesHome(alive) {
     <ul class="sh-legend">${["verified", "edge_oos", "unjudged", "in_sample", "failed", "none"].map((l) => `<li><i class="edge e-${l}"></i><b>${EDGE_CELL[l]}</b> — ${esc(EDGE?.levels?.[l] || "")}</li>`).join("")}
       <li><span class="notrun">Not run</span> — no backtest of this strategy in that market.</li></ul>
     <p>A faded dot with a version (<i class="edge e-none old"></i><span class="muted">v1.2</span>) is an older version's run: the current rules have not run yet.
-      <b>Excess / yr</b>, <b>Max DD</b> and <b>Sharpe</b> come from the same run; hover a number for the index's.</p>
+      <b>CAGR</b>, <b>Excess / yr</b>, <b>Max DD</b> and <b>Sharpe</b> come from the same run; hover a number for the index's.</p>
     <p><b>Evidence</b> — public evidence for the idea, outside this app: ${(tax.grades || []).map((g) => `<b>${esc(g.key)}</b> ${esc(g.label)}`).join("; ")}. The small number is a 0–5 credibility score.</p>
     <p><b>Today</b> — tradeable setups / names on watch in the strategy's latest run. “—”: a portfolio book, which holds positions rather than daily setups.</p>`;
   $view.innerHTML = pageHead("Strategies", {
@@ -5766,7 +5768,7 @@ async function strategiesHome(alive) {
     const th = (c) => `<th class="${c.num ? "num" : ""} ${c.cls || ""} ${c.grp ? "g-" + esc(c.grp) : ""}${c.id === col ? " sorted" : ""}" data-c="${esc(c.id)}"
         aria-sort="${c.id === col ? (dir > 0 ? "ascending" : "descending") : "none"}" title="${esc(c.tip || "Sort by " + c.label)}"><button class="sh-sort">${esc(c.label)}<span class="arrow">${c.id === col ? (dir > 0 ? "▲" : "▼") : ""}</span></button></th>`;
     const lead = cols.filter((c) => !c.grp && c.id !== "backtests").length;
-    thead.innerHTML = `<tr class="sh-g"><th class="sh-name" colspan="1"></th><th colspan="${lead - 1}"></th>${marketsFirst(sm).map((m) => `<th colspan="5" class="g-${esc(m.key)} gh${m.key === sm ? " cur" : ""}">${esc(m.flag || "")} ${esc(m.name)}</th>`).join("")}<th></th></tr>
+    thead.innerHTML = `<tr class="sh-g"><th class="sh-name" colspan="1"></th><th colspan="${lead - 1}"></th>${marketsFirst(sm).map((m) => `<th colspan="6" class="g-${esc(m.key)} gh${m.key === sm ? " cur" : ""}">${esc(m.flag || "")} ${esc(m.name)}</th>`).join("")}<th></th></tr>
       <tr>${cols.map(th).join("")}</tr>`;
   };
   const num = (v, d, sign = false) => (v == null ? "" : `${sign && v > 0 ? "+" : ""}${v.toFixed(d)}`);
@@ -5775,8 +5777,11 @@ async function strategiesHome(alive) {
     const today = !t ? `<td class="num muted" title="A portfolio book: it holds positions, not daily setups">—</td>`
       : t.notrun ? `<td class="num"><span class="notrun">Not run</span></td>`
       : `<td class="num" title="${esc(`Latest run ${prettyDate(t.run)}: ${t.trade} tradeable, ${t.watch} on watch`)}"><b class="${t.trade ? "" : "zero"}">${t.trade}</b><span class="muted"> / ${t.watch}</span></td>`;
-    if (!x.ran) return `<td class="g-${esc(m.key)} gs" colspan="4">${edgeCell(x.e)}</td>${today}`;
+    if (!x.ran) return `<td class="g-${esc(m.key)} gs" colspan="5">${edgeCell(x.e)}</td>${today}`;
+    const stg = { verify: "out-of-sample", optimise: "in-sample", full: "full period" }[x.e?.stage] || "legacy run";
+    const bc = x.cagr != null && x.excess != null ? x.cagr - x.excess : null;
     return `<td class="g-${esc(m.key)} gs">${edgeCell(x.e)}</td>
+      <td class="num" title="${esc(`${stg}, v${x.e?.version || "?"}${bc != null ? `; index ${bc.toFixed(1)}%` : ""}`)}">${x.cagr != null ? `${num(x.cagr, 1)}%` : ""}</td>
       <td class="num ${x.excess > 0 ? "pos" : x.excess < 0 ? "neg" : ""}">${num(x.excess, 1, true)}${x.excess != null ? "%" : ""}</td>
       <td class="num" title="${x.bdd != null ? esc(`index ${x.bdd.toFixed(1)}%`) : ""}">${x.dd != null ? `${num(x.dd, 1)}%` : ""}</td>
       <td class="num" title="${x.bsharpe != null ? esc(`index ${x.bsharpe.toFixed(2)}`) : ""}">${num(x.sharpe, 2)}</td>${today}`;

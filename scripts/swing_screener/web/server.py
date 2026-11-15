@@ -1010,9 +1010,9 @@ EDGE_LEVELS = {
 _EDGE_CACHE: dict = {}
 
 
-def _excess(summary) -> float | None:
+def _excess(summary, field: str = "excess_cagr") -> float | None:
     try:
-        return float(str((summary or {}).get("excess_cagr", "")).replace("%", "").replace("+", ""))
+        return float(str((summary or {}).get(field, "")).replace("%", "").replace("+", "").replace(",", ""))
     except ValueError:
         return None
 
@@ -1097,12 +1097,12 @@ def strategy_edges() -> dict:
             full = None
             if fp:
                 fr = _risk(fp[2])
-                full = {"excess": _excess(fp[2]), "run_id": fp[0],
+                full = {"excess": _excess(fp[2]), "cagr": _excess(fp[2], "cagr"), "run_id": fp[0],
                         "max_drawdown": fr and fr["max_drawdown"],
                         "bench_max_drawdown": fr and fr["bench_max_drawdown"], "deeper": fr and fr["deeper"]}
                 label += (f"; full period (context, not a verdict): excess {full['excess']:+.2f}%/yr"
                           + (f", {fr['text']}" if fr else ""))
-            ent[m] = {"level": level, "label": label, "excess": ex, "stage": st, "version": ver,
+            ent[m] = {"level": level, "label": label, "excess": ex, "cagr": _excess(s, "cagr"), "stage": st, "version": ver,
                       "current": current, "run_id": i, "risk": risk, "full": full,
                       "test": test and {"passed": test["passed"], "criterion": test.get("criterion")}}
         out[k] = ent
