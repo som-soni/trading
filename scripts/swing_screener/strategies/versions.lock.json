@@ -1260,6 +1260,33 @@
     },
     "version": "1.10"
   },
+  "one_two_three": {
+    "family": "one_two_three",
+    "fingerprint": "8119f6e6",
+    "params": {
+      "DOWNTREND_BARS": 120,
+      "DOWNTREND_SLOPE_BARS": 21,
+      "HOLD_BARS": 20,
+      "LOOK": 60,
+      "MAX_STOP_PCT": 15.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "P12_MIN_BARS": 3,
+      "P23_MIN_BARS": 2,
+      "RETRACE_MIN": 0.3,
+      "_key": "one_two_three",
+      "expiry_bdays": 5,
+      "gate_codes": [
+        "G1",
+        "G2"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "parabolic_short": {
     "family": "parabolic_short",
     "fingerprint": "d2894384",
