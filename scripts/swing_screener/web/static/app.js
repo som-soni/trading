@@ -5626,7 +5626,7 @@ const EDGE_RANK = { verified: 0, edge_oos: 1, unjudged: 2, in_sample: 3, failed:
 /** the levels that count as an edge somewhere (verified out-of-sample, or at least in-sample): Today's setups highlights them */
 const EDGE_SHOWN = new Set(["verified", "edge_oos", "in_sample"]);
 const edgeCell = (e) => (e && e.level !== "unmeasured"
-  ? `<span class="ecell" title="${esc(e.label || "")}"><i class="edge e-${esc(e.level)}${e.current === false ? " old" : ""}"></i>${esc(EDGE_CELL[e.level] || e.level)}${e.current === false ? ` <span class="muted">v${esc(e.version)}</span>` : ""}</span>`
+  ? `<span class="ecell" title="${esc(e.label || "")}"><i class="edge e-${esc(e.level)}${e.current === false ? " old" : ""}"></i>${esc(EDGE_CELL[e.level] || e.level)}${e.current === false || (e.overrides || []).length ? ` <span class="muted">v${esc(e.version)}${(e.overrides || []).length ? "+" : ""}</span>` : ""}</span>`
   : `<span class="notrun">Not run</span>`);
 /** markets in column order: the one picked in the header first, so the table follows the app's market switch */
 const marketsFirst = (sm) => [...MKTS.filter((m) => m.key === sm), ...MKTS.filter((m) => m.key !== sm)];
@@ -5639,11 +5639,15 @@ const stratHomeState = () => ({ ...stratHomeDefault(), ...(store.get(STRAT_HOME_
 
 /** One row per strategy, from /api/strategies (docs, taxonomy, backtest count, latest runs per market) and
  *  /api/strategy-edges (server.strategy_edges: the edge grade, excess, drawdown and Sharpe per market). */
-function stratRows(list) {
+function stratRows(list, fig = "best") {
   return list.map((x) => {
     const mk = {};
     for (const m of MKTS) {
-      const e = EDGE?.strategies?.[x.key]?.[m.key] || null;
+      const cur = EDGE?.strategies?.[x.key]?.[m.key] || null;
+      // "best": the best in-sample configuration (any version, any experiment settings), with figures from its
+      // out-of-sample run when it has one -- server._best_config, the Rules tab's Measured outcome path
+      const b = cur?.best;
+      const e = fig !== "best" ? cur : b ? { ...b, label: `Best of ${b.of} configuration${b.of === 1 ? "" : "s"} run in-sample: v${b.version}${(b.overrides || []).length ? ` + ${b.overrides.join(" ")}` : ""}${b.current ? " (the current rules)" : " (not the current rules)"}; figures from its ${b.stage === "verify" ? "out-of-sample" : "in-sample"} run. ${EDGE?.levels?.[b.level] || ""}` } : null;
       const run = (x.screens || []).find((s) => s.market === m.key);
       mk[m.key] = {
         e, ran: !!e && e.level !== "unmeasured",
@@ -5714,10 +5718,11 @@ async function strategiesHome(alive) {
   const [list, tax] = await Promise.all([api("/api/strategies").catch(() => []), api("/api/taxonomy").catch(() => ({})), loadEdges()]);
   if (!alive()) return;
   const sm = pageMarket();
-  const rows = stratRows(list);
+  let st = stratHomeState();
+  if (st.fig !== "current") st.fig = "best";
+  const rows = stratRows(list, st.fig);
   const cols = stratColumns(sm), facets = stratFacets(sm);
   const defSort = () => ({ col: `${sm}:edge`, dir: -1 });
-  let st = stratHomeState();
   const save = () => store.set(STRAT_HOME_KEY, st);
   if (!st.sort || !cols.some((c) => c.id === st.sort.col)) st.sort = null;
   if (!GROUPINGS.some(([k]) => k === st.group)) st.group = "";
@@ -5725,25 +5730,28 @@ async function strategiesHome(alive) {
     <ul class="sh-legend">${["verified", "edge_oos", "unjudged", "in_sample", "failed", "none"].map((l) => `<li><i class="edge e-${l}"></i><b>${EDGE_CELL[l]}</b> — ${esc(EDGE?.levels?.[l] || "")}</li>`).join("")}
       <li><span class="notrun">Not run</span> — no backtest of this strategy in that market.</li></ul>
     <p>A faded dot with a version (<i class="edge e-none old"></i><span class="muted">v1.2</span>) is an older version's run: the current rules have not run yet.
+      <b>Figures</b> picks which run: <b>Best configuration</b> (default) — each market's best version or experiment in-sample, read from its out-of-sample run when it has one, a “+” marking experiment settings — or <b>Current rules</b>.
       <b>CAGR</b>, <b>Excess / yr</b>, <b>Max DD</b> and <b>Sharpe</b> come from the same run; hover a number for the index's.</p>
     <p><b>Evidence</b> — public evidence for the idea, outside this app: ${(tax.grades || []).map((g) => `<b>${esc(g.key)}</b> ${esc(g.label)}`).join("; ")}. The small number is a 0–5 credibility score.</p>
     <p><b>Today</b> — tradeable setups / names on watch in the strategy's latest run. “—”: a portfolio book, which holds positions rather than daily setups.</p>`;
-  $view.innerHTML = pageHead("Strategies", {
+  $view.innerHTML = `<div class="strat-home">` + pageHead("Strategies", {
       extra: marketSeg(sm),
       context: `<span class="muted small">${rows.length} strategies</span>${info(legend, "How to read the table")}` }) + `
     <div class="sh-bar">
       <label class="filter sh-q"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
         <input type="search" placeholder="Search strategies" spellcheck="false" aria-label="Search strategies"></label>
       <span class="menu"><button class="sm sh-fbtn" aria-haspopup="true">Filter</button><div class="menu-pop sh-fpop" hidden></div></span>
+      <span class="small sh-fig" title="Best: each market's best configuration run in-sample (any version or experiment settings), with figures from its out-of-sample run when it has one. Current rules: the strategy as it stands today."><span class="muted">Figures</span> ${segmented([["best", "Best configuration"], ["current", "Current rules"]], st.fig, "sh-figseg")}</span>
       <label class="sh-grp-sel small"><span class="muted">Group</span><select class="sm">${GROUPINGS.map(([k, t]) => `<option value="${k}">${t}</option>`).join("")}</select></label>
     </div>
     <div class="sh-state small" aria-live="polite"></div>
-    <div class="sh-wrap"><table class="sh-table"><thead></thead><tbody></tbody></table></div>`;
+    <div class="sh-wrap"><table class="sh-table"><thead></thead><tbody></tbody></table></div></div>`;
   const qIn = $view.querySelector(".sh-q input"), fBtn = $view.querySelector(".sh-fbtn"), fPop = $view.querySelector(".sh-fpop");
   const gSel = $view.querySelector(".sh-grp-sel select"), stateEl = $view.querySelector(".sh-state");
   const thead = $view.querySelector(".sh-table thead"), tbody = $view.querySelector(".sh-table tbody");
   qIn.value = st.q || "";
   gSel.value = st.group;
+  $view.querySelectorAll(".sh-figseg button").forEach((b) => b.onclick = () => { if (b.dataset.v !== st.fig) { st.fig = b.dataset.v; save(); route(); } });
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
 
   const matchesQ = (r) => !st.q || `${r.name} ${r.key}`.toLowerCase().includes(st.q.toLowerCase());

@@ -1031,6 +1031,39 @@ def _risk(summary) -> dict | None:
             "deeper": dd < bdd, "text": ", ".join(parts)}
 
 
+def _best_config(runs: list, cur: str | None, verdicts: dict, m: str, k: str, windows) -> dict | None:
+    """The BEST configuration's figures: the version plus experiment settings with the highest in-sample
+    excess CAGR in the standard optimise window (every version and experiment competes), then that same
+    configuration's out-of-sample run when it has one -- the path the Rules tab's Measured outcome shows.
+    Only the in-sample step ranks: picking among out-of-sample runs would be selection on the hold-out."""
+    import json as _json
+    cfg = lambda sp, ov: (sp, _json.dumps(ov or {}, sort_keys=True))
+    def std(r, stage):
+        st = _stage(r)
+        return st["stage"] == stage and st["window_start"] == windows.STAGES[stage].start
+    ins = [x for x in runs if x[3] and _excess(x[2]) is not None and std(x[1], "optimise")]
+    if not ins:
+        return None
+    seen = {}
+    for x in ins:                                    # newest first: each configuration's newest run
+        seen.setdefault(cfg(x[3], x[4]), x)
+    best = max(seen.values(), key=lambda x: _excess(x[2]))
+    oos = next((x for x in runs if cfg(x[3], x[4]) == cfg(best[3], best[4]) and _excess(x[2]) is not None
+                and std(x[1], "verify")), None)
+    i, r, s, sp, ov = oos or best
+    ex = _excess(s)
+    if oos:
+        test = verdicts.get((m, k, sp, r)) or {"passed": None}
+        level = ("verified" if test["passed"] is True else "edge_oos" if ex > 0
+                 else "failed" if test["passed"] is False else "unjudged")
+    else:
+        level = "in_sample" if ex > 0 else "none"
+    return {"level": level, "excess": ex, "cagr": _excess(s, "cagr"), "stage": "verify" if oos else "optimise",
+            "version": (sp or "").split("-")[0].lstrip("v"), "current": bool(cur) and sp == cur, "run_id": i,
+            "in_sample_run": best[0], "of": len(seen), "risk": _risk(s),
+            "overrides": run_variant(sp, ov, cur)["overrides"] if ov else []}
+
+
 def strategy_edges() -> dict:
     """{strategy key: {"name", market: {"level", "label", "excess", "stage", "version", "current", "run_id"}}}."""
     import time
@@ -1068,7 +1101,8 @@ def strategy_edges() -> dict:
                         or next((x for x in rest if not cur or x[3] != cur), None)
                         or next(iter(rest), None))
             if not pick:
-                ent[m] = {"level": "unmeasured", "label": EDGE_LEVELS["unmeasured"]}
+                ent[m] = {"level": "unmeasured", "label": EDGE_LEVELS["unmeasured"],
+                          "best": _best_config(by.get((k, m), []), cur, verdicts, m, k, windows)}
                 continue
             i, r, s, sp = pick
             st, ex = _stage(r)["stage"], _excess(s)
@@ -1105,6 +1139,7 @@ def strategy_edges() -> dict:
             ent[m] = {"level": level, "label": label, "excess": ex, "cagr": _excess(s, "cagr"), "stage": st, "version": ver,
                       "current": current, "run_id": i, "risk": risk, "full": full,
                       "test": test and {"passed": test["passed"], "criterion": test.get("criterion")}}
+            ent[m]["best"] = _best_config(by.get((k, m), []), cur, verdicts, m, k, windows)
         out[k] = ent
     _EDGE_CACHE.update(at=time.time(), data=out)
     return out
