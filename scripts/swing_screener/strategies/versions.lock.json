@@ -470,6 +470,29 @@
     },
     "version": "1.0"
   },
+  "elder_triple_screen": {
+    "family": "elder_triple_screen",
+    "fingerprint": "c1d2d564",
+    "params": {
+      "FORCE_EMA": 2,
+      "FORCE_TAIL": 60,
+      "HOLD_BARS": 15,
+      "MAX_STOP_PCT": 10.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "WEEKLY_EMA": 13,
+      "_key": "elder_triple_screen",
+      "expiry_bdays": 1,
+      "gate_codes": [
+        "G1"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "ema100_trend": {
     "family": "ema100_trend",
     "fingerprint": "0b233039",
