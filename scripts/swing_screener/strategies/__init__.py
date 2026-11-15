@@ -62,6 +62,10 @@ from .stage_analysis import StageAnalysisStrategy
 from .stock_reversion import StockReversionStrategy
 from .trend_pullback import TrendPullbackStrategy
 from .turtle_soup import TurtleSoupStrategy
+from .macd_cross import MacdCrossStrategy
+from .golden_cross import GoldenCrossStrategy
+from .earnings_premium import EarningsPremiumStrategy
+from .gap_fill import GapFillStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
 
@@ -88,6 +92,10 @@ register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion 
 # The swing catalogue's untested setups (research/strategy-catalog-swing.md), added 2026-11-15 on the shared
 # plumbing of strategies/swing_base.py so each can be backtested beside the rest.
 register(TurtleSoupStrategy())
+register(MacdCrossStrategy())
+register(GoldenCrossStrategy())
+register(EarningsPremiumStrategy())
+register(GapFillStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection
@@ -153,6 +161,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.dual_momentum import DualMomentumStrategy
     from ..backtesting.etf_swing import EtfSwingStrategy
     from ..backtesting.fno_income import FnoIncomeStrategy
+    from ..backtesting.high52_rank import High52RankStrategy
     from ..backtesting.ibs_reversion import IbsReversionStrategy
     from ..backtesting.ma_trend import MaTrendStrategy
     from ..backtesting.masonson_tqqq import MasonsonTqqqStrategy
@@ -162,6 +171,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.pead import PeadStrategy
     from ..backtesting.quality_momentum import QualityMomentumStrategy
     from ..backtesting.sector_rotation import SectorRotationStrategy
+    from ..backtesting.short_reversal import ShortReversalStrategy
     from ..backtesting.stage4_shorts import Stage4ShortsStrategy
     from ..backtesting.turn_of_month import TurnOfMonthStrategy
     from ..backtesting.turtle_trend import TurtleTrendStrategy
@@ -176,6 +186,8 @@ def portfolio_strategies() -> dict:
                                 BoucherStocksStrategy, BoucherBondsGoldStrategy, BoucherBookStrategy,
                                 ValueRankingStrategy,
                                 # the swing catalogue's ranking and index-timing setups (2026-11-15)
+                                High52RankStrategy,
+                                ShortReversalStrategy,
                                 TurnOfMonthStrategy,
                                 PreHolidayStrategy,
                                 IbsReversionStrategy,

@@ -47,6 +47,7 @@ EVIDENCE = {
     "quality_momentum": _e("B", 2, 0, 1, 1, "Momentum filtered by quality: both effects are documented (Jegadeesh & Titman 1993; Asness et al. on quality), the combination less so."),
     "sector_rotation": _e("B", 2, 1, 1, 0, "Industry momentum: Moskowitz & Grinblatt (1999); Faber's sector rotation."),
     "dual_momentum": _e("C", 1, 0, 1, 1, "Antonacci, Dual Momentum Investing (2014): published backtests, results since publication mixed."),
+    "high52_rank": _e("A", 2, 1, 1, 0, "George & Hwang (2004), nearness to the 52-week high; replicated in international markets (Du 2008; Liu, Liu & Ma 2011). Turnover is low, but no costed out-of-sample test of a concentrated book."),
     "rs_leaders": _e("D", 0, 0, 1, 0, "IBD / Minervini relative-strength leadership: practitioner examples, no published test of the setup."),
     # continuation -- breakout from a base
     "minervini": _e("D", 0, 0, 1, 0, "Minervini's SEPA / VCP: US Investing Championship 1997 record and chart examples; no published test of the setup."),
@@ -71,6 +72,7 @@ EVIDENCE = {
     "boucher_book": _e("D", 1, 0, 1, 0, "Mark Boucher, The Hedge Fund Edge (1999): the author's own model backtests, no independent test."),
     # snap-back
     "stock_reversion": _e("C", 1, 0, 1, 0, "Connors-style oversold buying in single stocks: published backtests; the underlying short-term reversal (Jegadeesh 1990, Lehmann 1990) is real, but costs take most of it."),
+    "short_reversal": _e("C", 2, 1, 1, 0, "Short-term reversal: Jegadeesh (1990), Lehmann (1990), replicated; largest in illiquid stocks and mostly consumed by costs since the 1990s."),
     "ibs_reversion": _e("B", 1, 0, 1, 0, "Internal bar strength on index ETFs: Pagonidis (2013) and practitioner replications; published backtests, not peer-reviewed or independently costed."),
     "mean_reversion": _e("C", 1, 0, 1, 1, "Connors & Alvarez, Short Term Trading Strategies That Work (2008): RSI(2), %b and Double 7s on indices; weaker since publication."),
     # event
@@ -81,6 +83,10 @@ EVIDENCE = {
     # calendar
     "turn_of_month": _e("C", 2, 1, 1, 0, "Ariel (1987); Lakonishok & Smidt (1988); McConnell & Xu (2008) found it in 30 of 35 countries. Weaker since the 2000s."),
     "pre_holiday": _e("C", 2, 0, 1, 0, "Lakonishok & Smidt (1988); Ariel (1990). Later studies found it much weaker after the 1990s."),
+    "gap_fill": _e("D", 0, 0, 1, 0, "Widespread practitioner rule (\"gaps get filled\"); no published test supports it as a rule."),
+    "earnings_premium": _e("B", 2, 0, 1, 0, "Frazzini & Lamont (2007), the earnings-announcement premium; Beaver (1968). Peer-reviewed, in-sample and before costs."),
+    "golden_cross": _e("E", 0, 0, 1, 0, "Widespread 50/200-day crossover rule; tested on stocks and failed after costs. A negative control."),
+    "macd_cross": _e("E", 0, 0, 1, 0, "Appel's MACD (1979) signal-line cross; tested and failed after costs. A negative control."),
     # short side
     "parabolic_short": _e("D", 0, 0, 1, 0, "Kullamägi's parabolic short: examples, no published test."),
     "stage4_shorts": _e("D", 0, 0, 1, 0, "Weinstein's stage 4 short (1988): examples, no published test."),
