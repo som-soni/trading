@@ -96,7 +96,10 @@ def load_cached_with_indicators(market: str, symbol: str, as_of: pd.Timestamp, t
     return df.set_index("Date").sort_index()
 
 
-def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
+def save_cached(market: str, symbol: str, df: pd.DataFrame, fresh_from=None) -> None:
+    """Store `df`'s bars (and their indicators). `fresh_from`: when `df` is stored bars with a window the
+    source just served merged on, that window's first date -- the bars before it are already corrected
+    (`splits.offscale_before`)."""
     if df is None or df.empty:
         return
     # the source's placeholder quotes for a non-trading stretch are not prices: drop them, and delete any
@@ -115,7 +118,7 @@ def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
         return
     # a source error recorded in `price_corrections` (an unadjusted split, a stray run): a re-fetch, or a
     # refresh re-writing its recent window from the source, must not bring it back (marketdata/splits.py)
-    df = splits.apply_recorded(market, symbol, df)
+    df = splits.apply_recorded(market, symbol, df, fresh_from)
     # the 20-day turnover values pre-payout trading on today's price basis (corporate_actions.traded_value)
     enriched = ind.enrich_daily(df, corporate_actions.credits_for(market, symbol, df))
     rows = [
@@ -282,9 +285,11 @@ def get_bars(
                 return load_cached(market, symbol)
         except Exception as e:
             logger.warning("Full re-fetch failed for %s (%s); merging the window", symbol, e)
+    fresh_from = None
     if changed:
         combined = pd.concat([cached, new_rows])
         combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+        fresh_from = new_rows.index.min()
     else:
         combined = cached
 
@@ -296,7 +301,7 @@ def get_bars(
             if fresh is not None and not fresh.empty:
                 combined = pd.concat([fresh, combined])
                 combined = combined[~combined.index.duplicated(keep="last")].sort_index()
-                changed = True
+                changed, fresh_from = True, None    # fetched bars on both sides of the stored ones
         except Exception as e:
             logger.warning("Backfill failed for %s, using what we have: %s", symbol, e)
 
@@ -305,7 +310,7 @@ def get_bars(
     # name universe that is ~14.6M redundant row writes on every daily run,
     # and it was the bulk of the runtime.
     if changed:
-        save_cached(market, symbol, combined)
+        save_cached(market, symbol, combined, fresh_from)
     return combined
 
 
@@ -527,7 +532,7 @@ def get_many_bars(
             combined = pd.concat([cached, new_rows])
             combined = combined[~combined.index.duplicated(keep="last")].sort_index()
             if len(combined) > len(cached):
-                save_cached(market, sym, combined)
+                save_cached(market, sym, combined, new_rows.index.min())
                 updated += 1
             out[sym] = combined
         done = min(ci + chunk_size, len(stale))

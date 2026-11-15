@@ -50,7 +50,10 @@ place (recorded in `price_corrections`, and re-applied whenever a later write br
     is fixed only after checking the source: PSUBNKBEES.NS on 2019-12-19 and 2019-12-20, which Yahoo
     serves at a tenth of the price with about ten times the volume (the value traded unchanged), no split
     in its actions or in `corporate_actions`, and the series back at 27.8 the next session. Left in, it
-    produced a +902.6% "trade" in any strategy free to buy below trend. `record_stray_run` records the
+    produced a +902.6% "trade" in any strategy free to buy below trend. NIFTYBEES.NS, BANKBEES.NS (a tenth)
+    and GOLDBEES.NS (a hundredth) on the same two days, and MON100.NS on 2021-06-17 and 2021-06-18, are the
+    same error: each is NSE's unit split, already in the rest of Yahoo's history, double-applied to the split
+    session and the next (etf_swing booked a -43.9R trade at MON100's 10.09). `record_stray_run` records the
     dates and ratio as kind `stray_run`.
 
 Recorded unadjusted splits and stray runs are re-applied on every write: `cache.save_cached` passes each
@@ -60,7 +63,9 @@ refresh re-writes its recent window (about 450 sessions) from the source, so TRE
 correction (a 1:2 bonus Yahoo adjusts only back to 1 January) was undone from 2025-01-08 on, which left a
 +46% break there and the gap at 2026-01-01 back in place -- and a second `correct` would have rescaled the
 already-corrected bars before 2025-01-08 again. So a gap's old-scale bars run back only to the nearest
-earlier break of the opposite ratio (`offscale_before`), not to the start of the history.
+earlier break of the opposite ratio (`offscale_before`), not to the start of the history -- and never past
+the first bar the refresh fetched, which it passes on (`fresh_from`): a window whose first day moved more
+than a day's tolerance hid that break, and AQYLON.NS's bars before 2025-01-14 were rescaled twice.
 
     PYTHONPATH=. python3 -m swing_screener.marketdata.splits --market india            # report suspects
     PYTHONPATH=. python3 -m swing_screener.marketdata.splits --market india --repair   # and re-fetch them
@@ -122,7 +127,10 @@ def _nearest(x: float) -> float | None:
 
 def detect(market: str, symbols: list[str] | None = None, all_dates: bool = False) -> pd.DataFrame:
     """Split-shaped gaps: symbol, date, prev_close, open, close, ratio, last_full_fetch.
-    Only gaps after the symbol's last full fetch, unless `all_dates`."""
+    Only gaps after the symbol's last full fetch and not already found to survive one (`split_checks`), unless
+    `all_dates`: then every gap in the stored bars. A gap a re-fetch left in place is the source's own error as
+    often as a real move, so `correct` (through `source_suspects`) must see it -- BANSALWIRE.NS 2026-10-06, a
+    -80% gap ten sessions before its 1:5 split, was hidden from it."""
     with db.get_connection().cursor() as cur:
         cur.execute(SCHEMA)
         cur.execute(f"""
@@ -139,10 +147,10 @@ def detect(market: str, symbols: list[str] | None = None, all_dates: bool = Fals
     out = []
     for sym, d, prev, o, c in rows:
         r = _nearest(o / prev)
-        if r is None or abs(math.log((c / prev) / r)) > CLOSE_TOL or (sym, d) in known_real:
+        if r is None or abs(math.log((c / prev) / r)) > CLOSE_TOL:
             continue
         last = fetched.get(sym)
-        if not all_dates and last is not None and pd.Timestamp(d) <= last:
+        if not all_dates and ((sym, d) in known_real or (last is not None and pd.Timestamp(d) <= last)):
             continue
         out.append({"symbol": sym, "date": d, "prev_close": prev, "open": o, "close": c, "ratio": r,
                     "last_full_fetch": last.date() if last is not None else None})
@@ -418,19 +426,24 @@ def _gap_at(df: pd.DataFrame, i: int, ratio: float, open_tol: float = OPEN_TOL) 
             and abs(math.log(c / prev / ratio)) <= CLOSE_TOL)
 
 
-def _window_break(df: pd.DataFrame, i: int, ratio: float) -> bool:
-    """Bar `i` is where a re-written window meets corrected bars: a change of scale by `ratio` that lasts --
-    the median close of WINDOW_BREAK_BARS bars after it sits nearer `ratio` times the median before it than
-    the median itself (BRTX 2025-01-17 is a penny stock whose level moved 27% in those days). Its open moves
-    like any day's, not like a split session's, so it is held to CLOSE_TOL (MBRX 2025-01-22 opened 3.9% off)."""
-    if not _gap_at(df, i, ratio, open_tol=CLOSE_TOL):
-        return False
+def _level_break(df: pd.DataFrame, i: int, ratio: float) -> bool:
+    """A change of scale by `ratio` at bar `i` that lasts: the median close of WINDOW_BREAK_BARS bars from it
+    sits nearer `ratio` times the median before it than the median itself (BRTX 2025-01-17 is a penny stock
+    whose level moved 27% in those days)."""
     before = df["close"].iloc[max(0, i - WINDOW_BREAK_BARS):i].median()
     after = df["close"].iloc[i:i + WINDOW_BREAK_BARS].median()
     return bool(before > 0 and after > 0 and abs(math.log(after / before / ratio)) < abs(math.log(ratio)) / 2)
 
 
-def offscale_before(df: pd.DataFrame, date, ratio: float):
+def _window_break(df: pd.DataFrame, i: int, ratio: float) -> bool:
+    """Bar `i` is where a re-written window meets corrected bars: a gap of `ratio` (`_gap_at`) that lasts
+    (`_level_break`). Its open moves like any day's, not like a split session's, so it is held to CLOSE_TOL
+    (MBRX 2025-01-22 opened 3.9% off). A first day that moved more than that hides it -- which is why a write
+    that knows where its fetched window starts says so (`offscale_before`'s `fresh_from`)."""
+    return _gap_at(df, i, ratio, open_tol=CLOSE_TOL) and _level_break(df, i, ratio)
+
+
+def offscale_before(df: pd.DataFrame, date, ratio: float, fresh_from=None):
     """Mask of the bars before a recorded unadjusted split at `date` (kind `rescale_before`, `ratio` new / old)
     that are STILL on the old scale -- empty once the gap at `date` is gone, so re-applying does nothing.
 
@@ -438,6 +451,13 @@ def offscale_before(df: pd.DataFrame, date, ratio: float):
     1 / `ratio`. That break is what a refresh leaves when it re-writes only its recent window from the source
     over bars already corrected (TRENT.NS: the window from 2025-01-08 back at the pre-bonus scale, the bars
     before it corrected); the bars before it are on the right scale and must not be rescaled again.
+
+    `fresh_from` is the first bar the writer fetched from the source; the bars before it were read from
+    storage, which every write has already corrected, so the old-scale bars start no earlier than it. The
+    break there is found by its lasting level alone, not as a gap: AQYLON.NS's window opened on 2025-01-14,
+    a day that fell 10.5% on top of the x10, so `_window_break` missed it and every bar before it was rescaled
+    a second time, to a hundredth of the source. Stored bars that run on at the window's level were never
+    corrected, and are rescaled with it.
     """
     mask = np.zeros(len(df), dtype=bool)
     d = pd.Timestamp(date)
@@ -449,15 +469,20 @@ def offscale_before(df: pd.DataFrame, date, ratio: float):
     if i == 0 or not _gap_at(df, i, ratio, open_tol=CLOSE_TOL):
         return mask
     start = next((j for j in range(i - 1, 0, -1) if _window_break(df, j, 1.0 / ratio)), 0)
+    if fresh_from is not None:
+        f = int(df.index.searchsorted(pd.Timestamp(fresh_from)))
+        if start < f < i and _level_break(df, f, 1.0 / ratio):
+            start = f
     mask[start:i] = True
     return mask
 
 
-def apply_recorded(market: str, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+def apply_recorded(market: str, symbol: str, df: pd.DataFrame, fresh_from=None) -> pd.DataFrame:
     """`df` with every recorded `rescale_before` and `stray_run` that is off-scale in it put back on scale.
 
     `cache.save_cached` runs this on every frame it writes, so no writer -- a full re-fetch, or a refresh
-    that re-writes its recent window from the source -- can bring a recorded source error back.
+    that re-writes its recent window from the source -- can bring a recorded source error back. A refresh
+    passes the first date it fetched (`fresh_from`, see `offscale_before`).
 
     Oldest first: a later gap's old-scale bars run back only to the nearest break of the opposite ratio, so an
     earlier error must be fixed before it is read as one (SILVERTUC.NS: its 2023 at a tenth ends in a x10 break
@@ -475,7 +500,7 @@ def apply_recorded(market: str, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_index()
     for d, kind, ratio in rows:
         if kind == "rescale_before":
-            mask = offscale_before(df, d, float(ratio))
+            mask = offscale_before(df, d, float(ratio), fresh_from)
             if mask.any():
                 df = _rescale(df, mask, float(ratio))
     runs: dict = {}

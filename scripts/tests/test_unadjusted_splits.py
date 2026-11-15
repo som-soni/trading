@@ -7,6 +7,11 @@ the old scale -- a +46% break on 2025-01-08 and the gap back on 2026-01-01. The 
 correction on every write (`cache.save_cached` -> `apply_recorded`), and only to the bars still on the old
 scale: from the gap back to the window's break, never the already-corrected bars before it.
 
+A window whose first day moved more than a day's tolerance hides that break: AQYLON.NS's refresh window
+opened on 2025-01-14, a day that fell 10.5% on top of its x10, and every bar before it was rescaled a second
+time. So a refresh tells the write where its fetched window starts (`fresh_from`), and the stored bars before
+it -- already corrected -- are left alone.
+
 The same window put a new split's break ~450 sessions back: CONCORDBIO.NS's 1:1 bonus (2026-11-04) left the
 stored bars before 2025-01-10 at twice the source's re-adjusted scale. So a refresh whose fetched bars
 disagree in scale with the stored ones on their latest common sessions re-fetches the full history.
@@ -81,6 +86,62 @@ def synthetic() -> None:
     check("a date outside the history flags nothing", not offscale_before(stored, "2020-01-01", RATIO).any())
     check("a window that starts after the gap (a tail) flags nothing",
           not offscale_before(stored.loc[gap:].iloc[1:], gap, RATIO).any())
+
+
+def _moved_window(idx, move: float = 0.89):
+    """(truth, source, stored) for a 1:10 split left out before idx[200], the refresh window from idx[120]
+    whose first day moved `move` (AQYLON.NS 2025-01-14: -10.5%, opening where it closed)."""
+    rng = np.random.default_rng(5)
+    steps = rng.normal(0, 0.01, len(idx))
+    steps[120] = np.log(move)
+    truth = 100 * np.exp(np.cumsum(steps))
+    source = truth.copy()
+    source[:200] = truth[:200] / 0.1
+    stored = truth.copy()
+    stored[120:] = source[120:]
+    return _frame(truth, idx), _frame(source, idx), _frame(stored, idx)
+
+
+def moved_window() -> None:
+    print("a window whose first day moved 11%: only the window's bars are rescaled (AQYLON.NS)")
+    idx = pd.bdate_range("2024-06-03", periods=300)
+    truth, source, stored = _moved_window(idx)
+    gap, window = idx[200], idx[120]
+    m = offscale_before(stored, gap, 0.1, fresh_from=window)
+    flagged = idx[m]
+    check("told where the window starts: only its bars before the gap are flagged",
+          len(flagged) and flagged[0] == window and flagged[-1] == idx[199],
+          f"{flagged[0].date() if len(flagged) else None} .. {flagged[-1].date() if len(flagged) else None}")
+    check("rescaling restores the adjusted series (no double scaling)",
+          np.allclose(_rescale(stored, m, 0.1)["close"], truth["close"]))
+    m = offscale_before(source, gap, 0.1, fresh_from=window)
+    check("stored bars never corrected (no break at the window) are rescaled with it",
+          m.sum() == 200, str(m.sum()))
+    quiet = _moved_window(idx, move=0.97)[2]
+    check("a quiet first day is found without being told",
+          offscale_before(quiet, gap, 0.1).sum() == 80, str(offscale_before(quiet, gap, 0.1).sum()))
+    m = offscale_before(quiet, gap, 0.1, fresh_from=idx[250])
+    check("a window that starts after the gap leaves the walk-back as it was", m.sum() == 80, str(m.sum()))
+
+    print("... and a refresh through cache.get_many_bars stores it on one scale")
+    idx = cache.load_cached("india", "RELIANCE.NS").index[-300:]
+    truth, source, _ = _moved_window(idx)
+    src = _Source(source, tail=180)                     # the window from idx[120], as the source serves it
+    try:
+        db.execute_values("INSERT INTO price_corrections (market, symbol, date, kind, ratio, reason) VALUES %s",
+                          [("india", SYM, idx[200].date(), "rescale_before", 0.1, "test")])
+        cache.save_cached("india", SYM, truth.iloc[:-1])    # already corrected, one session behind
+        cache.get_many_bars(src, "india", [SYM], lookback_days=100, force=True)
+        got = cache.load_cached("india", SYM)
+        check("merged, not re-fetched in full", src.calls and "max" not in src.calls, str(src.calls))
+        check("the stored series matches the adjusted one",
+              got is not None and len(got) == len(truth) and np.allclose(got["close"], truth["close"]),
+              "" if got is None else f"max error {np.abs(got['close'].to_numpy() / truth['close'].to_numpy() - 1).max():.3f}")
+    finally:
+        with db.get_connection().cursor() as cur:
+            cur.execute("DELETE FROM price_corrections WHERE market='india' AND symbol=%s", (SYM,))
+            cur.execute("DELETE FROM prices WHERE market='india' AND symbol=%s", (SYM,))
+            cur.execute("DELETE FROM backfill_progress WHERE market='india' AND symbol=%s", (SYM,))
 
 
 def stored_round_trip() -> None:
@@ -181,12 +242,12 @@ def rescale_check() -> None:
 class _Source:
     """A source that re-adjusted its whole history by 1/2 after the stored bars were fetched."""
 
-    def __init__(self, full: pd.DataFrame):
-        self.full, self.calls = full, []
+    def __init__(self, full: pd.DataFrame, tail: int = 150):
+        self.full, self.tail, self.calls = full, tail, []
 
     def get_many_daily_bars(self, symbols, lookback_days, **kw):
         self.calls.append(kw.get("period"))
-        return {s: self.full if kw.get("period") == "max" else self.full.iloc[-150:] for s in symbols}
+        return {s: self.full if kw.get("period") == "max" else self.full.iloc[-self.tail:] for s in symbols}
 
 
 def refresh_round_trip() -> None:
@@ -211,6 +272,7 @@ def refresh_round_trip() -> None:
 
 def main() -> int:
     synthetic()
+    moved_window()
     stored_round_trip()
     two_records()
     carried_factor()
