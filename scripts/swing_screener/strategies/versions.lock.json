@@ -1758,5 +1758,33 @@
       "top_n": 20
     },
     "version": "1.1"
+  },
+  "wyckoff_spring": {
+    "family": "wyckoff_spring",
+    "fingerprint": "36606a24",
+    "params": {
+      "HOLD_BARS": 30,
+      "MAX_PENETRATION_PCT": 5.0,
+      "MAX_STOP_PCT": 12.0,
+      "MIN_STOP_PCT": 1.0,
+      "NOMINAL_TARGET_R": 2,
+      "RANGE_BARS": 60,
+      "RANGE_MAX_PCT": 25.0,
+      "SPRING_BARS": 3,
+      "SPRING_VOL_MAX": 1.5,
+      "_key": "wyckoff_spring",
+      "expiry_bdays": 2,
+      "gate_codes": [
+        "G1"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ],
+      "watch_codes": [
+        "W1"
+      ]
+    },
+    "version": "1.0"
   }
 }
