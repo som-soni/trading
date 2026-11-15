@@ -1155,6 +1155,16 @@
     },
     "version": "1.6"
   },
+  "pre_holiday": {
+    "family": "pre_holiday",
+    "fingerprint": "e4b83374",
+    "params": {
+      "_key": "pre_holiday",
+      "cost_bps": 5.0,
+      "days_before": 1
+    },
+    "version": "1.0"
+  },
   "quality_momentum": {
     "family": "quality_momentum",
     "fingerprint": "4312e8bd",

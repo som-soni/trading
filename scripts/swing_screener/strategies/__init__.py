@@ -157,6 +157,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.masonson_tqqq import MasonsonTqqqStrategy
     from ..backtesting.mean_reversion import MeanReversionStrategy
     from ..backtesting.parabolic_short import ParabolicShortStrategy
+    from ..backtesting.pre_holiday import PreHolidayStrategy
     from ..backtesting.pead import PeadStrategy
     from ..backtesting.quality_momentum import QualityMomentumStrategy
     from ..backtesting.sector_rotation import SectorRotationStrategy
@@ -175,6 +176,7 @@ def portfolio_strategies() -> dict:
                                 ValueRankingStrategy,
                                 # the swing catalogue's ranking and index-timing setups (2026-11-15)
                                 TurnOfMonthStrategy,
+                                PreHolidayStrategy,
                                 )}
 
 

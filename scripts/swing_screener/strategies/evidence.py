@@ -79,6 +79,7 @@ EVIDENCE = {
     "turtle_soup": _e("D", 1, 0, 1, 0, "Raschke & Connors, Street Smarts (1995): full rules and chart examples, no independent published test."),
     # calendar
     "turn_of_month": _e("C", 2, 1, 1, 0, "Ariel (1987); Lakonishok & Smidt (1988); McConnell & Xu (2008) found it in 30 of 35 countries. Weaker since the 2000s."),
+    "pre_holiday": _e("C", 2, 0, 1, 0, "Lakonishok & Smidt (1988); Ariel (1990). Later studies found it much weaker after the 1990s."),
     # short side
     "parabolic_short": _e("D", 0, 0, 1, 0, "Kullamägi's parabolic short: examples, no published test."),
     "stage4_shorts": _e("D", 0, 0, 1, 0, "Weinstein's stage 4 short (1988): examples, no published test."),
