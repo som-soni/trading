@@ -874,7 +874,8 @@ def refresh_deep_history(
         len(out), len(symbols), len(to_fetch), deep_lookback_days,
     )
     if to_fetch:
-        fresh = provider.get_many_daily_bars(to_fetch, deep_lookback_days)
+        with cache.market_sessions(market_key):
+            fresh = provider.get_many_daily_bars(to_fetch, deep_lookback_days)
         for sym, df in fresh.items():
             if df is not None and not df.empty:
                 cache.save_cached(market_key, sym, df)

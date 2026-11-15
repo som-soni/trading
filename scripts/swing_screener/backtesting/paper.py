@@ -30,6 +30,7 @@ ledger rows carry source `paper`; the account form and Kite never touch a paper 
 from __future__ import annotations
 
 import json
+import logging
 import math
 from datetime import date
 
@@ -38,6 +39,8 @@ import pandas as pd
 from ..config import MARKETS
 from ..marketdata import corporate_actions, db
 from . import ledger
+
+logger = logging.getLogger(__name__)
 
 PAPER_SUFFIX = "@paper"
 
@@ -295,7 +298,7 @@ def step(book: str, market: str, today: date | None = None) -> dict:
     sess = sessions(market)
     latest = sess[-1]
     px_cache: dict = {}
-    done = {"filled": 0, "skipped": 0, "decided": 0}
+    done = {"filled": 0, "skipped": 0, "decided": 0, "waiting": None}
 
     if kind == "signal":
         return _step_signal(book, market, strategy, sess, done)
@@ -340,6 +343,9 @@ def step(book: str, market: str, today: date | None = None) -> dict:
             rid = ledger.save_rebalance(book, market, as_of, spec_id, tg, [], note="paper")
             _order(book, market, "rebalance", as_of, rebalance_id=rid, note="fills at the next open")
             done["decided"] += 1
+        else:   # the selection is not dated to the latest close (its prices end before it): said, not dropped silently
+            done["waiting"] = f"rebalance due; selection as of {as_of or 'none'}, latest close {latest.date()}"
+            logger.warning("%s %s: %s", book, market, done["waiting"])
     return done
 
 

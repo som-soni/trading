@@ -3336,7 +3336,8 @@ async function moversPage(alive, mkt) {
       ? `stocks trading ≥ ${moneyShort(d.liquid.value, d.market)}/day (20-day avg), price ≥ ${d.market === "india" ? "₹" : "$"}${d.liquid.price}` : "every common stock";
     return `<section class="mv-card">
       <div class="mv-head"><h2>${MKT_NAME[d.market]}</h2><span class="muted">${span}</span>
-        ${d.bench.pct != null ? `<span class="mv-bench">${esc(d.bench.label)} <b class="${d.bench.pct >= 0 ? "pos" : "neg"}">${signed(d.bench.pct)}%</b></span>` : ""}
+        ${d.bench.pct != null ? `<span class="mv-bench">${esc(d.bench.label)} <b class="${d.bench.pct >= 0 ? "pos" : "neg"}">${signed(d.bench.pct)}%</b></span>`
+          : `<span class="mv-bench" title="${esc(d.bench.date ? `The index's stored series ends ${prettyDate(d.bench.date)}, before these prices` : "No stored index series")}">${esc(d.bench.label)} <b class="muted">unknown</b></span>`}
         <span class="spacer"></span>
         <span class="mv-ad" title="Advancing / declining stocks over the period">
           <span class="pos">${d.adv.toLocaleString()} up</span>
@@ -4510,7 +4511,9 @@ async function breadthPage(alive, mkt) {
     return;
   }
   const pc = (v, d = 1) => (v == null ? "" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
-  const idxLine = b.index_keys.map((k) => { const x = b.indexes[k]; return `${esc(x.label)} <b class="${x.day >= 0 ? "pos" : "neg"}">${pc(x.day, 2)}</b>`; }).join(" · ");
+  const idxLine = b.index_keys.map((k) => { const x = b.indexes[k]; return x.day == null
+    ? `<span title="${esc(`Its stored series ends ${prettyDate(x.date)}, before this breadth day`)}">${esc(x.label)} <b class="muted">unknown</b></span>`
+    : `${esc(x.label)} <b class="${x.day >= 0 ? "pos" : "neg"}">${pc(x.day, 2)}</b>`; }).join(" · ");
   const gauge = (p) => (p == null ? "" : `<div class="gauge"><i style="left:${Math.max(0, Math.min(100, p)).toFixed(1)}%"></i></div><div class="gauge-l"><span>low</span><span>high</span></div>`);
   const card = (c) => `<div class="bcard"><div class="bq">${esc(c.title)}</div><div class="bv">${esc(c.value)}</div>${c.sub ? `<div class="muted small">${esc(c.sub)}</div>` : ""}
     ${gauge(c.pct)}<p class="bt">${esc(c.text)}</p>
@@ -9816,7 +9819,7 @@ async function todayPage(alive, mkt) {
   const ours = (x) => !x.market || x.market === "all" || x.market === mkt;
   const issues = [];
   if (status) {
-    for (const it of (status.freshness?.[mkt]?.items || [])) if (it.status && it.status !== "ok" && ["prices", "breadth", "screening"].includes(it.key))
+    for (const it of (status.freshness?.[mkt]?.items || [])) if (it.status && it.status !== "ok" && ["prices", "indexes", "breadth", "screening"].includes(it.key))
       issues.push(`${esc(it.label)}: ${esc(it.text || it.status)}`);
     const lanes = status.lanes || {};
     if (!status.worker?.alive) issues.push(`The job worker is stopped — nothing queued or scheduled will run. <a href="#/status">Start it</a>`);
@@ -9830,7 +9833,7 @@ async function todayPage(alive, mkt) {
   const queueLine = running.length || waiting ? `${running.length ? `Running: ${running.map((x) => esc(`${(x.targets || []).join(" + ")}${x.market && x.market !== "all" ? ` · ${mktInfo(x.market).name}` : ""}${x.lane && x.lane !== "main" ? ` (${x.lane} lane)` : ""}`)).join(", ")}` : ""}${waiting ? `${running.length ? " · " : ""}${waiting} waiting in the queue` : ""}` : "";
   const health = `<div class="td-health ${issues.length ? "warn" : "ok"}">
       <div class="td-hl"><b>${issues.length ? "Data health — check before trading" : "Data current"}</b>
-        <span class="muted small">${issues.length ? "" : "prices, breadth and the screens are up to date"}${queueLine ? `${issues.length ? "" : " · "}${queueLine}` : ""}</span>
+        <span class="muted small">${issues.length ? "" : "prices, indexes, breadth and the screens are up to date"}${queueLine ? `${issues.length ? "" : " · "}${queueLine}` : ""}</span>
         <span class="spacer"></span><a class="small" href="#/status">System status →</a></div>
       ${issues.length ? `<ul class="td-issues">${issues.map((x) => `<li>${x}</li>`).join("")}</ul>` : ""}</div>`;
 

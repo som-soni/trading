@@ -8,6 +8,7 @@ every backtest day) is free correctness-wise and saves real time.
 """
 
 import contextlib
+import functools
 import logging
 import time
 
@@ -18,7 +19,7 @@ from . import corporate_actions, db, frozen, sessions, spac_history, splits
 from . import asof
 
 from ..core import indicators as ind
-from ..providers.base import DataProvider
+from ..providers.base import DataProvider, complete_through
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,24 @@ def source_rescaled(cached: pd.DataFrame, new_rows: pd.DataFrame) -> bool:
     return bool(ratio > 0 and abs(np.log(ratio)) > RESCALE_TOL)
 
 
+def market_sessions(market: str):
+    """A block in which providers keep `market`'s bars through its last completed session
+    (`_expected_session`: the exchange's own clock and data cutoff). Without it a provider judges by
+    this machine's date, which dropped India's evening bar (an IST machine, the day's date) and would
+    keep an in-progress US bar after midnight IST."""
+    return complete_through(_expected_session(market).date())
+
+
+def _in_market_sessions(fn):
+    """Run a `(provider, market, ...)` fetch inside `market_sessions(market)`."""
+    @functools.wraps(fn)
+    def wrapped(provider, market, *args, **kwargs):
+        with market_sessions(market):
+            return fn(provider, market, *args, **kwargs)
+    return wrapped
+
+
+@_in_market_sessions
 def get_bars(
     provider: DataProvider,
     market: str,
@@ -385,6 +404,7 @@ def _expected_session(market: str) -> pd.Timestamp:
     return _last_expected_session()
 
 
+@_in_market_sessions
 def get_many_bars(
     provider: DataProvider,
     market: str,

@@ -27,7 +27,8 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
     provider = YFinanceProvider()
 
     if fresh:
-        raw = provider.get_daily_bars(symbol, LOOKBACK_DAYS)
+        with cache.market_sessions(market_key):
+            raw = provider.get_daily_bars(symbol, LOOKBACK_DAYS)
         if raw is not None and not raw.empty:
             cache.save_cached(market_key, symbol, raw)
     else:

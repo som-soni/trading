@@ -704,7 +704,8 @@ def _paper(ctx: Ctx) -> None:
         ctx.step.skip("no paper books in this market")
         return
     ctx.step.detail = " · ".join(f"{b}: {d['filled']} filled, {d['decided']} decided"
-                                 + (f", {d['skipped']} skipped" if d["skipped"] else "") for b, d in done.items())
+                                 + (f", {d['skipped']} skipped" if d["skipped"] else "")
+                                 + (f" ({d['waiting']})" if d.get("waiting") else "") for b, d in done.items())
     ctx.step.stats = {b: d for b, d in done.items()}
 
 

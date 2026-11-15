@@ -1,10 +1,9 @@
-import datetime as dt
 import time
 
 import pandas as pd
 import yfinance as yf
 
-from .base import DataProvider
+from .base import DataProvider, last_complete_session
 
 _COLUMNS = ["open", "high", "low", "close", "volume"]
 
@@ -21,14 +20,12 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
 
 def _drop_incomplete_bar(df: pd.DataFrame) -> pd.DataFrame:
     """DATA RULE: work on completed bars only. yfinance includes the
-    in-progress session as the last row while the market is open; drop it
-    if the last bar's date is today."""
+    in-progress session as the last row while the market is open; drop any
+    bar dated after the exchange's last completed session
+    (`base.last_complete_session`, set per market by the cache layer)."""
     if df.empty:
         return df
-    today = pd.Timestamp(dt.date.today())
-    if df.index[-1] >= today:
-        return df.iloc[:-1]
-    return df
+    return df[df.index <= pd.Timestamp(last_complete_session())]
 
 
 class YFinanceProvider(DataProvider):

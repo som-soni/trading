@@ -264,8 +264,12 @@ def compute(market: str, start: str | None = None) -> int:
 
 
 def fetch_indexes(market: str) -> dict:
-    """Refresh the index and volatility-index series the page needs (a few small downloads)."""
+    """Refresh the index and volatility-index series the page needs (a few small downloads), completed sessions
+    only: the provider's rule, judged by the market's own clock (`cache.market_sessions`), so neither a session
+    in progress nor the stray row Yahoo dates on a weekend is stored as a close."""
     import yfinance as yf
+    from ..marketdata import cache
+    from ..providers.yfinance_provider import _drop_incomplete_bar
     out = {}
     for key, ticker, _ in [*INDEXES[market], VOL_INDEX[market]]:
         try:
@@ -275,7 +279,8 @@ def fetch_indexes(market: str) -> dict:
             if raw is None or raw.empty:
                 raise ValueError("no data")
             raw.index = pd.to_datetime(raw.index).tz_localize(None)
-            raw = raw[raw.index >= "2010-01-01"]
+            with cache.market_sessions(market):
+                raw = _drop_incomplete_bar(raw[raw.index >= "2010-01-01"])
             rows = [(market, key, d.date(), float(c)) for d, c in raw["Close"].dropna().items() if c > 0]
             db.execute_values("INSERT INTO index_series (market, series, date, close) VALUES %s "
                               "ON CONFLICT (market, series, date) DO UPDATE SET close = EXCLUDED.close", rows)

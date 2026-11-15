@@ -2980,7 +2980,9 @@ def breadth_page(market: str = "india"):
     charts = {"hl": ser(d.hl), "hl10": ser(d.hl10), "pct50": ser(d.pct50), "ad10": ser(d.ad10)}
     for k, v in idx.items():
         charts[k] = ser(v["s"][v["s"].index >= d.index[0]])
-    head = {k: {"label": v["label"], "close": float(v["s"].iloc[-1]), "day": float(v["s"].iloc[-1] / v["s"].iloc[-2] - 1),
+    # an index that ends before the breadth day has no move for that day: `day` None, not its last session's move
+    head = {k: {"label": v["label"], "close": float(v["s"].iloc[-1]),
+                "day": float(v["s"].iloc[-1] / v["s"].iloc[-2] - 1) if v["s"].index[-1] >= d.index[-1] else None,
                 "from_high": float(v["s"].iloc[-1] / v["s"].iloc[-252:].max() - 1), "date": v["s"].index[-1].date().isoformat()} for k, v in idx.items()}
     return {"market": market, "date": d.index[-1].date().isoformat(), "updating": updating, "n": int(T.n), "breadth_n": br.BREADTH_N,
             "indexes": head, "index_keys": [k for k, _, _ in br.INDEXES[market] if k in idx], "vol_label": vlabel,
@@ -3343,11 +3345,15 @@ def _equities(market: str, _day) -> set:
 
 
 def _bench_change(market: str, d0, d1):
+    """The index's change from `d0` to `d1`, or `pct` None when its series ends before `d1` (`date` says where):
+    read at its last close it would print 0.00%, or an older day's move, as the stocks' day."""
     series, label = _MOVER_BENCH[market]
-    at = lambda d: q("SELECT close FROM index_series WHERE market=%s AND series=%s AND date<=%s ORDER BY date DESC LIMIT 1",
+    at = lambda d: q("SELECT close, date FROM index_series WHERE market=%s AND series=%s AND date<=%s ORDER BY date DESC LIMIT 1",
                      (market, series, d))
     a, b = at(d0), at(d1)
-    return {"label": label, "pct": (b[0][0] / a[0][0] - 1) * 100 if a and b and a[0][0] else None}
+    if not b or b[0][1] < d1:
+        return {"label": label, "pct": None, "date": b[0][1].isoformat() if b else None}
+    return {"label": label, "pct": (b[0][0] / a[0][0] - 1) * 100 if a and a[0][0] else None, "date": d1.isoformat()}
 
 
 @app.get("/api/movers")

@@ -182,7 +182,8 @@ def refetch_full(market: str, syms: list[str], provider=None, pause: float = 1.0
     out: dict[str, pd.DataFrame] = {}
     for i in range(0, len(syms), 20):
         chunk = syms[i: i + 20]
-        got = provider.get_many_daily_bars(chunk, 0, batch_size=20, period="max", threads=False, fallback=False)
+        with cache.market_sessions(market):
+            got = provider.get_many_daily_bars(chunk, 0, batch_size=20, period="max", threads=False, fallback=False)
         rows = []
         for sym in chunk:
             df = got.get(sym)

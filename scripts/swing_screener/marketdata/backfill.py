@@ -75,7 +75,8 @@ def backfill_max(market: str, batch_size: int = 20, pause: float = 2.0) -> dict:
         for attempt, wait in enumerate((0, 60, 300)):
             time.sleep(wait)
             try:
-                got = provider.get_many_daily_bars(chunk, 0, batch_size=batch_size, period="max", threads=False, fallback=False)
+                with cache.market_sessions(market):
+                    got = provider.get_many_daily_bars(chunk, 0, batch_size=batch_size, period="max", threads=False, fallback=False)
             except Exception as e:  # noqa: BLE001
                 logger.warning("batch %d attempt %d failed: %s", i // batch_size, attempt + 1, e)
                 got = {}
@@ -144,7 +145,8 @@ def backfill_market(
     for i in range(0, len(todo), batch_size):
         chunk = todo[i : i + batch_size]
         try:
-            got = provider.get_many_daily_bars(chunk, lookback_days=want_bars, batch_size=batch_size)
+            with cache.market_sessions(market):
+                got = provider.get_many_daily_bars(chunk, lookback_days=want_bars, batch_size=batch_size)
         except Exception as e:
             logger.warning("batch %d failed entirely (%s); continuing", i // batch_size, e)
             stats["failed"] += len(chunk)
