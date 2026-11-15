@@ -1560,6 +1560,34 @@
     },
     "version": "1.6"
   },
+  "rs_line_lead": {
+    "family": "rs_line_lead",
+    "fingerprint": "48a5b2b3",
+    "params": {
+      "MAX_STOP_PCT": 10.0,
+      "MIN_STOP_PCT": 1.0,
+      "NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH": 15.0,
+      "NOMINAL_TARGET_R": 2,
+      "PRICE_LAG_MIN_PCT": 3,
+      "RS_BARS": 252,
+      "SMA200_FALLING_PCT": 0.5,
+      "SMA200_SLOPE_BARS": 20,
+      "STOP_PCT": 8,
+      "_key": "rs_line_lead",
+      "expiry_bdays": 15,
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "rsi_divergence": {
     "family": "rsi_divergence",
     "fingerprint": "97bde09a",
