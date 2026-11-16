@@ -971,8 +971,13 @@ async function chartPage(alive, market, symbol, tf) {
     await STRATEGIES;
     const name = Studies.setupName();
     setupBtn.lastChild.textContent = name ? ` ${name}` : " Trade setups";
-    setupBtn.classList.toggle("on", !!name && tf === "D");   // on a weekly / monthly chart nothing is drawn: not shown as active
-    setupBtn.classList.toggle("idle", !!name && tf !== "D");
+    // shown as active only when its setups are drawn: not on a weekly / monthly chart, and not with the Backtest trades
+    // panel's "Trade only" on (the layer stands down then, and only the run's buy, stop, target and sell are drawn)
+    const drawn = !!name && tf === "D" && !tradeOnlyOn();
+    setupBtn.classList.toggle("on", drawn);
+    setupBtn.classList.toggle("idle", !!name && !drawn);
+    setupBtn.title = name && tradeOnlyOn() ? `${name}'s setups are hidden while "Trade only" is on (Backtest trades panel): only the run's buy, stop, target and sell are drawn`
+      : name && tf !== "D" ? `${name}'s setups are computed on daily bars` : setupBtn.title;
     setupBtn.hidden = !Studies.setupLayers().length;
   };
   markSetup();
