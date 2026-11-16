@@ -427,7 +427,7 @@ def highs_lows(market: str) -> pd.DataFrame:
     return out[out.index <= asof.end()] if asof.end() is not None else out
 
 
-def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Series:
+def market_ok(market: str, confirm_days: int = 0, guide: bool = False, parts: dict | None = None) -> pd.Series:
     """Per date: may new buys be taken?
 
     MKT-01 (`guide=False`): benchmark close > its SMA200 and SMA50 > SMA200.
@@ -450,7 +450,11 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
     size. The series is then FLOAT, 1.0 risk-on / PE_PILOT_FRAC pilot / 0.0 risk-off, which every
     reader that takes it as a yes/no still reads correctly (0.0 is the only falsy value) and the
     simulator reads as the size of a new entry. With MKT_PILOT=0 it is the bool series it always was.
+
+    `parts`, when given, is filled with each test's own series (name -> {"ok": bool series, "value": series, ...}),
+    so a page can say WHICH test closed the market (`market_filter_status`) from this one implementation.
     """
+    parts = {} if parts is None else parts
     b = cache.load_cached(market, MARKETS[market].benchmark_ticker)
     c = b["close"].astype(float)
     if guide:
@@ -460,14 +464,18 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
         # term is what separates "above a falling average on a bounce" from a market that is
         # actually turning up, and a bounce is where breakout entries fail worst.
         ok = c > sma
+        parts["index_above"] = {"ok": c > sma, "value": c, "ref": sma}
         if ms.MKT_SMA_RISING_DAYS:          # 0 turns the slope term off, as a sweepable parameter
             ok = ok & (sma > sma.shift(ms.MKT_SMA_RISING_DAYS))
+            parts["index_rising"] = {"ok": sma > sma.shift(ms.MKT_SMA_RISING_DAYS), "value": sma, "ref": sma.shift(ms.MKT_SMA_RISING_DAYS)}
         if not ms.MKT_INDEX_TEST:
             # 1.59: the benchmark and breadth tests off, so the segment test below can stand alone
             ok = pd.Series(True, index=c.index)
+            parts.pop("index_above", None); parts.pop("index_rising", None)   # not part of the test then
         br = breadth_pct50(market) if ms.MKT_INDEX_TEST else pd.Series(dtype=float)
         if len(br):
             breadth_ok = (br > ms.MKT_BREADTH_MIN_PCT) | (br > br.shift(ms.MKT_BREADTH_RISING_DAYS))
+            parts["breadth"] = {"ok": breadth_ok, "value": br, "ref": br.shift(ms.MKT_BREADTH_RISING_DAYS)}
             known = breadth_ok.reindex(c.index)          # NaN where breadth has no row that day
             ok = ok & known.fillna(True).astype(bool)
         if ms.MKT_SEGMENT_MOM_DAYS and MARKETS[market].segment_symbol:
@@ -480,6 +488,8 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
                 sc = seg["close"].astype(float)
                 mom = (sc / sc.shift(int(ms.MKT_SEGMENT_MOM_DAYS)) - 1) * 100 > ms.MKT_SEGMENT_MOM_MIN_PCT
                 mom = mom.where(sc.shift(int(ms.MKT_SEGMENT_MOM_DAYS)).notna())
+                parts["segment"] = {"ok": mom, "value": (sc / sc.shift(int(ms.MKT_SEGMENT_MOM_DAYS)) - 1) * 100,
+                                    "name": MARKETS[market].segment_symbol}
                 ok = ok & mom.reindex(c.index).ffill().fillna(True).astype(bool)
         if ms.MKT_HIGHS_LOWS_DAYS:
             # Leadership (1.32): over the last MKT_HIGHS_LOWS_DAYS sessions, more stocks made new
@@ -489,6 +499,7 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
                 w = int(ms.MKT_HIGHS_LOWS_DAYS)
                 lead = hl["highs"].rolling(w).sum() > ms.MKT_HIGHS_LOWS_RATIO * hl["lows"].rolling(w).sum()
                 lead = lead.where(hl["highs"].rolling(w).count() == w)       # NaN until a full window
+                parts["leaders"] = {"ok": lead, "value": hl["highs"].rolling(w).sum(), "ref": hl["lows"].rolling(w).sum()}
                 ok = ok & lead.reindex(c.index).fillna(True).astype(bool)
     else:
         s50, s200 = c.rolling(50).mean(), c.rolling(200).mean()
@@ -502,6 +513,70 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
             pilot = pilot_signal(market, b, ok)
             return ok.astype(float).where(ok, pilot.astype(float) * float(ms.PE_PILOT_FRAC))
     return ok
+
+
+def market_filter_status(market: str) -> dict:
+    """The Minervini market filter as the live screen reads it (minervini_spec.market_risk_off: `market_ok` with the
+    guide's test, as of the latest stored session): open or closed, since when, and each test's own reading --
+    taken from `market_ok(parts=...)`, never re-derived. For the Candidates page's banner."""
+    # the market's own rules (minervini market_consts: the US reads only the segment, MKT_INDEX_TEST=0), applied for
+    # this call and restored -- under a lock, since a web server may answer two markets at once
+    from ..strategies import variants
+    with _STATUS_LOCK, variants.market_rules("minervini", market):
+        return _market_filter_status(market)
+
+
+import threading as _threading  # noqa: E402
+_STATUS_LOCK = _threading.Lock()
+
+
+def _market_filter_status(market: str) -> dict:
+    from ..strategies import minervini_spec as ms
+    parts: dict = {}
+    ok = market_ok(market, guide=bool(ms.MKT_GUIDE), parts=parts)
+    if not len(ok):
+        return {"market": market, "known": False}
+    day = ok.index[-1]
+    is_open = bool(ok.iloc[-1])
+    flips = ok.astype(bool) != ok.astype(bool).shift(1)
+    since = ok.index[flips][-1] if flips.any() else ok.index[0]
+
+    def at(series):
+        v = series.reindex(ok.index).ffill().iloc[-1] if series is not None and len(series) else None
+        return None if v is None or pd.isna(v) else float(v)
+
+    bench = MARKETS[market].benchmark_ticker
+    tests = []
+    if "index_above" in parts:
+        p = parts["index_above"]
+        tests.append({"key": "index_above", "ok": bool(at(p["ok"].astype(float)) or 0),
+                      "text": f"{bench} {at(p['value']):,.2f} vs its {ms.MKT_INDEX_SMA}-day average {at(p['ref']):,.2f}",
+                      "rule": f"the benchmark closes above its {ms.MKT_INDEX_SMA}-day average"})
+    if "index_rising" in parts:
+        p = parts["index_rising"]
+        tests.append({"key": "index_rising", "ok": bool(at(p["ok"].astype(float)) or 0),
+                      "text": f"{ms.MKT_INDEX_SMA}-day average {at(p['value']):,.2f}, {ms.MKT_SMA_RISING_DAYS} sessions ago {at(p['ref']):,.2f}",
+                      "rule": f"that average higher than {ms.MKT_SMA_RISING_DAYS} sessions ago"})
+    if "breadth" in parts:
+        p = parts["breadth"]
+        v, r = at(p["value"]), at(p["ref"])
+        tests.append({"key": "breadth", "ok": bool(at(p["ok"].astype(float)) or 0),
+                      "text": f"{v:.0f}% of stocks above their 50-day" + (f" ({r:.0f}% {ms.MKT_BREADTH_RISING_DAYS} sessions ago)" if r is not None else ""),
+                      "rule": f"breadth above {ms.MKT_BREADTH_MIN_PCT:g}% or higher than {ms.MKT_BREADTH_RISING_DAYS} sessions earlier"})
+    if "segment" in parts:
+        p = parts["segment"]
+        v = at(p["value"])
+        if v is not None:
+            tests.append({"key": "segment", "ok": bool(at(p["ok"].astype(float)) or 0),
+                          "text": f"{p['name']} {v:+.1f}% over {ms.MKT_SEGMENT_MOM_DAYS} sessions",
+                          "rule": f"the small- and mid-cap segment up more than {ms.MKT_SEGMENT_MOM_MIN_PCT:g}% over {ms.MKT_SEGMENT_MOM_DAYS} sessions"})
+    if "leaders" in parts:
+        p = parts["leaders"]
+        tests.append({"key": "leaders", "ok": bool(at(p["ok"].astype(float)) or 0),
+                      "text": f"{at(p['value']):.0f} new highs vs {at(p['ref']):.0f} new lows over {ms.MKT_HIGHS_LOWS_DAYS} sessions",
+                      "rule": f"new highs above {ms.MKT_HIGHS_LOWS_RATIO:g}x new lows"})
+    return {"market": market, "known": True, "open": is_open, "as_of": str(day.date()), "since": str(since.date()),
+            "filter_on": bool(ms.MKT_FILTER), "tests": tests}
 
 
 def follow_through(close: pd.Series, volume: pd.Series, full: pd.Series) -> pd.Series:

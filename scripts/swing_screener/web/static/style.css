@@ -2272,3 +2272,9 @@ table.sh-table { border-collapse: separate; border-spacing: 0; width: 100%; font
 .wi-v { display: flex; align-items: baseline; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
 .wi-v.off b { text-decoration: line-through; opacity: .6; }
 .tile .wi-was { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Candidates: the market filter's verdict and its tests (app.js marketFilterBanner) */
+.mkt-filter { border: 1px solid var(--line-2); border-left: 3px solid var(--up); border-radius: 6px; padding: 8px 12px; margin: 6px 0 10px; background: var(--panel); }
+.mkt-filter.closed { border-left-color: var(--down); }
+.mkt-filter ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.mkt-filter li.pos > span:first-of-type, .mkt-filter li.neg > span:first-of-type { color: var(--text); }

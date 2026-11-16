@@ -7368,6 +7368,21 @@ function strategyBacktests(host, d, key) {
   wireBtRun();
 }
 
+/** The market filter's verdict above a strategy's candidates, with each test's reading: why "market filter: no new buys"
+ *  holds every trade at WATCH. Minervini's own filter (server /api/market-filter -> spec.market_filter_status, the
+ *  same market_ok the screen and backtest use); other strategies keep their own regime notes. */
+const MKT_FILTER_STRATS = new Set(["minervini"]);
+async function marketFilterBanner(box, strat, mkt, alive) {
+  if (!box || !MKT_FILTER_STRATS.has(strat)) return;
+  const f = await api(`/api/market-filter/${mkt}`).catch(() => null);
+  if (!alive() || !f || !f.known || !f.filter_on) return;
+  const tests = (f.tests || []).map((t) => `<li class="${t.ok ? "pos" : "neg"}" title="${esc(`Rule: ${t.rule}`)}">${t.ok ? "✓" : "✗"} <span>${esc(t.text)}</span> <span class="muted small">— ${esc(t.rule)}</span></li>`).join("");
+  box.innerHTML = `<div class="mkt-filter ${f.open ? "open" : "closed"}">
+    <b>${f.open ? "Market filter: open — new buys allowed" : "Market filter: closed — no new buys"}</b>
+    <span class="muted small">since ${esc(prettyDate(f.since))}, as of ${esc(prettyDate(f.as_of))}${f.open ? "" : ". Every setup that would trade is held at WATCH until all of these pass"}</span>
+    <ul>${tests}</ul></div>`;
+}
+
 /** a strategy's latest (or chosen) run: every screened stock with its decision, plan and gates */
 async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   mkt = pageMarket(mkt);
@@ -7385,8 +7400,9 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   // the edge grade for the market shown: is the list below drawn by rules that have earned trust here
   host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}${run ? `<span class="run-label">${esc(label)}</span>` : ""}${edgeChip(strat, mkt)}<span class="spacer"></span>
       <button id="run1" title="Run this strategy on today's data (adds a run to the job queue)">Run this strategy…</button></div>
-    <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
+    <div id="mktf"></div><div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
   host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => nav(b.dataset.v));
+  marketFilterBanner(host.querySelector("#mktf"), strat, mkt, alive);
   host.querySelector("#run1").onclick = () => startJob({ title: `Run ${strat} · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true, pick: strat });
   if (!run) { host.querySelector("#tbl").innerHTML = `<div class="empty"><b>No runs for ${MKT_BADGE[mkt]} yet</b><div class="muted">Run the strategies job, then refresh.</div></div>`; return; }
   const q = new URLSearchParams({ source: run.source, market: mkt, strategy: strat, run: run.run });

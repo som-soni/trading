@@ -2840,6 +2840,19 @@ def market_snapshot_series(market: str, subject: str, field: str):
             "line": [{"time": d.strftime("%Y-%m-%d"), "value": round(float(v), 4)} for d, v in ms.series(market, subject, field)]}
 
 
+@app.get("/api/market-filter/{market}")
+def market_filter(market: str):
+    """The Minervini market filter as the live screen reads it: open or closed, since when, and each test's reading
+    (backtesting/spec.py market_filter_status, from market_ok's own parts). The Candidates page's banner."""
+    from ..backtesting import spec
+    if market not in MARKETS:
+        raise HTTPException(404, "unknown market")
+    try:
+        return spec.market_filter_status(market)
+    except Exception as e:  # noqa: BLE001 -- no benchmark stored: say so rather than fail the page
+        return {"market": market, "known": False, "error": str(e)}
+
+
 @app.get("/api/breadth-series")
 def breadth_series(market: str, field: str):
     """One breadth measure over time; `adline` is the cumulative advance-decline line."""
