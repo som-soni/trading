@@ -1,6 +1,6 @@
 ---
 name: daily-quiz
-description: Give the user today's trading-knowledge quiz, or grade the answers they paste back. A comprehensive, spaced-repetition course across every dimension of trading — live market review, macro, sectors, fundamentals, price action, a broad strategy catalog (far beyond the portal's own), risk and sizing, execution, F&O, testing and statistics, psychology, tax and regulation, market history. Use when the user asks for a quiz, test, "today's test", or pastes answers to one.
+description: Give the user today's trading-knowledge quiz, or grade the answers they paste back. A comprehensive, spaced-repetition course across every dimension of trading — live market review, macro, sectors, fundamentals, price action, indicators, a broad strategy catalog (far beyond the portal's own), risk and sizing, execution, F&O, testing and statistics, psychology, tax and regulation, market history. Use when the user asks for a quiz, test, "today's test", or pastes answers to one.
 argument-hint: "[grade | exam | focus <dimension>] (empty = today's quiz)"
 ---
 
@@ -24,13 +24,16 @@ Work in /Users/admin/Workspace/trading. Read-only: never edit code, queue jobs o
 
 The tracker is `/Users/admin/.claude/projects/-Users-admin-Workspace-trading/memory/daily-trading-test.md`:
 the user's level per dimension, the **weak-spot queue** (misses still to re-test), the **coverage
-grid** (each dimension's last date and recent score), and the day log. Read it before writing or
+grid** (each dimension's last date and recent score), the **topic grid** (every curriculum topic code
+with the date it was last asked, blank = never), and the day log. Read it before writing or
 grading anything. Never reveal its contents as answers.
 
 ## 2. Writing today's quiz
 
-The curriculum is [curriculum.md](curriculum.md): 16 dimensions with their topics, and a strategy
-catalog. Pick about 12 questions:
+The curriculum is [curriculum.md](curriculum.md): 17 dimensions, each split into numbered topics
+(`5.6`, `17.5` …), and a strategy catalog. Coverage is chosen and tracked **by topic**, never by
+dimension alone: a chart drill touches a few topics of dimension 5, it does not "cover" price action.
+Pick about 12 questions:
 
 | Slot | Count | How to choose |
 |---|---|---|
@@ -39,7 +42,14 @@ catalog. Pick about 12 questions:
 | Chart drill | 1 | A real stock at a real past date, point in time (§3). |
 | Risk & maths | 1 | A calculation: R, expectancy, sizing, drawdown, costs, SE, Kelly, risk of ruin. |
 | Strategy | 1 | From the catalog, rotating; at least two in three from outside the portal's built strategies. |
-| Rotation | 5–6 | The dimensions least recently covered, weighted toward low scores. No dimension twice except re-tests. |
+| Rotation | 5–6 | Topics, not dimensions: **never-asked topics first** (at least 3 a quiz while any remain), then the topics asked longest ago, weighted toward low scores. No dimension twice except re-tests. |
+
+Two guards against a blind spot:
+- **No dimension waits more than three quizzes.** With 17 dimensions and about 12 questions a day,
+  each comes up at least once every three quizzes; one that has waited three goes in today.
+- **Name the topic codes.** Every question carries its codes in the tracker log (`Q4 9.1, 9.2`), and
+  the slots count too: the market review is `1.x`, the chart drill names the `5.x` / `17.x` topics it
+  actually asks, the strategy slot its `6.x` family.
 
 Mix the question types across the day: recall, calculation, scenario/decision ("what do you do now?"),
 spot-the-mistake, compare-two, explain-in-your-own-words, and one "teach it" question a week (explain a
@@ -122,13 +132,14 @@ When the user replies with answers:
    a fresh analogy and a second worked example. For ✓ answers, one line, adding the nuance they missed
    if any.
 4. Give the reveal for the chart drill and the frameworks' read for the market review.
-5. Close with what the next quiz will cover (dimensions and re-tests).
+5. Close with what the next quiz will cover (dimensions, never-asked topics and re-tests).
 
 Then update the tracker:
 - the day's score and a one-line summary;
 - each miss → weak-spot queue (concept, how it was got wrong, date); an item leaves the queue after two
   correct re-tests on different days;
-- the coverage grid (date, score per dimension) and any level change.
+- the coverage grid (date, score per dimension), the topic grid (date for each topic code the quiz
+  asked) and any level change.
 
 If the user asks for an explanation of a concept between quizzes (as in "explain how R works"), teach
 it with one running scenario, and add the concept to the next quiz's re-tests.
