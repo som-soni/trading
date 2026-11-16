@@ -2225,19 +2225,6 @@ table.sh-table { border-collapse: separate; border-spacing: 0; width: 100%; font
 /* a strategy's page: full width, breadcrumb with previous / next */
 .strat-page .sdoc { max-width: none; }
 .strat-page .sdoc p, .strat-page .sd-lead, .strat-page .sdoc li { max-width: 100ch; }
-/* the Measured outcome: the table only as wide as its figures, its notes beside it on a wide screen */
-.strat-page .sd-glance { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 28px; }
-.strat-page .sd-glance > h2 { flex: 1 0 100%; }
-.strat-page .sd-glance > table.dtab { width: auto; flex: 0 1 auto; }
-.strat-page .sd-glance > table.dtab td, .strat-page .sd-glance > table.dtab th { padding-left: 14px; padding-right: 14px; }
-.strat-page .sd-glance > p { flex: 1 1 380px; max-width: 80ch; margin-top: 4px; }
-/* the rules: two columns of cards on a wide screen, read down each column (the outcome and source span both) */
-@media (min-width: 1400px) {
-  .strat-page .sdoc-tab { column-count: 2; column-gap: 16px; }
-  .strat-page .sdoc-tab > .sd-sec { break-inside: avoid; margin: 0 0 16px; }
-  .strat-page .sdoc-tab > .sd-glance, .strat-page .sdoc-tab > .sd-src { column-span: all; }
-  .strat-page .sdoc-tab > .sd-glance { margin-bottom: 16px; }
-}
 .strat-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; margin-bottom: 6px; }
 .strat-crumbs .sc-pn { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .strat-crumbs .sc-pn a { color: var(--text); }
