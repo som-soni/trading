@@ -25,7 +25,7 @@ and what the creators said they do.
 |---|---|---|
 | **Account** | **₹20,00,000** (India) | The equity every R is taken from |
 | **Max risk per trade (R)** | **1% = ₹20,000** | Entry to stop × shares ≤ ₹20,000. The screens and setups already size at this (India market config: account ₹20L, risk 1%, high-volatility days 0.5%) |
-| **Momentum book** | **₹5,00,000** | A monthly-rebalanced ranking book, sized by the book's own value and the strategy's weights — not by R. Its stocks carry no stop, so they use no part of the R budget. Strategy: to choose (India momentum is the only family here with an out-of-sample edge; dual-momentum combo has the shallowest drawdowns) |
+| **Momentum book** | **₹5,00,000** | A monthly-rebalanced ranking book, sized by the book's own value and the strategy's weights — not by R. Its stocks carry no stop, so they use no part of the R budget. Strategy: **momentum + dual momentum (`momentum_dual_combo`), India** — chosen 2026-11-16: India momentum is the only family here with an out-of-sample edge, and the combo had the shallowest drawdowns. Half the book in the top-ranked momentum stocks, half in the dual-momentum asset; rebalanced at month-end. The ₹5L is recorded as the book's opening cash |
 | **Swing / position books** | **₹15,00,000** | Every per-stock trade, sized by R. Cash, not R, is the binding limit: positions must fit in the ₹15L |
 | **Largest position** | ₹5,00,000 (25% of the account) | The screens' cap; with ₹15L for the swing books that is three full positions at most |
 | **Review** | **2027-02-15**, three months on | Revisit the ₹5L / ₹15L split and R against the journal: realised R per trade, drawdown, how often the cash limit bound |
@@ -123,7 +123,7 @@ never as probes — a probe must be cheap even when it gaps.
 ## 7. Decisions for me to make
 
 1. ~~My base risk R per trade~~ — set 2026-11-15: 1% of ₹20L for longs (§0). Still open: R for shorts.
-1a. Which strategy runs the ₹5L momentum book.
+1a. ~~Which strategy runs the ₹5L momentum book~~ — set 2026-11-16: `momentum_dual_combo` (India).
 2. Total open risk and short risk caps.
 3. Whether to adopt both the market filter and progressive exposure (smoother equity, lower return) or the filter alone.
 4. Which session I trade with full attention — India by day, the US by night — and the size cap for the other.
