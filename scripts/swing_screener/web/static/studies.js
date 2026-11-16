@@ -444,6 +444,7 @@ const Studies = (() => {
         chart.subscribeCrosshairMove(offLater);
         // the side panel's Trade setups tab (app.js) lists these: hand it the list, the selection, and a way to pick one
         const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus), note: summary, detail, keyBox, act, pager: renderPager,
+          traded: (x) => !!tradeOf(x),   // the selected run traded this setup (its trades matched to setups, as drawn)
           select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); },
           // keep a setup selected across a re-render (a backtest picked): select it without moving the chart
           pin: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; paint(); } });

@@ -1300,7 +1300,7 @@ async function chartPage(alive, market, symbol, tf) {
     // the setups layer's legend pager shows only while the Trade setups tab is closed (the tab has the text then)
     setupsOpen: () => prefs.tab === "setups",
     runStrategy: runKey,   // a setups layer counts a run's trades as its own only when the run is of its strategy
-    setupShows: (x) => setupFilter === "all" || setupKind(x) === setupFilter,   // the pager follows the panel's list
+    setupShows: (x) => setupMatches(x),   // the pager follows the panel's list
     openSetups: () => { prefs.tab = "setups"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); },
     onSetups: (feed) => {
       // the layer's first setups: when a strategy was just picked, or the panel's filter hides the one the chart
@@ -1311,7 +1311,7 @@ async function chartPage(alive, market, symbol, tf) {
         // a backtest run was just picked: the setup that was selected stays selected, and the chart stays put
         const keep = keepSetup; keepSetup = null;
         const kk = keep && keep.type === Studies.activeSetup() ? feed.list.findIndex((x) => x.ref === keep.ref) : -1;
-        const shows = (x) => setupFilter === "all" || setupKind(x) === setupFilter;
+        const shows = (x) => setupMatches(x);
         const cur = feed.list[feed.focus], switched = setupSwitched;
         setupSwitched = false;
         if (kk >= 0) { if (kk !== feed.focus) return feed.pin(kk); }
@@ -1324,7 +1324,7 @@ async function chartPage(alive, market, symbol, tf) {
       // the selected setup is always one the panel's list shows: picked where the filter hides it (a lane pill, a
       // click on its box), the filter opens to All rather than leave the list and the chart disagreeing
       const sel0 = feed.list[feed.focus];
-      if (sel0 && setupFilter !== "all" && setupKind(sel0) !== setupFilter) { setupFilter = "all"; store.set("setupFilter", "all"); feed.pager?.(); }
+      if (sel0 && setupFeed && setupFilter !== "all" && !setupMatches(sel0)) { setupFilter = "all"; store.set("setupFilter", "all"); feed.pager?.(); }
       setupFeed = feed;
       const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
       if (strat) noteSetupCount(`${market}:${symbol}`, strat,
@@ -2074,6 +2074,21 @@ async function chartPage(alive, market, symbol, tf) {
       avg != null ? `avg ${rTxt(avg)}` : "", rs.length ? `worst ${rTxt(Math.min(...rs))}` : "",
       days.length ? `median hold ${days[Math.floor(days.length / 2)]}d` : "", f.length - done.length ? `${f.length - done.length} open` : ""].filter(Boolean).join(" · ");
   }
+  /** "Not taken": a setup the rules would trade that the selected run -- a run of this same strategy -- did not, inside
+   *  the run's own years. Null when there is no such run to compare with (the chip is hidden then). */
+  function notTakenCtx() {
+    const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
+    const run = tradeRuns.find((r) => String(r.id) === String($("#trades")?.value || ""));
+    if (!run || !strat || run.strategy !== strat || !setupFeed?.traded) return null;
+    return { from: run.window_start || "0000", to: run.window_end || "9999", label: run.window_start ? `${run.window_start.slice(0, 4)}–${(run.window_end || "now").slice(0, 4)}` : "" };
+  }
+  function setupNotTaken(s, c = notTakenCtx()) {
+    if (!c || setupKind(s) !== "trade" || setupFeed.traded(s)) return false;
+    const d = (s.breakout || s.as_of || s.to || "").slice(0, 10);
+    return d >= c.from && d <= c.to;
+  }
+  // the panel's filter: a verdict, or "nottaken" (above)
+  function setupMatches(s) { return setupFilter === "all" || (setupFilter === "nottaken" ? setupNotTaken(s) : setupKind(s) === setupFilter); }
   function setupKind(s) {
     const entry = s.zones.find((z) => z.key === "entry" || z.key === "cheat");
     return s.kind === "young" ? "young" : s.kind === "watch" ? (s.expired ? "expired" : "trigger") : s.kind === "pass" ? "trade"
@@ -2275,11 +2290,13 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="muted small">${esc(name)}'s setups are hidden while <b>Trade only</b> is on in the Backtest trades panel: only the run's buy, stop, target and sell are drawn. Turn Trade only off there to see the setups.</div></section>`;
     if (!setupFeed) return `<section><h3>${esc(name)}</h3>${setupPickerHtml()}<div class="muted small">Finding the setups…</div></section>`;
     const kindOf = setupKind;
-    const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, expired: 0, refused: 0 };
-    setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; });
-    const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["expired", "Not triggered"], ["refused", "Refused"]]
-      .filter(([k]) => k !== "expired" || counts.expired)   // only strategies whose plans wait for a trigger have these
-      .map(([k, t]) => `<a class="sp-chip ${setupFilter === k ? "on" : ""}" data-f="${k}">${t} <span>${counts[k]}</span></a>`).join("");
+    const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, expired: 0, refused: 0, nottaken: 0 };
+    const ntc = notTakenCtx();
+    setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; if (setupNotTaken(s, ntc)) counts.nottaken++; });
+    if (setupFilter === "nottaken" && !ntc) setupFilter = "all";
+    const chips = [["all", "All"], ["trade", "Would trade"], ["nottaken", "Not taken by run"], ["trigger", "On trigger"], ["expired", "Not triggered"], ["refused", "Refused"]]
+      .filter(([k]) => (k !== "expired" || counts.expired) && (k !== "nottaken" || ntc))   // only strategies whose plans wait for a trigger have these
+      .map(([k, t]) => `<a class="sp-chip ${setupFilter === k ? "on" : ""}" data-f="${k}"${k === "nottaken" ? ` title="${esc(`Setups today's rules would trade, inside the run's years (${ntc.label}), that the selected run did not trade. A gap can be the run's own rules (an order already resting, positions full, ranking) -- see its Funnel tab -- or a rule changed since the run.`)}"` : ""}>${t} <span>${counts[k]}</span></a>`).join("");
     // the verdict as a pill in the card's own border colour, so a column of cards scans without reading
     const PILL = { trade: "would trade", trigger: "on trigger", expired: "not triggered", refused: "refused", young: "too young" };
     const years = [...new Set(setupFeed.list.map((x) => (x.base_from || x.from || "").slice(0, 4)).filter(Boolean))].sort().reverse();
@@ -2294,7 +2311,7 @@ async function chartPage(alive, market, symbol, tf) {
         }
         return setupSort === "oldest" ? a.i - b.i : b.i - a.i;
       })
-      .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
+      .filter(({ s }) => setupMatches(s))
       .filter(({ s }) => !yr || (s.base_from || s.from || "").startsWith(yr))
       // compact rows -- id, verdict, end date, one-line title; only the selected one opens to its detail (the
       // layer's own text: dates, summary, each zone and its checks), so a column of setups fits the panel
