@@ -238,6 +238,59 @@ knock-on trades (cash and slots moved).
 - **Decision: `FLAT_PIVOT_HIGHEST` stays off.** It fails the read rule in two of three rule sets, and its one gain
   (India) comes with lower R. The reviewed losers stay lessons of a single trade each.
 
+### Tighter exits, replayed trade by trade (2026-11-16; India, optimise 2013–2021, in-sample) — none helps
+
+Three exit ideas, each replayed on every trade of run 10516 (India, F2 variant, 169 trades, 11.24%) and, for the
+trails, of the shipped India run #1532 (181 trades, 10.31%). Each trade is walked on daily bars from its fill:
+the new exit sells at its level, or at the open when the price gaps under it, with the run's share count and the
+report's costs. Freed cash and slots are not reused, and sizing is not redone, so the CAGR figures are rough (from
+total P&L over 9 years). Selling intraday at the level is assumed, as daily bars cannot show it.
+
+**1. A hard 5% stop.** 150 of 169 stops were wider than 5% (median 6.8%; `MAX_STOP_PCT` is 8).
+
+| Cap | Trades cut | P&L change | ~CAGR |
+|---|---|---|---|
+| 5%, a dip on the fill day counts | 61 | −₹380k | 10.3% |
+| 5%, fill day ignored | 57 | −₹250k | 10.6% |
+| 6% | 42 | −₹342k | — |
+| 7% | 20 | −₹17k | — |
+
+The losers it cuts lose about the same (−₹0.70M either way): those that would hit their own stop save 1–3 points,
+and those that dipped 5% and then left on a smaller trend or light-volume exit lose more. It costs winners that
+dipped first: ALKYLAMINE +6.3R, VIYASH +3.2R and ABB +4.5R all become losses.
+
+**2. A chandelier stop** (highest high since the fill minus k × the 22-day ATR, never lowered), added to the
+strategy's exits or replacing all but the initial stop:
+
+| | Run 10516 | #1532 |
+|---|---|---|
+| As run | 11.2% | 10.3% |
+| Added, k = 2 / 3 / 4 | −0.8% / 1.4% / 1.7% | −0.9% / 0.2% / 1.2% |
+| Replacing, k = 3 / 4 | 1.4% / 0.8% | 0.2% / 0.6% |
+
+It sells the big trends on their first ordinary pullback: KPITTECH (+38.7R, ₹1.18M) was out on 15 Mar 2021, three
+weeks in, for ₹56k; the five best trades of run 10516 fall from ₹2.79M to ₹0.27M at k = 3.
+
+**3. A chandelier armed only after +5R** (22 trades in each run got there), added to the exits or taking over from
+them once armed — the two agree up to k = 6, because the trail always fires first:
+
+| k | Run 10516 | #1532 |
+|---|---|---|
+| 3 | 4.9% | 3.1% |
+| 4 | 5.6% | 4.4% |
+| 5 | 6.2% | 5.3% |
+| 6 | 9.2% | 8.7% |
+| 8 | 11.4% (+₹77k) | 10.6% (+₹119–128k) |
+
+Past +5R the best trends still pull back 3–6 ATR (TATAELXSI ₹1.11M → ₹0.07–0.13M at k = 3–5). k = 8's gain is
+VAKRANGEE alone (+₹125k, sold near the top before its 2018 collapse); without it k = 8 is −₹49k on run 10516 and
+flat on #1532. A trail that wide behaves like the 50-day trend exit already in place, and it is the best of five
+widths on the same years.
+
+- **Decision: the exits stay as they are.** The strategy's edge is a few long trends held through their pullbacks
+  (the 50-day trend exit, the breakeven stop and the part-sale at +2R let a winner give back a lot); every tighter
+  exit tried cuts exactly those. Not worth a strategy switch or a backtest. Scripts were scratch, not kept.
+
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
 `swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)
