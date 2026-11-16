@@ -824,7 +824,7 @@ async function chartPage(alive, market, symbol, tf) {
   let replay = null;   // a setup being replayed bar by bar: { ref, rows, k, timer }   // today's card: its position size, and the Take form
   let listQuotes = null;   // the source-list panel's prices and decisions (listPanelHtml), fetched once per visit
   let setupSort = store.get("setupSort", "newest"), setupYear = "";   // the list's order, and a one-year window (this visit)
-  let stratStyle = {}, stratLabel = {};   // strategy -> its style ("Breakout from a base"…), to group the picker; its name
+  let stratStyle = {}, stratLabel = {};   // strategy -> its setup type ("Breakout from a base", "Breakout"…), to group the picker; its name
   const stratNameOf = (k) => stratLabel[k] || k;   // the setups panel's strategy list, folded to the picked one so the setups get the room
   const layout = $(".chart-layout");
   const syncPanel = () => {
@@ -5644,7 +5644,7 @@ async function screenStudy(host, alive, key, mkt, d, conds) {
  * with a breadcrumb back to the table and previous / next through the table's current order. */
 
 /** Setup type -- how a strategy gets into a trade (strategies/base.py STYLES): a short tag per row. */
-const STRAT_TAG = { rank: "Rank", breakout: "Breakout", squeeze: "Squeeze", pullback: "Pullback", burst: "Burst",
+const STRAT_TAG = { rank: "Rank", breakout: "Base", range_breakout: "Breakout", squeeze: "Squeeze", pullback: "Pullback", burst: "Burst",
   trend: "Trend", reversal: "Reversal", snapback: "Snap-back", fade: "Fade", event: "Event", calendar: "Calendar",
   short: "Short", income: "Income", value: "Value" };
 const stratTag = (x) => (STRAT_TAG[x.style]

@@ -2141,7 +2141,7 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 /* ---------- Strategies: what kind of bet each strategy is (app.js STRAT_TAG) */
 .st-tag { flex: none; font-size: 10.5px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 9px;
   border: 1px solid var(--line-2); color: var(--muted); background: var(--panel-2); white-space: nowrap; }
-.st-tag.st-breakout { color: var(--accent-text); border-color: var(--accent); }
+.st-tag.st-breakout, .st-tag.st-range_breakout { color: var(--accent-text); border-color: var(--accent); }
 .st-tag.st-trend { color: var(--strong); }
 .st-tag.st-rank, .st-tag.st-squeeze, .st-tag.st-pullback,
 .st-tag.st-burst { color: var(--accent-text); }

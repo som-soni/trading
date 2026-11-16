@@ -238,7 +238,7 @@ class EtfSwingStrategy(PortfolioStrategy):
 
     behaviour = "trend_momentum"
     selection = "time_series"
-    style = "breakout"
+    style = "range_breakout"   # a new high, no base test
     horizon = "swing"
     runner = "etf_swing"
 

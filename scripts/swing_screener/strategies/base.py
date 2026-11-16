@@ -46,13 +46,17 @@ DOWNGRADE_MAP = {
 }
 
 # Setup types -- HOW a strategy gets into a trade, in display order. The Strategies sidebar can group by
-# these ("Setup type"), which is how to see only the breakout strategies. The first five are the triggers
+# these ("Setup type"), which is how to see only the breakout strategies. The first six are the triggers
 # of one continuation bet (research/strategy-catalog-swing.md section 1): owning two of them is not
-# diversification. Every strategy declares one via `Strategy.style`; docs.check() (and so
+# diversification. Breakout comes in two: "from a base" is the O'Neil / Minervini term -- the strategy
+# tests a consolidation (VCP, cup, box, flag, stage-1 base) before buying its break -- and plain
+# "Breakout" buys a new N-day or range high with no base test (Donchian's channel, a spike day's high),
+# which is also the classic trend-following entry. Every strategy declares one via `Strategy.style`; docs.check() (and so
 # tests/test_strategy_docs.py) rejects anything else. Types with no strategy yet are listed on purpose.
 STYLES = {
     "rank": "Relative-strength rank",
     "breakout": "Breakout from a base",
+    "range_breakout": "Breakout",
     "squeeze": "Volatility squeeze",
     "pullback": "Pullback in a trend",
     "burst": "Momentum burst / gap-and-go",

@@ -135,7 +135,7 @@ class DonchianStrategy(Strategy):
         "Classical trend following: buy an N-day high, exit on an M-day low, "
         "stop at a volatility multiple, and filter almost nothing."
     )
-    style = "breakout"
+    style = "range_breakout"   # a new high, no base test
     horizon = "positional"
     gate_codes = ("G1", "G2")
     screen_key = "above_200"

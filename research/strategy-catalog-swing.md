@@ -99,6 +99,8 @@ is noted.
 
 ### 3.2 Continuation — breakout from a base
 
+*Setup type in the app:* the strategies here that test a consolidation before buying its break are tagged **Breakout from a base**. A breakout with no base test — Donchian's new channel high — is tagged plain **Breakout**: the standard term, and the classic trend-following entry (§1's "channel cross").
+
 | # | Setup | Source | Grade | Cred. | Here |
 |---|---|---|---|---|---|
 | 1 | **52-week-high proximity / breakout** | George & Hwang (2004) | A | 4 | Implemented as `high52_rank` v1.0 (2026-11-15); optimise runs queued (US #2027, India #2028), no result yet — ranked across stocks, not the trend template's gate |
