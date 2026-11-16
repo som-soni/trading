@@ -55,7 +55,7 @@ from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
 from .kell_cycle import KellCycleStrategy
 from .kullamagi import KullamagiStrategy
-from .minervini_spec import MinerviniSpecStrategy
+from .minervini_spec import High52VcpStrategy, MinerviniSpecStrategy
 from .momentum_burst import MomentumBurstStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
@@ -96,6 +96,7 @@ register(EarningsGapStrategy())
 register(BreakoutStrategy())
 register(ChartPatternSpecStrategy())
 register(MinerviniSpecStrategy())
+register(High52VcpStrategy())   # Minervini's VCP, gated and ranked by 52-week-high proximity
 register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
 register(KullamagiStrategy())

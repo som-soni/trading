@@ -643,7 +643,7 @@ def collect_signals(
     return out
 
 
-RANK_MODES = ("setup", "momentum", "vol_scaled", "random", "setup_momentum")
+RANK_MODES = ("setup", "momentum", "vol_scaled", "random", "setup_momentum", "high52")
 # Bounded below the smallest gap between any strategy's setup-quality levels (0.5 today), so the
 # tie-break can reorder exact ties and nothing else.
 TIEBREAK_SCALE = 1e-3
@@ -666,6 +666,8 @@ def rerank_signals(
     `setup` keeps the strategy's own score (the default -- no behaviour change).
     `momentum` is 12-1 month total return, the ranking the momentum baseline
     earns its edge from. `vol_scaled` divides that by realised volatility.
+    `high52` is the close over the highest high of the last 252 sessions -- George & Hwang's (2004)
+    52-week-high proximity -- so the stock nearest its high takes the slot.
     `random` is the control: if an informative ranking does not beat a seeded
     coin flip, the ranking is not the lever after all.
     `setup_momentum` KEEPS the strategy's own score and uses 12-1 momentum only to
@@ -692,6 +694,10 @@ def rerank_signals(
         if df is None or df.empty or "close" not in df:
             continue
         c = df["close"].astype(float)
+        if kind == "high52":
+            hi = (df["high"] if "high" in df else df["close"]).astype(float).rolling(252, min_periods=1).max()
+            scores[sym] = c / hi
+            continue
         # 12-1: skip the most recent ~21 sessions, the short-term reversal month
         mom = c.shift(21) / c.shift(252) - 1.0
         if kind == "vol_scaled":

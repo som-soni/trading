@@ -5338,3 +5338,81 @@ class MinerviniSpecStrategy(Strategy):
         if f == "VCP-10":
             return f"tight-area volume was {r['dryup']:.2f}× its 50-day average, above {DRYUP_RATIO:g}× (no dry-up)"
         return "the volatility did not contract"
+
+
+class High52VcpStrategy(MinerviniSpecStrategy):
+    """Minervini's VCP breakout, but only in stocks near their 52-week high, and with competing signals ranked by
+    that nearness -- George & Hwang's (2004) evidence choosing the stock, the VCP choosing the day.
+
+    Defined HERE, in minervini_spec, on purpose: everything but the one gate and the ranking is Minervini's, read
+    from this module's constants, so its page renders those constants, its fingerprint covers them, and the
+    market's own rules (`market_consts`, inherited: the US exits and segment-only market filter) and any `--const`
+    reach it exactly as they reach Minervini. Its own threshold is a CLASS attribute (`h52_min_ratio`), so adding it
+    leaves Minervini's fingerprint where it was."""
+    key = "high52_vcp"
+    family = "high52_vcp"
+    name = "52-week-high VCP"
+    variant_of = "minervini"
+    version = "1.0"
+    signal_version = None
+    changelog = (
+        ("1.0", "2026-11-16",
+         "v1: Minervini SEPA (v1.69's rules, read live from minervini_spec) plus gate G9 -- the close within "
+         "(1 - h52_min_ratio) of its 252-session high -- and competing signals ranked by that ratio "
+         "(--rank-by high52) instead of RS. The threshold 0.90 was set before any run, from George & Hwang's top "
+         "group, not tuned."),
+    )
+    style = "breakout"
+    h52_min_ratio = 0.90       # G9: close / 252-session high at least this (0.90 = within 10% of the high)
+    h52_lookback = 252
+    gate_codes = MinerviniSpecStrategy.gate_codes + ("G9",)
+    description = ("Minervini's VCP breakout, taken only in stocks within 10% of their 52-week high, and when "
+                   "signals compete for a slot the nearest to its high goes first.")
+    thesis = (
+        "Two pieces of evidence of very different weight, each given the job it is good for. Which stock: George & "
+        "Hwang (2004) found that nearness to the 52-week high predicts returns (about 0.5% a month top group over "
+        "bottom, US 1963-2001), explains most of 12-month momentum and does not reverse -- graded A in the "
+        "catalogue. When to buy: Minervini's volatility contraction pattern, a precise, testable entry with a "
+        "tight stop but no published test of its own (graded D). The 52-week high picks the stocks worth owning; "
+        "the VCP picks the low-risk day to buy one."
+    )
+    gate_docs = {
+        **MinerviniSpecStrategy.gate_docs,
+        "G9": "52-week-high proximity (George & Hwang 2004): today's close is at least {h52_min_ratio} of the "
+              "highest high of the last {h52_lookback} sessions, i.e. within 10% of the 52-week high. Stricter "
+              "than G7's {MAX_PCT_BELOW_52W_HIGH}%.",
+    }
+    how_it_works = (
+        "**What differs from Minervini SEPA.** One gate and the ranking; everything else -- the Trend Template, "
+        "the VCP and cheat setups, entries, stop, exits, sizing, market filter and the market's own rules -- is "
+        "Minervini's, read live from the same code.",
+        "**G9, nearness to the high.** The close over the highest high of the last {h52_lookback} sessions must be "
+        "at least {h52_min_ratio}. George & Hwang's ratio, as a gate.",
+        "**Ranking.** When more signals fire than there are free slots, the nearest to its 52-week high is taken "
+        "first (--rank-by high52), where Minervini takes the highest RS.",
+    ) + tuple(MinerviniSpecStrategy.how_it_works)
+    backtest_args = MinerviniSpecStrategy.backtest_args + " --rank-by high52"
+    status = (
+        "NOT YET RUN. v1.0 built 2026-11-16 as the first custom breakout strategy: the credible selection "
+        "(52-week-high proximity, grade A) with the VCP as the entry trigger. Pass rule, written before any run: "
+        "beats the index on excess CAGR at the standard cost, in-sample (2013-2021) and then out-of-sample "
+        "(2022 onward), and does better than Minervini SEPA on the same windows."
+    )
+    caveats = (
+        "**A gate, not the paper's ranking.** George & Hwang ranked every stock and held the top group; here the "
+        "ratio gates which VCPs may trade and orders competing signals. Most qualifying VCPs already sit near their "
+        "high, so G9 may remove few of them; the ranking is where it can matter more.",
+        "**Highs, not closes.** The ratio uses the highest intraday high, as the paper's 52-week high did.",
+    ) + tuple(MinerviniSpecStrategy.caveats)
+
+    def evaluate(self, ctx: StockContext) -> StrategyResult:
+        result = super().evaluate(ctx)
+        d = ctx.daily
+        hi = float(d["high"].iloc[-self.h52_lookback:].max())
+        close = float(d["close"].iloc[-1])
+        ratio = close / hi if hi > 0 else 0.0
+        ctx.extras["high52_ratio"] = round(ratio, 4)
+        (result.ok if ratio >= self.h52_min_ratio else result.fail)(
+            "G9", f"close {ratio:.2f} of the {self.h52_lookback}-session high (needs {self.h52_min_ratio:g})")
+        result.recompute_first_fail()
+        return result

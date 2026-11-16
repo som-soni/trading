@@ -51,6 +51,7 @@ EVIDENCE = {
     "rs_leaders": _e("D", 0, 0, 1, 0, "IBD / Minervini relative-strength leadership: practitioner examples, no published test of the setup."),
     # continuation -- breakout from a base
     "minervini": _e("D", 0, 0, 1, 0, "Minervini's SEPA / VCP: US Investing Championship 1997 record and chart examples; no published test of the setup."),
+    "high52_vcp": _e("B", 2, 0, 1, 0, "The 52-week-high effect (George & Hwang 2004) chooses the stock; Minervini's VCP, untested in published work, chooses the day. The combination itself is unpublished."),
     "chart_pattern": _e("B", 1, 0, 1, 0, "Classic base patterns: Bulkowski's pattern statistics (own samples, no costs); Lo, Mamaysky & Wang (2000) found some information content."),
     "kullamagi": _e("D", 0, 0, 1, 0, "Kristjan Kullamägi's breakouts: public account statements (not audited) and examples; no published test."),
     "darvas": _e("D", 0, 0, 1, 0, "Nicolas Darvas, How I Made $2,000,000 in the Stock Market (1960): a personal account."),
