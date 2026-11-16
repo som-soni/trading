@@ -8159,6 +8159,94 @@ async function drawSeriesFigure(fig, spec) {
   fig.querySelector(".lps-src").textContent = `Stored data, ${fmtD(first)} – ${fmtD(last)}, ${{ D: "daily", W: "weekly", M: "monthly" }[tf]} ${spec.lines.some((l) => l.flags.has("candles")) ? "bars" : "closes"}${spec.rebase ? `, rebased to ${spec.rebase}` : ""}.`;
 }
 
+/** A run's Trades tab: the headline tiles, and a "What if" panel that leaves out trades by any column's values (exit
+ *  reason, setup, entry year...) and recomputes the tiles from the trades that remain. A FILTER ON FINISHED TRADES, not a
+ *  re-run: capital those trades used would have taken other signals, and leaving out trades by their outcome (an exit
+ *  reason) uses hindsight. CAGR here is approximate -- the remaining trades' P&L on the run's starting capital over its
+ *  years -- and is shown beside the same approximation for all trades, so the difference is like for like. */
+function whatIfTrades(body, t, eq, summary, drawTable, key) {
+  const ci = (n) => t.columns.indexOf(n);
+  const iR = ci("r_multiple"), iP = ci("pnl"), iH = ci("holding_days"), iE = ci("entry_date"), iX = ci("exit_date");
+  // derived columns for grouping: the entry year and month
+  const derived = { entry_year: (x) => String(x[iE] || "").slice(0, 4), entry_month: (x) => String(x[iE] || "").slice(0, 7) };
+  const valOf = (col, x) => (derived[col] ? derived[col](x) : String(x[ci(col)] ?? "—"));
+  // columns worth excluding by: few distinct values (categorical), plus the derived ones
+  const cands = t.columns.filter((c, j) => j !== iR && j !== iP && new Set(t.rows.map((x) => x[j])).size <= 40 && new Set(t.rows.map((x) => x[j])).size > 1)
+    .concat(iE >= 0 ? Object.keys(derived) : []);
+  const pref = ["exit_reason", "setup", "entry_year", "decision"];
+  cands.sort((a, b) => ((pref.indexOf(a) + 1 || 99) - (pref.indexOf(b) + 1 || 99)));
+  let ex = {};
+  try { ex = JSON.parse(sessionStorage.getItem(key) || "{}"); } catch { ex = {}; }
+  let col = cands.includes(store.get("whatifCol", "exit_reason")) ? store.get("whatifCol", "exit_reason") : cands[0];
+  // starting capital and years from the equity curve (else from the trades' dates)
+  const eqRows = eq && eq.rows && eq.rows.length ? eq.rows : null, eqI = eq ? Math.max(eq.columns.indexOf("equity"), 1) : 1;
+  const start = eqRows ? Number(eqRows[0][eqI]) : null;
+  const d0 = eqRows ? String(eqRows[0][0]).slice(0, 10) : t.rows.map((x) => String(x[iE])).sort()[0];
+  const d1 = eqRows ? String(eqRows[eqRows.length - 1][0]).slice(0, 10) : t.rows.map((x) => String(x[iX] || x[iE])).sort().pop();
+  const years = Math.max((new Date(d1) - new Date(d0)) / (365.25 * 864e5), 0.1);
+  const stats = (rows) => {
+    const R = iR >= 0 ? rows.map((x) => x[iR]).filter((v) => v != null) : [];
+    const P = iP >= 0 ? rows.reduce((a, x) => a + (Number(x[iP]) || 0), 0) : null;
+    const W = R.filter((v) => v > 0), L = R.filter((v) => v <= 0);
+    const wins = iP >= 0 ? rows.filter((x) => x[iP] > 0).length : W.length;
+    const hd = iH >= 0 ? rows.map((x) => x[iH]).filter((v) => v != null).sort((a, b) => a - b) : [];
+    return { n: rows.length, win: rows.length ? (wins / rows.length) * 100 : null,
+      avgR: R.length ? R.reduce((a, v) => a + v, 0) / R.length : null,
+      winR: W.length ? W.reduce((a, v) => a + v, 0) / W.length : null, lossR: L.length ? L.reduce((a, v) => a + v, 0) / L.length : null,
+      pnl: P, cagr: start && P != null && start + P > 0 ? (Math.pow((start + P) / start, 1 / years) - 1) * 100 : null,
+      hold: hd.length ? hd[Math.floor(hd.length / 2)] : null };
+  };
+  const all = stats(t.rows);
+  const money = (v) => (v == null ? "—" : `${v < 0 ? "−" : ""}${Math.abs(v) >= 1e7 ? (Math.abs(v) / 1e7).toFixed(2) + " Cr" : Math.abs(v) >= 1e5 ? (Math.abs(v) / 1e5).toFixed(1) + " L" : Math.round(Math.abs(v)).toLocaleString()}`);
+  const fmt = { n: (v) => String(v), win: (v) => `${v.toFixed(1)}%`, avgR: (v) => signed(v), winR: (v) => v.toFixed(2), lossR: (v) => v.toFixed(2),
+    pnl: money, cagr: (v) => `${v.toFixed(2)}%`, hold: (v) => `${v}d` };
+  const LAB = [["n", "Trades"], ["win", "Win rate"], ["avgR", "Avg R"], ["winR", "Avg win R"], ["lossR", "Avg loss R"], ["pnl", "Total P&L"], ["cagr", "CAGR ≈"], ["hold", "Median hold"]];
+  const excluded = (x) => Object.entries(ex).some(([c, vs]) => vs.length && vs.includes(valOf(c, x)));
+  const draw = () => {
+    try { sessionStorage.setItem(key, JSON.stringify(ex)); } catch {}
+    const keep = t.rows.filter((x) => !excluded(x)), k = stats(keep), on = keep.length !== t.rows.length;
+    const tile = ([f, label]) => {
+      const a = all[f], b = k[f];
+      if (a == null && b == null) return "";
+      const d = on && a != null && b != null && f !== "n" ? b - a : null;
+      const cls = f === "avgR" || f === "cagr" || f === "pnl" ? ((on ? b : a) >= 0 ? "pos" : "neg") : "";
+      return `<div class="tile"${f === "cagr" ? ` title="Approximate: total P&L on the run's starting capital over ${years.toFixed(1)} years, not compounded trade by trade. The run's own CAGR is ${esc(summary.cagr || "—")}."` : ""}><span>${label}</span><b class="${cls}">${b == null ? "—" : fmt[f](on ? b : a)}</b>${on && a != null ? `<i class="wi-was">was ${fmt[f](a)}${d != null && Math.abs(d) > 1e-9 ? ` <span class="${d > 0 ? "pos" : "neg"}">${d > 0 ? "▲" : "▼"}</span>` : ""}</i>` : ""}</div>`;
+    };
+    body.querySelector("#tstats").innerHTML = `<div class="tiles small">${LAB.map(tile).join("")}
+      ${on ? "" : `<div class="tile hint"><span>Tip</span><b class="muted">Click a trade to see it on the chart</b></div>`}</div>`;
+    const wb = body.querySelector("#whatif .wi-body");
+    const counts = new Map();
+    t.rows.forEach((x) => { const v = valOf(col, x); counts.set(v, (counts.get(v) || 0) + 1); });
+    const perVal = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => {
+      const st = stats(t.rows.filter((x) => valOf(col, x) === v));
+      const off = (ex[col] || []).includes(v);
+      return `<label class="wi-v${off ? " off" : ""}"><input type="checkbox" data-v="${esc(v)}" ${off ? "" : "checked"}> <b>${esc(v)}</b>
+        <span class="muted small">${n} · ${st.avgR != null ? `${signed(st.avgR)}R` : ""} · ${st.win != null ? st.win.toFixed(0) + "% win" : ""} · ${money(st.pnl)}</span></label>`;
+    }).join("");
+    const chips = Object.entries(ex).flatMap(([c, vs]) => vs.map((v) => `<button class="fchip" data-c="${esc(c)}" data-v="${esc(v)}" title="Put these trades back">${esc(c.replace(/_/g, " "))}: <b>${esc(v)}</b> ×</button>`)).join("");
+    wb.innerHTML = `<div class="wi-bar"><label class="small">Leave out by <select class="sm wi-col">${cands.map((c) => `<option value="${esc(c)}" ${c === col ? "selected" : ""}>${esc(c.replace(/_/g, " "))}</option>`).join("")}</select></label>
+        <span class="muted small">untick a value to leave its trades out</span>${chips ? `<span class="wi-chips">${chips}<button class="sm wi-reset">Put all back</button></span>` : ""}</div>
+      <div class="wi-vals">${perVal}</div>
+      <p class="muted small">A filter on finished trades, not a re-run: the capital those trades used would have taken other signals, so a
+        re-run gives different numbers. Leaving trades out by how they ended (an exit reason, a loss) uses hindsight a live trader
+        does not have; to test a rule, run it as a backtest variant. CAGR ≈ is the remaining P&L on the starting capital
+        (${start ? money(start) : "—"}) over ${years.toFixed(1)} years.</p>`;
+    wb.querySelector(".wi-col").onchange = (e) => { col = e.target.value; store.set("whatifCol", col); draw(); };
+    wb.querySelectorAll(".wi-vals input").forEach((cb) => cb.onchange = () => {
+      const v = cb.dataset.v, cur = new Set(ex[col] || []);
+      cb.checked ? cur.delete(v) : cur.add(v);
+      ex[col] = [...cur]; if (!ex[col].length) delete ex[col];
+      draw();
+    });
+    wb.querySelectorAll(".fchip").forEach((b) => b.onclick = () => {
+      ex[b.dataset.c] = (ex[b.dataset.c] || []).filter((v) => v !== b.dataset.v); if (!ex[b.dataset.c].length) delete ex[b.dataset.c]; draw(); });
+    const rs = wb.querySelector(".wi-reset"); if (rs) rs.onclick = () => { ex = {}; draw(); };
+    if (on) body.querySelector("#whatif").open = true;
+    drawTable(keep);
+  };
+  draw();
+}
+
 async function reportPage(alive, id, tab) {
   $view.innerHTML = LOADING;
   const [r] = await Promise.all([api(`/api/reports/${id}`).catch((e) => ({ error: e.message })), loadEdges()]);
@@ -8226,15 +8314,11 @@ async function reportPage(alive, id, tab) {
     cleanup = () => chart.remove();
     dataTable(body.querySelector("#eqt"), t.columns, t.rows, tableOpts(t, "equity"));
   } else if (tab === "trades") {
-    const t = await api(`/api/reports/${id}/tables/trades`);
+    const [t, eq] = await Promise.all([api(`/api/reports/${id}/tables/trades`),
+      has("equity") ? api(`/api/reports/${id}/tables/equity`).catch(() => null) : null]);
     if (!alive()) return;
-    const wins = t.rows.filter((x) => x[t.columns.indexOf("pnl")] > 0).length;
-    const rIdx = t.columns.indexOf("r_multiple"), avgR = rIdx >= 0 && t.rows.length ? t.rows.reduce((a, x) => a + (x[rIdx] || 0), 0) / t.rows.length : null;
-    body.innerHTML = `<div class="tiles small"><div class="tile"><span>Trades</span><b>${t.rows.length}</b></div>
-      <div class="tile"><span>Win rate</span><b>${t.rows.length ? ((wins / t.rows.length) * 100).toFixed(1) : 0}%</b></div>
-      ${avgR != null ? `<div class="tile"><span>Avg R</span><b class="${avgR >= 0 ? "pos" : "neg"}">${signed(avgR)}</b></div>` : ""}
-      <div class="tile hint"><span>Tip</span><b class="muted">Click a trade to see it on the chart</b></div></div><div id="tt"></div>`;
-    dataTable(body.querySelector("#tt"), t.columns, t.rows, tableOpts(t, "trades"));
+    body.innerHTML = `<div id="tstats"></div><details class="whatif" id="whatif"><summary><b>What if</b> <span class="muted small">— leave out trades and see the numbers without them</span></summary><div class="wi-body"></div></details><div id="tt"></div>`;
+    whatIfTrades(body, t, eq, s, (rows) => dataTable(body.querySelector("#tt"), t.columns, rows, tableOpts(t, "trades")), `whatif:${id}`);
   } else {
     const first = store.get("dataTab:" + id, r.tables[0].name);
     body.innerHTML = `<div class="split"><nav class="tlist">${r.tables.map((t) => `<a data-n="${esc(t.name)}" class="${t.name === first ? "on" : ""}" title="${esc(t.name)}">${esc(t.name)}<span class="n">${t.rows}</span></a>`).join("")}</nav><div id="tt"></div></div>`;

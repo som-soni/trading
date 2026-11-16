@@ -2261,3 +2261,14 @@ table.sh-table { border-collapse: separate; border-spacing: 0; width: 100%; font
   /* a strategy page's wide tables (measured outcome, backtests) scroll in place rather than widen the page */
   .strat-page table.dtab { display: block; overflow-x: auto; max-width: 100%; }
 }
+
+/* a run's Trades tab: the What if panel (app.js whatIfTrades) */
+.whatif { margin: 8px 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); }
+.whatif > summary { cursor: pointer; padding: 8px 12px; }
+.whatif .wi-body { padding: 0 12px 10px; }
+.wi-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+.wi-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wi-vals { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 14px; }
+.wi-v { display: flex; align-items: baseline; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+.wi-v.off b { text-decoration: line-through; opacity: .6; }
+.tile .wi-was { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 2px; }
