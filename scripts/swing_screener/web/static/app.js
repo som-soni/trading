@@ -985,6 +985,9 @@ async function chartPage(alive, market, symbol, tf) {
   // lands would list the raw key
   setupBtn.onclick = async () => {
     await Promise.all([STRATEGIES, loadEdges()]);
+    // in the Backtest view the setup layers stand down (only the run's trades draw), so the setups panel would wait
+    // forever: asking for the setups means leaving that view, as "show my layers" does
+    if ($(".bt-tag")) { leaveBtView(); prefs.tab = "setups"; prefs.panel = true; store.set("chartPrefs", prefs); route(); return; }
     const open = prefs.panel && prefs.tab === "setups";
     prefs.tab = open ? null : "setups"; prefs.panel = !open; store.set("chartPrefs", prefs); syncPanel(); renderSide();
   };
@@ -2267,6 +2270,9 @@ async function chartPage(alive, market, symbol, tf) {
       <button class="primary" data-tf1d>Switch to 1D</button></div></section>`;
     if (!name) return `<section><h3>Trade setups</h3>${setupPickerHtml()}
       <div class="muted small">Pick a strategy above to scan this chart's history for its setups — what its rules would set up on, not trades. A dot marks a strategy that has the stock on trigger (filled) or on watch (hollow) today.</div></section>`;
+    // the layer is not drawn at all ("Trade only" on), so no setups will come: say why, with the way out
+    if (!setupFeed && tradeOnlyOn()) return `<section><h3>${esc(name)}</h3>${setupPickerHtml()}
+      <div class="muted small">${esc(name)}'s setups are hidden while <b>Trade only</b> is on in the Backtest trades panel: only the run's buy, stop, target and sell are drawn. Turn Trade only off there to see the setups.</div></section>`;
     if (!setupFeed) return `<section><h3>${esc(name)}</h3>${setupPickerHtml()}<div class="muted small">Finding the setups…</div></section>`;
     const kindOf = setupKind;
     const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, expired: 0, refused: 0 };
