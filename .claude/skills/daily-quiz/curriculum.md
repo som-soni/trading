@@ -10,7 +10,7 @@ Reading today's market: index trend vs 50/200-day, breadth (advance/decline, % a
 highs vs lows), volatility (VIX / India VIX, realised vs implied), distribution and follow-through days,
 sector and group leadership, leaders' behaviour, macro strip, FII/DII flows (India). Regime calls,
 conflicting signals, exposure by regime, what changes the call.
-Topics: 1.1 index trend vs 50/200-day and slopes · 1.2 breadth (A/D, % above averages, highs vs lows) · 1.3 volatility (VIX, realised vs implied) · 1.4 distribution and follow-through days · 1.5 leadership (sectors, leaders' behaviour, cap- vs equal-weight) · 1.6 flows (FII/DII) · 1.7 the regime call: conflicting signals, what changes it, exposure by regime
+Topics: 1.1 index trend vs 50/200-day and slopes · 1.2 breadth (A/D line, % above averages, highs vs lows, McClellan) · 1.3 volatility (VIX, realised vs implied, term structure) · 1.4 distribution and follow-through days · 1.5 leadership (sectors, leaders' behaviour, cap- vs equal-weight) · 1.6 flows (FII/DII, fund flows) · 1.7 the regime call: conflicting signals, what changes it, exposure by regime · 1.8 sentiment surveys and positioning (AAII, put/call, margin debt, fear-and-greed, COT) — contrarian at extremes only · 1.9 the overnight hand-off (US close → GIFT Nifty → India open; Asia, crude, the dollar)
 Learn: health-trend, health-breadth, health-volatility, health-distribution, strat-regime-filters.
 
 ## 2. Macro and intermarket
@@ -18,7 +18,7 @@ Central banks and policy rates, the yield curve and inversions, inflation (CPI/W
 consumption data, currencies (USD/INR, DXY), commodities (oil, gold, copper), liquidity and credit
 spreads, the economic calendar, how each moves equities and sectors, India-specific (RBI, monsoon,
 budget, FPI flows), global spillovers.
-Topics: 2.1 central banks and policy rates · 2.2 yield curve and inversions · 2.3 inflation · 2.4 growth and consumption data · 2.5 currencies (USD/INR, DXY) · 2.6 commodities (oil, gold, copper) · 2.7 liquidity and credit spreads · 2.8 India specifics (RBI, monsoon, budget, FPI) · 2.9 the economic calendar and global spillovers
+Topics: 2.1 central banks and policy rates · 2.2 yield curve and inversions · 2.3 inflation (CPI/WPI, core, expectations) · 2.4 growth data (GDP, PMIs, industrial output) · 2.5 jobs and consumption (payrolls, unemployment, retail sales, auto/GST data) · 2.6 the business and credit cycle (expansion, slowdown, recession, recovery) · 2.7 real rates, earnings yield vs bond yield, the equity risk premium · 2.8 currencies (USD/INR, DXY, FX reserves, carry) · 2.9 oil · 2.10 gold and copper · 2.11 liquidity, money supply and credit spreads · 2.12 fiscal policy, deficits and government borrowing · 2.13 India specifics (RBI, monsoon, budget, FPI flows, GST) · 2.14 the economic calendar and how a surprise moves markets · 2.15 global spillovers and geopolitics (US rates → EM, oil shocks, wars, elections) · 2.16 intermarket relationships (stocks–bonds–dollar–commodities, Murphy) and when they flip
 Learn: macro-*.
 
 ## 3. Sectors, groups and rotation
@@ -39,7 +39,7 @@ Learn: fund-*.
 Stages (Weinstein), trend structure, volume analysis, relative strength, candlesticks, chart
 patterns (cup with handle, flags, triangles, head and shoulders, double bottoms), bases and VCP,
 support/resistance, supply/demand zones, gaps, multiple time frames. What the evidence says about each.
-Topics: 5.1 Weinstein stages · 5.2 trend structure (higher highs/lows) · 5.3 volume analysis · 5.4 relative strength and the RS line · 5.5 candlesticks · 5.6 chart patterns (cup with handle, flags, triangles, H&S, double bottoms) · 5.7 bases and VCP · 5.8 support/resistance and supply/demand · 5.9 gaps · 5.10 multiple time frames · 5.11 extension (distance from averages, ATRs)
+Topics: 5.1 Weinstein stages · 5.2 trend structure (higher highs/lows, Dow theory basics) · 5.3 volume analysis · 5.4 relative strength and the RS line · 5.5 single candles (doji, hammer, shooting star, marubozu, spinning top) · 5.6 two-candle patterns (engulfing, harami, piercing, dark cloud cover) · 5.7 three-candle patterns (morning/evening star, three soldiers/crows) · 5.8 candles in context: location, confirmation, and what the evidence shows · 5.9 continuation patterns (flags, pennants, triangles, rectangles) · 5.10 reversal patterns (head and shoulders, double/triple tops and bottoms, rounding) · 5.11 cup with handle and other bases (flat base, ascending base, IPO base) · 5.12 VCP and contraction · 5.13 measured moves, breakout volume and pattern failure rates (Bulkowski) · 5.14 support/resistance and role reversal · 5.15 supply/demand zones · 5.16 gaps (common, breakaway, runaway, exhaustion; island reversals) · 5.17 multiple time frames · 5.18 extension (distance from averages, ATRs) · 5.19 trend lines and channels · 5.20 order flow and smart-money concepts (claims vs evidence)
 Learn: price-*, candlestick-patterns, chart-patterns, bases, vcp, support-resistance, supply-demand,
 order-flow-smc.
 
@@ -53,7 +53,7 @@ R multiples, expectancy, payoff ratio and break-even win rate, fixed-fractional 
 cap, gaps, ATR sizing, drawdown and recovery maths, losing streaks, Kelly, risk of ruin, progressive
 exposure, pyramiding.
 Topics: 7.1 R multiples · 7.2 expectancy, payoff and break-even win rate · 7.3 fixed-fractional sizing · 7.4 the position cap and its threshold · 7.5 gaps through stops · 7.6 ATR sizing · 7.7 drawdown and recovery maths · 7.8 losing streaks · 7.9 Kelly · 7.10 risk of ruin · 7.11 progressive exposure and pyramiding · 7.12 R → account % and ₹
-Learn: risk-expectancy, risk-sizing.
+Learn: risk-expectancy, risk-sizing, risk-your-numbers.
 
 ## 8. Stops, exits and trade management
 Initial stop placement (structural vs volatility), trailing stops (MA, chandelier, swing lows), profit
@@ -66,7 +66,7 @@ Learn: risk-stops-exits.
 Correlation and concentration, total open risk ("heat"), sector limits, number of positions, cash as a
 position, combining strategies, rebalancing, asset allocation, index investing vs active, factor
 investing (value, momentum, quality, low volatility, size), SIPs and long-term compounding.
-Topics: 9.1 correlation and concentration · 9.2 total open risk (heat) · 9.3 sector limits and number of positions · 9.4 cash as a position · 9.5 combining strategies · 9.6 rebalancing and asset allocation · 9.7 index vs active · 9.8 factor investing · 9.9 SIPs and compounding
+Topics: 9.1 correlation and concentration · 9.2 total open risk (heat) · 9.3 sector limits and number of positions · 9.4 cash as a position · 9.5 combining strategies · 9.6 rebalancing and asset allocation · 9.7 index vs active · 9.8 factor investing · 9.9 SIPs and compounding · 9.10 correlations rising in a crisis, tail risk and hedging · 9.11 other asset classes (bonds, gold, REITs/InvITs, international, cash) and what each does in a portfolio
 Learn: risk-portfolio, strat-combining.
 
 ## 10. Execution and market structure
@@ -74,7 +74,7 @@ Order types (market, limit, stop, stop-limit, GTT, bracket, AMO), bid-ask, slipp
 impact cost, pre-open and closing auctions, circuit limits and market-wide circuit breakers, T+1
 settlement, margin and leverage, short selling (and India's restrictions), who trades (FII, DII,
 retail, market makers, HFT), how indices are built and rebalanced, ETFs and their creation mechanism.
-Topics: 10.1 order types (market, limit, stop, stop-limit, GTT, bracket, AMO) · 10.2 bid-ask, slippage, impact · 10.3 auctions (pre-open, closing) · 10.4 circuits and market-wide breakers · 10.5 settlement (T+1) · 10.6 margin and leverage · 10.7 short selling and India's limits · 10.8 who trades (FII, DII, retail, market makers, HFT) · 10.9 index construction and rebalancing · 10.10 ETFs and creation/redemption
+Topics: 10.1 order types (market, limit, stop, stop-limit, GTT, bracket, AMO) · 10.2 bid-ask, slippage, impact · 10.3 auctions (pre-open, closing) · 10.4 circuits and market-wide breakers · 10.5 settlement (T+1) · 10.6 margin and leverage · 10.7 short selling and India's limits · 10.8 who trades (FII, DII, retail, market makers, HFT) · 10.9 index construction and rebalancing · 10.10 ETFs and creation/redemption · 10.11 India surveillance (ASM/GSM lists, trade-to-trade, F&O ban period) · 10.12 IPOs (book building, allotment, listing day, SME IPOs, grey market) · 10.13 price data: split and dividend adjustment, bad prints, why charts disagree
 
 ## 11. Derivatives (F&O)
 Futures and basis, rollover, open interest, options payoffs, Black–Scholes intuition, Greeks, implied
@@ -90,7 +90,7 @@ Backtesting pitfalls (look-ahead, survivorship, overfitting, data snooping, cost
 in-sample vs out-of-sample, walk-forward, sample size and standard error, Sharpe/Sortino/Calmar, max
 drawdown, CAGR vs XIRR, deflated Sharpe and multiple testing, base rates, regression to the mean,
 correlation vs causation, how to read a research paper's claims.
-Topics: 12.1 look-ahead · 12.2 survivorship · 12.3 overfitting and data snooping · 12.4 costs and unrealistic fills · 12.5 in- vs out-of-sample, walk-forward · 12.6 sample size and standard error · 12.7 Sharpe, Sortino, Calmar, max drawdown · 12.8 CAGR vs XIRR · 12.9 multiple testing and deflated Sharpe · 12.10 base rates, regression to the mean, correlation vs causation · 12.11 reading a paper's claims
+Topics: 12.1 look-ahead · 12.2 survivorship · 12.3 overfitting and data snooping · 12.4 costs and unrealistic fills · 12.5 in- vs out-of-sample, walk-forward · 12.6 sample size and standard error · 12.7 Sharpe, Sortino, Calmar, max drawdown · 12.8 CAGR vs XIRR · 12.9 multiple testing and deflated Sharpe · 12.10 base rates, regression to the mean, correlation vs causation · 12.11 reading a paper's claims · 12.12 return maths (simple vs log returns, volatility scales with √time, arithmetic vs geometric mean) · 12.13 fat tails and why 'six-sigma' days happen · 12.14 Monte Carlo and bootstrap of a trade list
 Learn: test-backtesting, system-filters.
 
 ## 13. Psychology, process and journaling
@@ -98,7 +98,7 @@ Cognitive biases (loss aversion, disposition effect, recency, confirmation, over
 hindsight), tilt and revenge trading, following rules through drawdowns, the trading plan, the
 journal and the weekly review, process vs outcome, the routine (pre-market, post-market), when to stop
 trading.
-Topics: 13.1 loss aversion and the disposition effect · 13.2 recency, confirmation, overconfidence, hindsight, sunk cost · 13.3 tilt and revenge trading · 13.4 following rules through drawdowns · 13.5 the trading plan · 13.6 the journal and weekly review · 13.7 process vs outcome · 13.8 routine · 13.9 when to stop trading
+Topics: 13.1 loss aversion and the disposition effect · 13.2 recency, confirmation, overconfidence, hindsight, sunk cost · 13.3 tilt and revenge trading · 13.4 following rules through drawdowns · 13.5 the trading plan · 13.6 the journal and weekly review · 13.7 process vs outcome · 13.8 routine · 13.9 when to stop trading · 13.10 knowing your own numbers (win rate, payoff, typical drawdown) · 13.11 crowd behaviour: herding, bubbles, capitulation
 Learn: process-plan, process-journal, process-biases.
 
 ## 14. Tax, costs and regulation
