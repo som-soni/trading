@@ -257,7 +257,9 @@ def every_strategy() -> None:
     import shlex
     from swing_screener import paths
     from swing_screener.backtesting import backtest as bt
+    import contextlib
     from swing_screener.strategies import get_strategy, list_strategies, portfolio_strategies
+    from swing_screener.strategies.variants import market_rules
     print("every registered strategy, inside the optimise stage, ends at the boundary  (--all)")
     stage, start, end = windows.resolve("optimise")
     real = paths.REPORTS_DIR
@@ -271,7 +273,12 @@ def every_strategy() -> None:
                 # US, so a refusal moves on to the next market instead of failing the sweep
                 for market in MARKETS:
                     try:
-                        with cache.offline(), windows.active(stage, start, end):
+                        # market_rules(apply=False) restores the module's constants afterwards, as the job
+                        # runner does: backtest.main applies a market's rules process-wide, and two strategies
+                        # share a module (high52_vcp, minervini) -- one's US rules must not reach the other's gate
+                        with cache.offline(), windows.active(stage, start, end), \
+                                (market_rules(key, market, apply=False) if kind == "symbol"
+                                 else contextlib.nullcontext()):
                             if kind == "portfolio":
                                 mod = importlib.import_module(
                                     f"swing_screener.backtesting.{getattr(portfolio_strategies()[key], 'runner', 'baseline')}")
