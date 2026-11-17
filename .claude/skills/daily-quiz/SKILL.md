@@ -101,6 +101,17 @@ The web app runs at http://localhost:8000 and only reads stored data. Useful rea
 - `/api/prices?market=<m>&symbol=<s>&tf=D&bars=300` — daily bars for a chart drill. The symbol carries
   the market's ticker suffix from `/api/markets` (`RELIANCE.NS`, `AAPL`).
 
+**Rotation question (weekly, topic 3.7):** once a week, one Rotation slot is a live rotation read, alternating
+India and the US. Give real readings from the latest session (state the date), read-only from stored data
+(`screens/snapshot.py` `load(market, date)`: `group_rs`, `peer_group`, `rs_rank`, `pct_below_high`, now and
+four weeks earlier; the cap- and equal-weight index ETFs or indexes against their weekly 9/21 EMAs and 52-week
+highs): the groups whose rating rose and fell most, three or four rising and falling names, and the cap- vs
+equal-weight gap. Ask: is money rotating, from what into what, what would show it is only a pullback in the old
+leaders, and what it changes in which stocks they would study (never "buy X"). Grade the reasoning against the
+four signs of topic 3.7 (cap- vs equal-weight, group rank changes, where the new highs come from, the old leaders'
+weekly EMAs). There is no reveal at grading — the outcome is not known yet — so the next rotation question opens
+with what the last one's groups and names did since.
+
 **Market review question:** give the user 4–8 real readings from the latest session (state the date)
 and ask for a judgement: the regime (uptrend / correction / bear / transition), what the readings
 disagree on, what would change their mind, and how exposure should differ. Grade the reasoning, not a

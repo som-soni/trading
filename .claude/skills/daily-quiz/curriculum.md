@@ -24,7 +24,7 @@ Learn: macro-*.
 ## 3. Sectors, groups and rotation
 Sector classification, the business cycle and sector rotation, group relative strength, theme cycles,
 defensives vs cyclicals, rate-sensitive sectors, commodity-linked sectors, why leaders cluster in groups.
-Topics: 3.1 classification (sector, industry, group) · 3.2 business cycle and rotation · 3.3 group relative strength and why leaders cluster · 3.4 defensives vs cyclicals · 3.5 rate- and commodity-sensitive sectors · 3.6 theme cycles
+Topics: 3.1 classification (sector, industry, group) · 3.2 business cycle and rotation · 3.3 group relative strength and why leaders cluster · 3.4 defensives vs cyclicals · 3.5 rate- and commodity-sensitive sectors · 3.6 theme cycles · 3.7 reading rotation live: cap- vs equal-weight (SPY/QQQ vs RSP, Nifty vs equal-weight), group rank changes over 4–8 weeks, which groups the new highs come from, former leaders losing their weekly 9/21-week EMAs and failing on the retest
 Learn: sectors-groups, strat-sector-rotation.
 
 ## 4. Fundamentals and valuation
