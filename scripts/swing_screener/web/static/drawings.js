@@ -340,6 +340,9 @@ const Drawings = (() => {
           break;
         }
         case "text": {
+          // a strategy's caption whose anchor has scrolled off the left of the pane is not drawn: clamped to the edge,
+          // every off-screen band's name (the stage bands) piled up there in a column
+          if (it.auto && a.x < 0) break;
           const size = it.size || 14, lh = Math.round(size * 1.35);
           ctx.font = `${size}px -apple-system, Segoe UI, sans-serif`; ctx.textBaseline = "top"; ctx.textAlign = "left";
           ctx.fillStyle = it.color;

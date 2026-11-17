@@ -1225,7 +1225,9 @@ const Studies = (() => {
         { k: "stage3", t: "Stage 3 · topping", c: "#f59e0b" }, { k: "stage4", t: "Stage 4 · declining", c: "#ef5350" },
         { k: "line", t: "30-week line", c: "#7e57c2" }],
       draw({ chart, times, p, col, tf, ctx, id }) {
-        if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
+        // daily or weekly: the stages and the 30-week line are dated by each week's last session (and the latest
+        // session), which are the weekly chart's own bars and sessions on the daily one. A monthly bar spans weeks.
+        if (!["D", "W"].includes(tf) || !ctx.annotate) return { series: [], note: "daily or weekly charts only", setVisible() {} };
         let on = true, seq = 0, asked, timer = null, shapes = [], pts = [];
         const NAMES = { 1: "Stage 1 · basing", 2: "Stage 2 · advancing", 3: "Stage 3 · topping", 4: "Stage 4 · declining" };
         const line = chart.addSeries(LC.LineSeries, { color: col("line"), lineWidth: 1, priceLineVisible: false,
@@ -1242,8 +1244,11 @@ const Studies = (() => {
           const r = await fetch(`/api/stage-analysis/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}${date ? `&date=${date}` : ""}`)
             .then((x) => (x.ok ? x.json() : null)).catch(() => null);
           if (my !== seq) return;   // a newer request (the view moved) owns the drawing
-          shapes = (r?.stages || []).flatMap((x) => [
-            { shape: "box", role: `stage${x.stage}`, bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" },
+          // each band runs on to where the next begins: drawn from its first bar's middle to its last bar's, adjacent
+          // bands left a one-bar gap between them -- a visible white strip on weekly bars
+          const st = r?.stages || [];
+          shapes = st.flatMap((x, i) => [
+            { shape: "box", role: `stage${x.stage}`, bg: true, from: x.from, to: st[i + 1]?.from || x.to, top: x.high, bottom: x.low, label: "" },
             ...(x.weeks >= 6 ? [{ shape: "text", role: `stage${x.stage}`, at: x.from, price: x.high,
               label: NAMES[x.stage] + (x.ongoing && r?.current?.provisional ? " (forming)" : "") }] : []),
           ]);
