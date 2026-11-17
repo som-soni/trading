@@ -13,7 +13,7 @@ exposure](system-risk-exposure.md); the stocks come from [Sectors → stocks](sy
 - Candidates come from the **Stage 2 Trend Template**, strong relative strength and the leading and emerging groups of
   [Sectors → stocks](system-sector-selection.md); in a decline, the same plus Minervini's five things — kept as a
   **watchlist**, because "held up best" alone has not paid here.
-- Eleven candidate setups, from the classic base breakout to a fast rebound's first pullback. Two have been tested
+- Twelve candidate setups, from the classic base breakout to a fast rebound's first pullback. Two have been tested
   here: the base breakout showed little edge on its own, and the fast rebound's first pullback none (rejected).
 - The candidate execution and management rules — buy-stop at the pivot, no chasing; **scale out of a quick "tradable"
   move, hold a true leader** — wait for a strategy to confirm or replace them.
@@ -106,6 +106,7 @@ mostly sector and low beta. The setup and the feedback decide, not the list.
 | L9 | **Pause pivot** — a strong stock (RS near the top) pulls back in three or four lower lows after a power move, then pauses; buy the break of the pause | Over the pause's high | Under the pause low | Ritchie/Hedgepath (Vicor, Dec 2025; Arm, May 2026) | Untested; our detector refuses it (VCP-08 tightness) |
 | L10 | **Pullback buy after a missed breakout** — a low-volume 1-2-3 pullback to the cheat area or the 50-day, then an inside day or a turn | Over the inside day's (or the prior day's) high — bought as it turns up, never on the way down | Under the pullback low; out in 5–10 sessions if it does not work | Ritchie/Hedgepath (Fluence, Modine 2026); Minervini (ANF, Jan 2021: skipped the first breakout as "wedging", bought the pullback to the top of the low cheat as it cleared Friday's high) | Untested; our detector refuses Modine (VCP-06), but catches ANF on the same day as a near-miss VCP (S7) |
 | L11 | **First setup after a new all-time high out of a multi-year base** — may come before the Trend Template is met | The first tight setup above the old high | Under the setup | Ritchie (Arm), Weissman (IREN, Aug 2025) | Untested; refused by the Trend Template's stacked averages (G4) |
+| L12 | **Undercut and reclaim** — in an uptrend's base, price dips under a tested support pivot and closes back above it; not the obvious breakout of the base's top | 1st: the reclaim close. 2nd: over the first bounce's high after a higher low | Under the undercut low (2nd: under the higher low) | @ohiain ([note](creator-ohiain.md)) | **Spec drafted** ([undercut and reclaim](undercut-reclaim-spec.md), draft 0, 2026-11-17); not built. Pass criteria fixed, including beating a breakout entry on the same bases |
 
 ## 4. Execution — candidate rules
 
