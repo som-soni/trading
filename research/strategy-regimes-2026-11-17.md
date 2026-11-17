@@ -8,7 +8,7 @@ daily equity, split by what the index was doing. Produced by `swing_screener/bac
 **In short**
 
 - **Nothing wins in every phase.** The strategies that made money while the index fell — trend following across
-  assets (`turtle_trend`), trend-timed bonds and gold, the short books — gave back far more in advances and
+  assets (`turtle_trend`), trend-timed bonds and gold, the US short books — gave back far more in advances and
   recoveries. They are hedges for a sleeve, not a book to switch into.
 - **The breakout strategies defend by going to cash.** Minervini, `high52_vcp` and `breakout` lost 41–46% of the
   US index's declines and about 16–20% of India's, holding a position on only about 40% of decline sessions: the
@@ -63,7 +63,10 @@ What it says about the regimes asked about:
 
 - **Bear (a decline under way):** the only books that made money were trend following across asset classes and
   shorts — the published finding too (trend following's "crisis alpha" in 2008 and 2022). Here `turtle_trend` made
-  +10%, +26% and +16% in the 2018, 2020 and 2022 US declines; `stage4_shorts` was positive in every India decline.
+  +10%, +26% and +16% in the 2018, 2020 and 2022 US declines; **Correction (same day):** `stage4_shorts`
+  looked positive in every India decline, but it held a short on only 2% of India's decline sessions — those gains
+  are the 6.5% cash rate on idle money, not shorting. In the US it held shorts more often and the 2025 decline
+  (+5.5%) was mostly real short profit. See [the sleeve tests](sleeve-turtle-trend-2026-11-17.md).
   Their cost: roughly 15–30 points a year behind the index the rest of the time.
 - **Transition (the recovery off a low):** momentum and quality lead, as do trend-exit books that get back in fast
   (`masonson_tqqq`). Defensive books lag badly here — the decline winners lost 30–60 points a year in recoveries.
@@ -83,6 +86,8 @@ What it says about the regimes asked about:
 - Rows marked **opti** stop at 2021 (no 2022 or 2025 decline); their capture is over four or six declines, not
   six or nine. The full runs for those strategies are queued.
 - Each row is one configuration; a different configuration of the same strategy can capture differently.
+- **A book in cash earns the cash rate, and that counts as return here.** In India (6.5%) a near-idle book shows
+  gains in every decline; read *capture* beside the *held* share in the phase table.
 - Phase returns are arithmetic and annualised over few sessions (US declines are ~11% of sessions), so the
   *capture* column and the per-episode returns are the steadier read.
 - The stock universe is today's listed names, so falling years are somewhat flattered (delisted losers missing).

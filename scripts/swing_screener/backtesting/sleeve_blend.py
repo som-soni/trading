@@ -8,7 +8,8 @@ last session. A sleeve scales linearly with the capital it is given, so this is 
 sub-accounts topped up monthly -- the method `combination.py` uses. Moving money between them is charged
 each side's per-side cost (BOOK_COST_BPS for the stock book, SLEEVE_COST_BPS for the ETF sleeve).
 
-An India book holds the US-listed sleeve in rupees: its daily return is the sleeve's dollar return times the
+A sleeve that trades the book's own market (`stage4_shorts`) is taken from that market's run; otherwise an
+India book holds the US-listed sleeve in rupees: its daily return is the sleeve's dollar return times the
 change in USD/INR (stored `USDINR`).
 
 **The test, written before any blend was computed (2026-11-17).**
@@ -165,18 +166,30 @@ def to_markdown(market: str, book: str, sleeve: str, res: dict) -> str:
 
 
 def main(argv=None) -> None:
+    global SLEEVE_COST_BPS
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--sleeve", default="turtle_trend")
+    ap.add_argument("--sleeve-cost-bps", type=float, default=SLEEVE_COST_BPS,
+                    help="per side on money moved into or out of the sleeve (20 for a stock book)")
     a = ap.parse_args(argv)
+    SLEEVE_COST_BPS = a.sleeve_cost_bps
     from ..web.server import strategy_edges
     edges = strategy_edges()
     sleeve_usd = _full_run_returns(a.sleeve, SLEEVE_MARKET, edges)
-    if sleeve_usd is None:
-        raise SystemExit(f"{a.sleeve}: no full-period {SLEEVE_MARKET} run stored")
-    out = [f"_Computed {dt.date.today()} from stored full-period runs; sleeve `{a.sleeve}` "
-           f"{sleeve_usd.index[0].date()} → {sleeve_usd.index[-1].date()}._"]
+    out = [f"_Computed {dt.date.today()} from stored full-period runs; sleeve `{a.sleeve}`._"]
     for market, books in BOOKS.items():
-        sleeve = _in_currency(sleeve_usd, market)
+        # a sleeve that trades this market itself (stage4_shorts) is held there; otherwise the US run, in
+        # this market's currency
+        own = _full_run_returns(a.sleeve, market, edges) if market != SLEEVE_MARKET else None
+        if own is not None:
+            sleeve, where = own, f"its own {market} run"
+        elif sleeve_usd is not None:
+            sleeve, where = _in_currency(sleeve_usd, market), f"the {SLEEVE_MARKET} run" + (
+                "" if market == SLEEVE_MARKET else " in local currency")
+        else:
+            out.append(f"#### {market.upper()}: no full-period `{a.sleeve}` run stored, skipped.")
+            continue
+        out.append(f"_{market.upper()} sleeve: {where}, {sleeve.index[0].date()} → {sleeve.index[-1].date()}._")
         for key in books:
             book = _full_run_returns(key, market, edges)
             if book is None:

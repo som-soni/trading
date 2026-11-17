@@ -1,4 +1,4 @@
-# A turtle_trend sleeve beside the long books (2026-11-17)
+# Hedge sleeves beside the long books: turtle_trend and stage4_shorts (2026-11-17)
 
 Follow-up to [Strategies by market regime](strategy-regimes-2026-11-17.md), where `turtle_trend` was the one book that
 made money in the US declines of 2018, 2020 and 2022. Question: does holding a slice of it beside a long book make the
@@ -55,7 +55,32 @@ as much as the sleeve's own return, and from 2022 that was about zero.
   the decline) and still lost overall; one more crash could flip it. The evidence for trend following is decades
   long; this sample is four years.
 
-## Full tables
+
+## Second sleeve: `stage4_shorts`
+
+Same test, same pre-set rule, run after the turtle results (`--sleeve stage4_shorts --sleeve-cost-bps 20`: a
+stock book's cost). An India book takes India's own `stage4_shorts` run; a US book the US run.
+
+**It fails too, and for a plainer reason: the sleeve is almost all cash.**
+
+| Market | Window | `stage4_shorts` alone: CAGR / max DD / Sharpe over cash | Sessions holding a short |
+|---|---|---|---|
+| US | 2013–2021 | 0.0% / −3.8% / −0.40 | 7% |
+| US | 2022 on | 3.5% / −5.1% / −0.11 | 31% |
+| India | 2013–2021 | 6.9% / −0.4% / −0.47 | 0.2% |
+| India | 2022 on | 6.3% / −0.6% / −0.27 | 4% |
+
+- **US:** no book chose a weight in-sample — 2013–2021 the sleeve earned nothing (US cash paid under 1%), so it
+  only diluted the book.
+- **India:** only `quality_momentum` chose one (30%), and out-of-sample the blend was identical to 30% in cash
+  (18.7% / −28.6% vs 18.7% / −28.5%). The India "returns" are the 6.5% cash rate on money that almost never traded.
+- So the earlier regime note's "positive in every India decline" was the cash rate, corrected there. A short book
+  that trades this rarely is not a hedge; a real test of a short sleeve needs a short strategy that is short often
+  enough to matter in a decline.
+
+Full tables for this sleeve are at the end of the note.
+
+## Full tables — turtle_trend
 
 _Computed 2026-11-17 from stored full-period runs; sleeve `turtle_trend` 2013-01-03 → 2026-11-13._
 
@@ -364,3 +389,318 @@ _Computed 2026-11-17 from stored full-period runs; sleeve `turtle_trend` 2013-01
 | 80% book + 20% sleeve ← | 16.3% | -39.8% | 0.52 | 21.5% |
 | 70% book + 30% sleeve | 15.6% | -36.8% | 0.51 | 19.4% |
 | *80% book + 20% cash* | 15.9% | -43.7% | 0.50 | 21.3% |
+
+
+## Full tables — stage4_shorts
+
+_Computed 2026-11-17 from stored full-period runs; sleeve `stage4_shorts`._
+
+_US sleeve: the us run, 2013-01-03 → 2026-11-13._
+
+#### US — `quality_momentum` + `stage4_shorts` (monthly correlation -0.11)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 15.5% | -42.7% | 0.59 | 32.5% |
+| 90% book + 10% sleeve | 14.2% | -38.8% | 0.58 | 29.1% |
+| 80% book + 20% sleeve | 12.8% | -34.8% | 0.57 | 25.8% |
+| 70% book + 30% sleeve | 11.4% | -30.6% | 0.56 | 22.5% |
+| *80% book + 20% cash* | 12.9% | -34.8% | 0.58 | 25.8% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 26.9% | -41.8% | 0.66 | 47.0% |
+| 90% book + 10% sleeve | 25.4% | -38.3% | 0.66 | 42.1% |
+| 80% book + 20% sleeve | 23.7% | -34.5% | 0.65 | 37.2% |
+| 70% book + 30% sleeve | 21.9% | -30.5% | 0.65 | 32.4% |
+| *80% book + 20% cash* | 23.8% | -35.0% | 0.65 | 37.4% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 19.3% | -45.2% | 0.61 | 38.2% |
+| 90% book + 10% sleeve | 18.0% | -41.1% | 0.60 | 34.2% |
+| 80% book + 20% sleeve | 16.5% | -36.8% | 0.60 | 30.3% |
+| 70% book + 30% sleeve | 14.9% | -32.5% | 0.59 | 26.4% |
+| *80% book + 20% cash* | 16.6% | -36.8% | 0.60 | 30.4% |
+
+#### US — `momentum_dual_combo` + `stage4_shorts` (monthly correlation -0.09)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 8.3% | -38.4% | 0.45 | 21.7% |
+| 90% book + 10% sleeve | 7.6% | -34.9% | 0.44 | 19.5% |
+| 80% book + 20% sleeve | 6.8% | -31.2% | 0.43 | 17.2% |
+| 70% book + 30% sleeve | 6.1% | -27.5% | 0.43 | 15.0% |
+| *80% book + 20% cash* | 7.0% | -31.2% | 0.44 | 17.3% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 12.6% | -30.6% | 0.45 | 24.2% |
+| 90% book + 10% sleeve | 11.9% | -27.8% | 0.45 | 21.7% |
+| 80% book + 20% sleeve | 11.1% | -24.9% | 0.44 | 19.2% |
+| 70% book + 30% sleeve | 10.3% | -21.9% | 0.44 | 16.7% |
+| *80% book + 20% cash* | 11.2% | -24.9% | 0.44 | 19.3% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 9.8% | -38.4% | 0.45 | 22.6% |
+| 90% book + 10% sleeve | 9.1% | -34.9% | 0.44 | 20.3% |
+| 80% book + 20% sleeve | 8.3% | -31.2% | 0.44 | 17.9% |
+| 70% book + 30% sleeve | 7.5% | -27.5% | 0.43 | 15.6% |
+| *80% book + 20% cash* | 8.4% | -31.2% | 0.44 | 18.0% |
+
+#### US — `dual_momentum` + `stage4_shorts` (monthly correlation -0.01)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 8.7% | -36.1% | 0.51 | 18.5% |
+| 90% book + 10% sleeve | 7.9% | -33.3% | 0.50 | 16.5% |
+| 80% book + 20% sleeve | 7.1% | -30.3% | 0.50 | 14.6% |
+| 70% book + 30% sleeve | 6.2% | -27.3% | 0.49 | 12.8% |
+| *80% book + 20% cash* | 7.2% | -29.9% | 0.50 | 14.7% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 16.8% | -31.5% | 0.67 | 20.6% |
+| 90% book + 10% sleeve | 15.6% | -28.5% | 0.66 | 18.5% |
+| 80% book + 20% sleeve | 14.3% | -25.5% | 0.66 | 16.4% |
+| 70% book + 30% sleeve | 13.0% | -22.5% | 0.65 | 14.3% |
+| *80% book + 20% cash* | 14.4% | -25.8% | 0.66 | 16.5% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 11.4% | -36.1% | 0.57 | 19.2% |
+| 90% book + 10% sleeve | 10.5% | -33.3% | 0.56 | 17.2% |
+| 80% book + 20% sleeve | 9.5% | -30.3% | 0.56 | 15.3% |
+| 70% book + 30% sleeve | 8.6% | -27.3% | 0.55 | 13.3% |
+| *80% book + 20% cash* | 9.7% | -29.9% | 0.56 | 15.3% |
+
+#### US — `value_ranking` + `stage4_shorts` (monthly correlation -0.28)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 9.5% | -58.8% | 0.44 | 27.8% |
+| 90% book + 10% sleeve | 8.8% | -53.9% | 0.44 | 24.8% |
+| 80% book + 20% sleeve | 8.1% | -48.8% | 0.44 | 21.8% |
+| 70% book + 30% sleeve | 7.3% | -43.4% | 0.43 | 18.9% |
+| *80% book + 20% cash* | 8.2% | -48.8% | 0.44 | 21.9% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 15.1% | -29.0% | 0.53 | 25.0% |
+| 90% book + 10% sleeve | 14.2% | -26.1% | 0.53 | 22.3% |
+| 80% book + 20% sleeve | 13.2% | -23.0% | 0.53 | 19.5% |
+| 70% book + 30% sleeve | 12.2% | -19.9% | 0.53 | 16.9% |
+| *80% book + 20% cash* | 13.3% | -23.5% | 0.53 | 19.9% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 11.4% | -58.8% | 0.47 | 26.9% |
+| 90% book + 10% sleeve | 10.7% | -53.9% | 0.47 | 23.9% |
+| 80% book + 20% sleeve | 9.8% | -48.8% | 0.47 | 21.0% |
+| 70% book + 30% sleeve | 8.9% | -43.4% | 0.46 | 18.2% |
+| *80% book + 20% cash* | 9.9% | -48.8% | 0.47 | 21.2% |
+
+#### US — `masonson_tqqq` + `stage4_shorts` (monthly correlation -0.09)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 21.1% | -55.5% | 0.71 | 34.5% |
+| 90% book + 10% sleeve | 19.5% | -51.5% | 0.71 | 31.1% |
+| 80% book + 20% sleeve | 17.7% | -47.3% | 0.71 | 27.7% |
+| 70% book + 30% sleeve | 15.8% | -42.9% | 0.70 | 24.3% |
+| *80% book + 20% cash* | 17.8% | -47.1% | 0.71 | 27.7% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 19.2% | -36.4% | 0.55 | 37.4% |
+| 90% book + 10% sleeve | 18.2% | -33.3% | 0.55 | 33.7% |
+| 80% book + 20% sleeve | 17.0% | -30.0% | 0.54 | 30.0% |
+| 70% book + 30% sleeve | 15.7% | -26.7% | 0.54 | 26.3% |
+| *80% book + 20% cash* | 17.1% | -30.0% | 0.55 | 30.0% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 20.4% | -55.5% | 0.65 | 35.5% |
+| 90% book + 10% sleeve | 19.0% | -51.5% | 0.65 | 32.0% |
+| 80% book + 20% sleeve | 17.4% | -47.3% | 0.65 | 28.5% |
+| 70% book + 30% sleeve | 15.8% | -42.9% | 0.64 | 25.0% |
+| *80% book + 20% cash* | 17.6% | -47.1% | 0.65 | 28.6% |
+
+_INDIA sleeve: its own india run, 2013-01-02 → 2026-11-12._
+
+#### INDIA — `momentum_dual_combo` + `stage4_shorts` (monthly correlation -0.03)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 20.7% | -28.3% | 0.78 | 16.9% |
+| 90% book + 10% sleeve | 19.4% | -24.9% | 0.78 | 15.2% |
+| 80% book + 20% sleeve | 18.0% | -22.3% | 0.78 | 13.5% |
+| 70% book + 30% sleeve | 16.7% | -19.6% | 0.78 | 11.8% |
+| *80% book + 20% cash* | 18.0% | -22.3% | 0.78 | 13.5% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 22.5% | -23.6% | 0.82 | 18.8% |
+| 90% book + 10% sleeve | 21.0% | -21.1% | 0.82 | 16.9% |
+| 80% book + 20% sleeve | 19.4% | -18.8% | 0.82 | 15.0% |
+| 70% book + 30% sleeve | 17.8% | -16.5% | 0.82 | 13.1% |
+| *80% book + 20% cash* | 19.4% | -18.8% | 0.82 | 15.0% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 21.3% | -28.3% | 0.80 | 17.6% |
+| 90% book + 10% sleeve | 19.9% | -24.9% | 0.79 | 15.8% |
+| 80% book + 20% sleeve | 18.5% | -22.3% | 0.79 | 14.0% |
+| 70% book + 30% sleeve | 17.1% | -19.6% | 0.79 | 12.3% |
+| *80% book + 20% cash* | 18.5% | -22.3% | 0.79 | 14.0% |
+
+#### INDIA — `dual_momentum` + `stage4_shorts` (monthly correlation -0.06)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 16.1% | -26.3% | 0.51 | 19.2% |
+| 90% book + 10% sleeve | 15.2% | -23.7% | 0.51 | 17.3% |
+| 80% book + 20% sleeve | 14.4% | -21.1% | 0.50 | 15.4% |
+| 70% book + 30% sleeve | 13.5% | -18.5% | 0.50 | 13.4% |
+| *80% book + 20% cash* | 14.4% | -21.1% | 0.50 | 15.4% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 19.4% | -27.5% | 0.63 | 21.3% |
+| 90% book + 10% sleeve | 18.2% | -24.8% | 0.62 | 19.2% |
+| 80% book + 20% sleeve | 16.9% | -22.0% | 0.62 | 17.1% |
+| 70% book + 30% sleeve | 15.7% | -19.1% | 0.61 | 15.0% |
+| *80% book + 20% cash* | 17.0% | -22.0% | 0.62 | 17.1% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 17.2% | -27.5% | 0.55 | 20.0% |
+| 90% book + 10% sleeve | 16.3% | -24.8% | 0.55 | 18.0% |
+| 80% book + 20% sleeve | 15.3% | -22.0% | 0.55 | 16.0% |
+| 70% book + 30% sleeve | 14.3% | -19.1% | 0.54 | 14.0% |
+| *80% book + 20% cash* | 15.3% | -22.0% | 0.55 | 16.0% |
+
+#### INDIA — `quality_momentum` + `stage4_shorts` (monthly correlation -0.06)
+
+**In-sample choice: 30% sleeve. Out-of-sample: FAIL** (failed: cagr).
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 8.5% | -30.9% | 0.17 | 14.0% |
+| 90% book + 10% sleeve | 8.4% | -28.0% | 0.17 | 12.5% |
+| 80% book + 20% sleeve | 8.3% | -24.9% | 0.17 | 11.1% |
+| 70% book + 30% sleeve ← | 8.2% | -21.9% | 0.17 | 9.7% |
+| *70% book + 30% cash* | 8.3% | -21.9% | 0.17 | 9.7% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 22.9% | -42.3% | 0.65 | 29.0% |
+| 90% book + 10% sleeve | 21.6% | -37.9% | 0.65 | 26.0% |
+| 80% book + 20% sleeve | 20.2% | -33.4% | 0.65 | 23.1% |
+| 70% book + 30% sleeve ← | 18.7% | -28.6% | 0.65 | 20.2% |
+| *70% book + 30% cash* | 18.7% | -28.5% | 0.65 | 20.2% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 13.4% | -42.3% | 0.40 | 20.6% |
+| 90% book + 10% sleeve | 12.9% | -37.9% | 0.40 | 18.5% |
+| 80% book + 20% sleeve | 12.3% | -33.4% | 0.40 | 16.4% |
+| 70% book + 30% sleeve ← | 11.8% | -28.6% | 0.40 | 14.3% |
+| *70% book + 30% cash* | 11.8% | -28.5% | 0.40 | 14.3% |
+
+#### INDIA — `momentum_baseline` + `stage4_shorts` (monthly correlation +0.00)
+
+**In-sample choice: none.** No weight cut the drawdown by 20% while giving up at most 2.0 points of CAGR, so there is nothing to verify.
+
+*In-sample 2013-01-01 → 2021-12-31*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 16.7% | -54.4% | 0.48 | 25.0% |
+| 90% book + 10% sleeve | 16.0% | -49.3% | 0.48 | 22.4% |
+| 80% book + 20% sleeve | 15.2% | -43.8% | 0.48 | 19.9% |
+| 70% book + 30% sleeve | 14.4% | -37.8% | 0.48 | 17.3% |
+| *80% book + 20% cash* | 15.2% | -43.8% | 0.48 | 19.9% |
+
+*Out-of-sample 2022-01-01 →*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 18.9% | -45.5% | 0.53 | 30.0% |
+| 90% book + 10% sleeve | 18.0% | -41.5% | 0.53 | 26.9% |
+| 80% book + 20% sleeve | 17.1% | -37.3% | 0.53 | 23.8% |
+| 70% book + 30% sleeve | 16.0% | -32.9% | 0.53 | 20.8% |
+| *80% book + 20% cash* | 17.1% | -37.3% | 0.53 | 23.8% |
+
+*Full period (context)*
+
+| Account | CAGR | Max drawdown | Sharpe (over cash) | Volatility |
+|---|---|---|---|---|
+| Book alone | 17.4% | -54.4% | 0.50 | 26.8% |
+| 90% book + 10% sleeve | 16.7% | -49.3% | 0.50 | 24.1% |
+| 80% book + 20% sleeve | 15.9% | -43.8% | 0.50 | 21.3% |
+| 70% book + 30% sleeve | 15.0% | -37.8% | 0.50 | 18.6% |
+| *80% book + 20% cash* | 15.9% | -43.8% | 0.50 | 21.3% |
