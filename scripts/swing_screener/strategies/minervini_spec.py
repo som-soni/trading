@@ -965,7 +965,7 @@ def cheat_measured_move(base_high, entry: float, depth_pct) -> float:
     return float(base_high) - entry + (float(base_high) * float(depth_pct) / 100 if depth_pct else 0.0)
 
 
-def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
+def trend_template_row(cfg: MarketConfig, last, above_50: bool = True) -> tuple[bool, str]:
     """The Trend Template IS the screen, so it belongs here rather than only in the gates:
     expressing it row-wise is what lets the backtest apply it as of each simulated bar instead
     of against today's row.
@@ -974,6 +974,8 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     had kept importing for this one method. Its three thresholds are screens/criteria.py
     constants already imported here, so moving it changes no behaviour and no fingerprint.
     """
+    # above_50=False drops C1 (the close above the 50-day) and keeps the other seven: the undercut_reclaim
+    # strategy's screen, whose undercut of a base often dips under the 50-day.
     ok, why = tradable_point_in_time(cfg, last)
     if not ok:
         return False, why
@@ -986,7 +988,7 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     if any(pd.isna(v) for v in (s50, s150, s200, s200_prev, lo52, hi52, rs)):
         return False, "insufficient history for the trend template"
 
-    if not (close > s50 and close > s150 and close > s200):
+    if not ((close > s50 or not above_50) and close > s150 and close > s200):
         return False, "price below one of the 50/150/200-day averages"
     if not (s50 > s150 > s200):
         return False, "moving averages not stacked 50 > 150 > 200"

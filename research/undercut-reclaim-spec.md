@@ -1,8 +1,8 @@
 # Undercut and reclaim — a strategy spec
 
-*Status: **draft 0, 2026-11-17.** The definitions below were fixed before any backtest. A first version was
-checked against stored prices for how often it fires, and changed once because of that check (§3). No outcomes
-were looked at. No strategy code exists yet, and no backtest has been run.*
+*Status: **draft 0, 2026-11-17; built the same day as strategy `undercut_reclaim` v1.0** (§7). The definitions
+below were fixed before any backtest. A first version was checked against stored prices for how often it fires,
+and changed once because of that check (§3). No outcomes were looked at, and no backtest has been run.*
 
 **In short**
 
@@ -119,7 +119,7 @@ it scored better: a winning variant becomes a new version, verified on its own.
 | Variant | Change | Why |
 |---|---|---|
 | `ENTRY_MODE=2` | Breakout entry on the same bases (§4) | The creator's claim |
-| `MIN_STOP_ATR=1.0` | Stop at least 1 ATR under support | Kell's tight-stop problem (§3) |
+| `MIN_STOP_ATR=1.0` | Stop at least 1 ATR under the entry | Kell's tight-stop problem (§3) |
 | `S2_ONLY=1` | Only the 2nd entry | Diagram 3's ✓ includes it as the more confirmed entry |
 | `EXIT_MODE=2` | Kell's EMA break (close under the 21-day by 0.5 ATR) in place of the 9/21 cross | The nearer-coded exit, for comparison with `kell_cycle` |
 
@@ -146,8 +146,22 @@ reason stated, and draft 1 gets its own run.
   fails, and that is reported, not loosened.
 - **Overlap.** The same day can be a `wyckoff_spring` S1 (range after a decline) or a `minervini` S9 shakeout
   (bought later, through the base's high). Report how many S1 signals coincide with either, as a diagnostic.
-- **Building it.** It would be a new strategy, `undercut_reclaim`, registered with every documentation attribute
-  (CLAUDE.md), `version` 1.0, and stage tests run before the first backtest.
+- **Weekly bars** aside, the build settled the remaining wording (§7).
+
+## 7a. How it was built (2026-11-17)
+
+Strategy `undercut_reclaim` v1.0: the scan is `core/undercut_reclaim.py`, the class `strategies/undercut_reclaim.py`.
+Where the code had to settle what §2 left open:
+
+| Point | As built |
+|---|---|
+| "One S1 per base" | No S1 within `REARM_BARS` = 30 sessions of the last |
+| Candidates | The Trend Template's own row test with C1 dropped (`trend_template_row(..., above_50=False)`), and the minervini strategy's turnover floor |
+| S2 and the breakout after an S1 | Both are watched from the S1. A close under the undercut low ends the watch |
+| `MIN_STOP_ATR` | At least that many ATR under the *entry*, as in `kell_cycle` (§5 corrected) |
+| Exit | A new backtest exit mode, `--exit-mode reclaim`: `kell_cycle`'s tranche machinery (each tranche's own stop, adds at the close) with no exhaustion sale, selling everything when the 9-day EMA closes under the 21-day after being at or above it the session before. EXIT_MODE 2 is a close under the 21-day EMA by 0.5 ATR |
+| Plan target | The base's pivot, or entry + 3R when the pivot is not above the entry; the R column only (`--no-target`) |
+| Evidence grade | D: diagrams, no published test |
 
 ## 8. Results
 

@@ -2292,6 +2292,60 @@
     },
     "version": "1.1"
   },
+  "undercut_reclaim": {
+    "family": "undercut_reclaim",
+    "version": "1.0",
+    "fingerprint": "c7094f5e",
+    "params": {
+      "BASE_BARS": 30,
+      "BASE_MAX_PCT": 20.0,
+      "BO_WINDOW": 30,
+      "ENTRY_MODE": 1,
+      "EXIT_BREAK_ATR": 0.5,
+      "EXIT_FAST_EMA": 9,
+      "EXIT_MODE": 1,
+      "EXIT_SLOW_EMA": 21,
+      "HOLD_ATR": 0.5,
+      "HOLD_SPAN": 100,
+      "MAX_PCT_BELOW_52W_HIGH": 25.0,
+      "MAX_STOP_PCT": 8.0,
+      "MIN_PCT_ABOVE_52W_LOW": 30.0,
+      "MIN_ROOM_R": 2.0,
+      "MIN_STOP_ATR": 0.0,
+      "MIN_TOUCHES": 2,
+      "NOMINAL_TARGET_R": 3,
+      "REARM_BARS": 30,
+      "RS_MIN_RANK": 70,
+      "RS_MIN_SCORE": 0.5,
+      "S2_ONLY": 0,
+      "S2_WINDOW": 15,
+      "SMA200_RISING_BARS": 21,
+      "SWING_SEP": 5,
+      "TOUCH_PCT": 2.0,
+      "UNDERCUT_MAX_ATR": 1.5,
+      "UNDERCUT_WINDOW": 5,
+      "_key": "undercut_reclaim",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7"
+      ],
+      "min_bars": 300,
+      "setup_codes": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "watch_codes": [
+        "W1",
+        "W2"
+      ]
+    }
+  },
   "value_ranking": {
     "family": "value_ranking",
     "fingerprint": "d37ade2e",

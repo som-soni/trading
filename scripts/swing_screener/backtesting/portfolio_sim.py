@@ -80,6 +80,7 @@ from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
 from ..strategies import kullamagi as _km
 from ..strategies import kell_cycle as _kc
+from ..strategies import undercut_reclaim as _ur
 from ..strategies import supertrend as _st
 from ..strategies import darvas as _dv
 from ..strategies import stage_analysis as _sa
@@ -139,7 +140,7 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | kell | revert | minervini
+    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | kell | reclaim | revert | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     trail_pct: float = 0.04      # for trail_pct: the stop sits this fraction below the highest HIGH since entry
@@ -544,6 +545,9 @@ KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing average (simple o
 RV_LINE = "_rv_line"           # the revert exit's short simple average, added the same way
 RV_RSI = "_rv_rsi"             # ... and its RSI(2)
 KELL_EX, KELL_BK, KELL_LEG = "_kell_ex", "_kell_bk", "_kell_leg"   # the kell exit's cycle phases, the same way
+# Exit modes managed by the kell machinery (tranches with their own stops, adds at the close, a sell-all signal):
+# `kell` reads the kell_cycle scan; `reclaim` the undercut_reclaim strategy's exit line, with no exhaustion sale.
+KELL_MODES = frozenset({"kell", "reclaim"})
 
 
 def _below(policy: ExitPolicy) -> float:
@@ -1159,7 +1163,7 @@ def simulate(
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
-            if policy.mode == "kell" and s.symbol in positions:
+            if policy.mode in KELL_MODES and s.symbol in positions:
                 pos, df = positions[s.symbol], prices.get(s.symbol)
                 if pos.entry_date == today or df is None or today not in df.index:
                     continue
@@ -1258,6 +1262,8 @@ def exit_frames(prices: dict[str, pd.DataFrame], policy: ExitPolicy) -> dict[str
             ph = _kc.cycle_frame(df)
             out[s] = df.assign(**{KELL_EX: ph["ex"], KELL_BK: ph["bk"], KELL_LEG: ph["leg"]})
         return out
+    if policy.mode == "reclaim":
+        return {s: df.assign(**{KELL_EX: False, KELL_BK: _ur.exit_frame(df), KELL_LEG: 0}) for s, df in prices.items()}
     return prices
 
 
@@ -1265,7 +1271,7 @@ def manage_entry_bar(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, p
                      close_out, sell, fee_rate: float, cfg: MarketConfig) -> None:
     """What the session a position was bought in does to it, after the fill at moment `at`. The one
     implementation for `simulate` and the open-position tracker."""
-    if policy.mode == "kell":
+    if policy.mode in KELL_MODES:
         _kell_tranches(pos)       # bought at the close: its stop and exits are first tested tomorrow
         return
     if policy.mode == "minervini":
@@ -1302,7 +1308,7 @@ def manage_exit(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy
         _manage_kullamagi(sym, pos, bar, today, policy, close_out, sell)
         return
 
-    if policy.mode == "kell":
+    if policy.mode in KELL_MODES:
         _manage_kell(sym, pos, bar, today, policy, close_out, sell)
         return
 

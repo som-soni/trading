@@ -6,7 +6,7 @@ not real charts, and carry no numbers. Everything below is **their** view unless
 are marked **[inferred]**. Where a claim was checked against stored prices, the check is shown.*
 
 *What went where: the undercut-and-reclaim entry became a strategy spec,
-[Undercut and reclaim](undercut-reclaim-spec.md) (draft 0, not built). It is also listed as candidate setup L12 in
+[Undercut and reclaim](undercut-reclaim-spec.md) (draft 0), built as strategy `undercut_reclaim` v1.0. It is also listed as candidate setup L12 in
 [Longs](system-swing-longs.md) §3. The EMA cycle in diagram 1 is Oliver Kell's, already built as `kell_cycle`
 ([spec](kell-cycle-spec.md)). The Learn guides are not updated yet.*
 

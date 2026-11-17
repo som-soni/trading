@@ -61,6 +61,7 @@ EVIDENCE = {
     # continuation -- pullback in trend
     "trend_pullback": _e("D", 0, 0, 1, 0, "A common swing rule (dip to the 20-day inside an uptrend): blog and video examples, no published test."),
     "kell_cycle": _e("D", 0, 0, 1, 0, "Oliver Kell, Victory in Stock Trading: US Investing Championship 2020 record and examples; no published test."),
+    "undercut_reclaim": _e("D", 0, 0, 1, 0, "@ohiain on X: four annotated diagrams, no numbers and no published test; kin to Wyckoff's spring and Minervini's shakeout."),
     # continuation -- burst
     "momentum_burst": _e("D", 0, 0, 1, 0, "Pradeep Bonde (Stockbee): the 4% momentum burst, shared as examples and scans; no published test."),
     "etf_swing": _e("D", 0, 0, 1, 0, "A swing breakout system applied to ETFs: practitioner idea, no published test."),

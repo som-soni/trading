@@ -54,6 +54,7 @@ from .darvas import DarvasStrategy
 from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
 from .kell_cycle import KellCycleStrategy
+from .undercut_reclaim import UndercutReclaimStrategy
 from .kullamagi import KullamagiStrategy
 from .minervini_spec import High52VcpStrategy, MinerviniSpecStrategy
 from .momentum_burst import MomentumBurstStrategy
@@ -102,6 +103,7 @@ register(StageAnalysisStrategy())
 register(KullamagiStrategy())
 register(MomentumBurstStrategy())
 register(KellCycleStrategy())
+register(UndercutReclaimStrategy())   # @ohiain: buy the reclaim of an undercut base support, not the breakout
 register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion bet
 
 # The swing catalogue's untested setups (research/strategy-catalog-swing.md), added 2026-11-15 on the shared

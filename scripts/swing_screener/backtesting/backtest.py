@@ -1803,7 +1803,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "kell", "darvas", "revert", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "kell", "reclaim", "darvas", "revert", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
         "'ma_low' does not sell on a close below --ma-col: the next session trading under that candle's low sells, "
@@ -1814,6 +1814,8 @@ def build_parser() -> argparse.ArgumentParser:
         "sessions in profit, the rest on a close below its TRAIL_SMA-day average or after MAX_HOLD_BARS sessions. "
         "'kell' is the kell_cycle strategy's management: each tranche at its own stop, 1/EX_SELL_DIVISOR sold at "
         "the first exhaustion of each leg, the rest at the EMA break; signals in a held stock add tranches. "
+        "'reclaim' is the undercut_reclaim strategy's: the kell tranches and adds, no exhaustion sale, everything "
+        "at its exit line (EXIT_MODE: the 9/21-day EMA cross, or a close under the 21-day by EXIT_BREAK_ATR ATR). "
         "'darvas' trails the stop by Darvas boxes (the darvas strategy's constants): each higher box raises it to "
         "one tick under its bottom; the stop is the only exit. "
         "'minervini' is the spec's EX-01..EX-07 (research/minervini-backtest-spec.md).",
