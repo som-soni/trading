@@ -163,6 +163,12 @@ Where the code had to settle what §2 left open:
 | Plan target | The base's pivot, or entry + 3R when the pivot is not above the entry; the R column only (`--no-target`) |
 | Evidence grade | D: diagrams, no published test |
 
+**Outcomes seen before the first run (2026-11-17).** For the Learn guide's examples (Failed breakouts, "The long
+mirror"), the frozen v1.0 detector was run over 11 hand-picked large caps, 2013–2021, with no screen, costs or
+market filter. Of 31 reclaims, 20 lost the full −1R, 5 made more than +1R; average +0.96R, median −1R. A smoke run
+(300-stock US sample, optimise stage) checked the stage boundary. Neither changed any rule: the definitions and
+§6's criteria were fixed before both.
+
 ## 8. Results
 
 None yet.

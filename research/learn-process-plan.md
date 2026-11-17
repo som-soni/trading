@@ -8,7 +8,7 @@
 - Losing streaks are longer than they feel. A method that wins 35% of its trades will usually lose 10 or more in a row somewhere in 500 trades.
 - Change the plan only at the monthly review, one rule at a time, with the date and the reason written down.
 
-This is the first of three process guides. The next two are [journaling and review](learn-process-journal.md)
+This is the second of four process guides, after [reading a stock](learn-process-reading-a-stock.md). The next two are [journaling and review](learn-process-journal.md)
 and [biases](learn-process-biases.md). Each step below links to the guide that explains it.
 
 ---

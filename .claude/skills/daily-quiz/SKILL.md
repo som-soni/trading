@@ -39,7 +39,7 @@ Pick about 12 questions:
 |---|---|---|
 | Re-test | 2–3 | Oldest items in the weak-spot queue, with **new numbers and a new framing** — never the same question. |
 | Market review | 1 | Today's real market, from stored data (§3). |
-| Chart drill | 1 | A real stock at a real past date, point in time (§3). |
+| Chart drill | 1 | A real stock at a real past date, point in time (§3). **Once a week it is a full read instead** (§3). |
 | Risk & maths | 1 | A calculation: R, expectancy, sizing, drawdown, costs, SE, Kelly, risk of ruin. |
 | Strategy | 1 | From the catalog, rotating; at least two in three from outside the portal's built strategies. |
 | Rotation | 5–6 | Topics, not dimensions: **never-asked topics first** (at least 3 a quiz while any remain), then the topics asked longest ago, weighted toward low scores. No dimension twice except re-tests. |
@@ -112,6 +112,22 @@ a failed breakout, a stage change, a gap, a climax). Describe the bars up to tha
 50/200-day, the pattern, volume, relative strength, the nearest levels — or give a short OHLCV table.
 Ask what they see and what they would do (entry, stop, size, or stand aside). When grading, reveal what
 happened next and why that outcome does not by itself prove the decision right or wrong.
+
+**Full read (weekly, topic 13.12):** once a week, the chart drill becomes a full read of one stock on a past date, in the seven-step order of the Learn guide
+*Reading a stock, top to bottom*: market, group, trend, setup, entry, company, event risk. Give the readings
+for each step, point in time — the entry evidence (`scripts/analysis/evidence.py` `gather_entry(market,
+symbol, date)` and `analysis/entry.py` `evaluate`, read-only in a scratchpad script) and the company's quarters
+known that day (`/api/fund-series?market=&symbol=&field=` — quarters dated when filed, so only those filed
+by the date) — as plain numbers,
+not as the checks' grades. Ask for one line per step with a grade (good / mixed / bad), the conflicts and their
+weight, and the decision: buy, buy smaller, wait for a trigger, or pass, with entry, stop, size on a stated
+account and what would prove it wrong. Use dates before 2022, the backtests' verify window stays unread. Grade
+the order and the reasoning: a step skipped or read out of order, a missed one-off in the earnings, no stop or
+size, or a red light not named costs marks; the outcome does not. Then reveal what happened and what the
+frameworks graded. The tracker notes the date of the last full read; one is due when seven days have passed
+(on an exam day, the day after). It counts as the Chart drill slot and as topic 13.12, plus the `5.x` / `4.x` topics it
+actually tests; alternate India and the US. Never the guide's own worked reads (HDFC Bank, September 2014;
+Microsoft, October 2018).
 
 These are learning exercises, not recommendations: never frame a live question as "should you buy X
 now", and do not give personalised investment advice.

@@ -98,8 +98,8 @@ Cognitive biases (loss aversion, disposition effect, recency, confirmation, over
 hindsight), tilt and revenge trading, following rules through drawdowns, the trading plan, the
 journal and the weekly review, process vs outcome, the routine (pre-market, post-market), when to stop
 trading.
-Topics: 13.1 loss aversion and the disposition effect · 13.2 recency, confirmation, overconfidence, hindsight, sunk cost · 13.3 tilt and revenge trading · 13.4 following rules through drawdowns · 13.5 the trading plan · 13.6 the journal and weekly review · 13.7 process vs outcome · 13.8 routine · 13.9 when to stop trading · 13.10 knowing your own numbers (win rate, payoff, typical drawdown) · 13.11 crowd behaviour: herding, bubbles, capitulation
-Learn: process-plan, process-journal, process-biases.
+Topics: 13.1 loss aversion and the disposition effect · 13.2 recency, confirmation, overconfidence, hindsight, sunk cost · 13.3 tilt and revenge trading · 13.4 following rules through drawdowns · 13.5 the trading plan · 13.6 the journal and weekly review · 13.7 process vs outcome · 13.8 routine · 13.9 when to stop trading · 13.10 knowing your own numbers (win rate, payoff, typical drawdown) · 13.11 crowd behaviour: herding, bubbles, capitulation · 13.12 the full read of one stock: the seven steps in order (market, group, trend, setup, entry, company, event risk), conflicts, the decision
+Learn: process-reading-a-stock, process-plan, process-journal, process-biases.
 
 ## 14. Tax, costs and regulation
 India: STT, stamp duty, exchange and SEBI fees, GST, DP charges; STCG/LTCG on equity, F&O income as

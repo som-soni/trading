@@ -128,6 +128,110 @@ Risk a fixed share of your account on each trade: 0.5% is a sensible start for s
 
 **A tighter stop.** Some traders put the stop above the failure day's high, not the breakout's high. Risk per share is smaller, so the position is bigger, but the stop is hit more often. Test both.
 
+### The long mirror: undercut and reclaim
+
+A breakout can fail on the way up. A breakdown can fail on the way down too, and inside a leader's base that failure is a buy.
+
+**The picture.** A stock in an uptrend pauses in a base. Its lows find the same level two or three times; that is support. The obvious buy is the breakout of the base's top, and everyone is watching it.
+
+Instead, the price dips under support for a few days, and holders whose stops sat just below it are sold out. Then the price closes back above support. That close is the **reclaim**.
+
+**Why it can work.** Stops cluster just beyond obvious levels. When the price reaches them, the stop orders add a burst of selling that pushes it briefly lower. If no real selling follows, the price snaps back. The buyer of the reclaim puts the stop under the undercut's low, a few percent away, with the whole base above as room. The risk is the same as on a breakout buy; the reward room is several times larger.
+
+**The rules, one version:**
+
+| Step | Rule |
+|---|---|
+| Trend | The stock is in a long uptrend: above its rising 200-day average, near its 52-week high |
+| Base | Six weeks or so, no more than about 20% from low to high, support touched at least twice |
+| Undercut | A low under support, by no more than about 1.5 times the daily range (ATR) |
+| Trend holds | No close far under a slow average, such as the 100-day EMA. A daily 21-day EMA cannot hold here: inside a six-week base it sits mid-range, so any close under the base's low is far below it |
+| Entry 1 | The first close back above support |
+| Entry 2 | After a bounce and a higher low, a close above the bounce's high |
+| Stop | Under the undercut low (entry 2: under the higher low) |
+| Exit | When the 9-day EMA closes back under the 21-day |
+
+**What it costs.** The stop is tight, so it is hit often. The trade wins rarely and big. Expect a run of small losses before one pays for them.
+
+#### Titan, May 2017 — the reclaim pays (India)
+
+```series
+title: Titan — undercut and reclaim of a base's support, May 2017
+from: 2017-02-01
+to: 2017-10-31
+tf: D
+line: india:TITAN.NS | Titan | candles
+line: india:TITAN.NS@ema100 | 100-day EMA
+line: india:TITAN.NS@vol | Volume | pane2 bars
+level: 464.30 | support 464.30 | 2017-04-05 2017-06-30
+level: 506.15 | base top 506.15 | 2017-04-05 2017-06-30 | pivot
+level: 460.10 | stop 460.10 | 2017-05-24 2017-06-30 | stop
+mark: 2017-05-24 | undercut 460.10 | below
+mark: 2017-05-26 | reclaim 473.45 | below
+mark: 2017-06-05 | +17% in one day
+mark: 2017-09-26 | 9/21 cross 592.25
+caption: The low of 24 May broke the base's support by under 1%; two days later the close was back above it. The 100-day EMA stayed well below.
+```
+
+| Step | Date | What happened |
+|---|---|---|
+| Base | 5 Apr – 18 May 2017 | Support 464.30, top 506.15: 9% deep |
+| Undercut | 24 May | Low 460.10, 0.9% under support |
+| Reclaim | 26 May | Close 473.45, volume 1.2× average |
+| Stop | — | 460.10. Risk 13.35 a share (2.8%) |
+| Room to the base top | — | 32.70, or 2.4R |
+| The move | 5 Jun | Close 551.80, up 17% in one session, through the base top |
+| Exit | 26 Sep | The 9-day EMA closed under the 21-day: sold at 592.25 |
+| Result | — | +25%, about **+8.9R** |
+
+Compare the obvious entry. The breakout came on 5 June, at 551.80. A stop under the undercut low would have been 17% away, too wide, so a breakout buyer had to use a stop near 8% under the price. The same exit then made about +7%, or **under +1R**. Same stock, same base, same exit: the entry made the difference.
+
+#### Dixon Technologies, August 2021 — the stop is hit, then the base breaks out (India)
+
+```series
+title: Dixon Technologies — a reclaim that failed, then the breakout anyway, 2021
+from: 2021-05-01
+to: 2021-11-30
+tf: D
+line: india:DIXON.NS | Dixon Technologies | candles
+line: india:DIXON.NS@ema100 | 100-day EMA
+level: 4205 | support 4205 | 2021-06-24 2021-10-15
+level: 4735 | base top 4735 | 2021-06-24 2021-10-15 | pivot
+level: 4116.10 | stop 4116.10 | 2021-08-11 2021-08-31 | stop
+mark: 2021-08-13 | reclaim 4214.25 | below
+mark: 2021-08-17 | stopped out
+mark: 2021-10-01 | base top cleared
+caption: The reclaim held for two sessions. The stop, 2.4% away, went on 17 August, and the stock fell to 3,819. Six weeks later it broke out of the same base.
+```
+
+| Step | Date | What happened |
+|---|---|---|
+| Undercut | 11 Aug 2021 | Low 4,116.10 under support 4,205 |
+| Reclaim | 13 Aug | Close 4,214.25, on volume 0.7× average — a quiet reclaim |
+| Stop | 17 Aug | Hit at 4,116.10: **−1R** (−2.4%) |
+| Afterwards | 24 Aug | Close 3,818.80, 9% under support |
+| Breakout | 1 Oct | The base top, 4,735, cleared after all |
+
+The stop did its job: the stock fell another 7%, to 9% under support. The lesson is the second half. A base that fails a reclaim is not finished. If it sets up again, a new entry is a new trade.
+
+#### How often it pays
+
+We applied the rules above to 11 large, well-known stocks in both markets over 2013–2021. They found 31 reclaims. The stocks were picked as famous names, with no costs and no market filter, so treat the result as an illustration, not as evidence.
+
+| Outcome | Trades |
+|---|---:|
+| Full stop, −1R | 20 |
+| Small loss or gain, between −1R and +1R | 6 |
+| More than +1R | 5 (largest +17R) |
+| **Average** | **+0.96R** |
+| **Median** | **−1R** |
+
+Two in three trades lost the full stop. Five winners carried the rest. That is the shape to expect: most of the work is taking small losses until one runs.
+
+**What published research says.** The setup itself has no published test, but two studies bear on the mechanism. Carol Osler (2000) found that exchange rates reversed at support and resistance levels published by dealers more often than at arbitrary levels. Osler (2003) showed that stop-loss orders cluster just beyond round numbers, and that hitting them makes price moves run further. A brief break under an obvious level is exactly what stop orders produce.
+
+William O'Neil prefers a double-bottom base whose second low *undercuts* the first, for the same reason: it shakes out weak holders. Richard Wyckoff's "spring" is the same move at the end of a trading range after a decline.
+
 A failed breakout to a new high often leaves a **double top** — two peaks at about the same level, with a dip between them.
 
 ```pattern
