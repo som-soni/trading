@@ -50,6 +50,12 @@ SLOPE_WEEKS = 4               # the line is compared with its own value this man
 #: far less in 4 weeks than the closes do in 1, so the band swallowed real slopes (see the changelog).
 FLAT_BAND_PCT = 0.5
 CONFIRM_WEEKS = 3             # weeks a transition's condition must hold before the stage changes
+#: Stage 4 is a decline UNDER A FALLING LINE (Weinstein). 1: a move into Stage 4 is confirmed only on a week the
+#: 30-week line is falling (below -FLAT_BAND_PCT over SLOPE_WEEKS) -- still dated from the breakdown week, as 2.11
+#: draws it; until the line rolls over, a break under a rising or flat line is Stage 3 (a top in progress) or stays
+#: where it was. And a breakdown already counting when Stage 3 is confirmed out of Stage 2 keeps counting, rather
+#: than being reset by the top confirming first. 0: 2.13's rules (Stage 4 held on a close below any line).
+STAGE4_NEEDS_FALLING_LINE = 1
 #: A Stage 1 base must be at least this old before a close above its high counts as the breakout into
 #: Stage 2 (when the line is merely flat; above a RISING line is Stage 2 on its own, Weinstein's rule).
 #: Two weeks above a flat line is a bounce, and it used to read as a new Stage 2.
@@ -197,7 +203,9 @@ def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None], l
               that is not rising -- a base that failed. A falling line alone does not start it: a base
               is a range, and only a new low breaks it
       2 -> 4  starts on a close below the last confirmed weekly swing low, or with the line falling;
-              holds while the close is below the line -- a fast break skips the top
+              holds while the close is below the line -- a fast break skips the top. Confirmed only on a week
+              the line is falling (STAGE4_NEEDS_FALLING_LINE, as every move into Stage 4); a run still counting
+              when 2 -> 3 confirms carries on into 3 -> 4
       2 -> 3  the line rose during this Stage 2, and then it stops rising or the close falls below it,
               week after week -- the advance stalls
       2 -> 1  the close holds below a line that never rose -- a failed breakout, back to the base
@@ -277,11 +285,16 @@ def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None], l
             k = runs.get(tgt, 0)
             k = (k + 1 if holds else 0) if k else (1 if begins and holds else 0)
             runs[tgt] = k
-            if k >= C and new is None:
+            # Stage 4 is confirmed only under a falling line (STAGE4_NEEDS_FALLING_LINE); its run keeps counting
+            # meanwhile, so it is still dated from the breakdown week
+            ok = not (tgt == 4 and STAGE4_NEEDS_FALLING_LINE and st != "falling")
+            if k >= C and ok and new is None:
                 new = tgt
         if new is not None:
             k = runs[new]
-            prev, prev_lo, stage, start, runs = stage, lo, new, i - k + 1, {}
+            # a breakdown already counting when the top is confirmed (2 -> 3) carries on into Stage 3's 3 -> 4
+            carry = {4: runs[4]} if STAGE4_NEEDS_FALLING_LINE and stage == 2 and new == 3 and runs.get(4) else {}
+            prev, prev_lo, stage, start, runs = stage, lo, new, i - k + 1, carry
             hi, lo = max(high[start:i + 1]), min(low[start:i + 1])
             if stage == 1:
                 lo = min(lo, prev_lo)    # a base's support is the low it formed on: the decline's, or the old base's
@@ -406,11 +419,22 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.13"
-    # 2.12 added G10 to evaluate() and rescanned; 2.13 changes only the simulator's order mechanics and
-    # signal_meta, never the scan, so it carries 2.12's cached rows forward (CLAUDE.md, signal_version).
-    signal_version = "2.12"
+    version = "2.14"
+    # 2.14 changes the stage machine, which evaluate()'s gates read: no signal_version pin, the scan reruns
     changelog = (
+        ("2.14", "2026-11-17",
+         "Stage 4 needs a falling line (STAGE4_NEEDS_FALLING_LINE = 1). 2.11 let a move into Stage 4 start on a break "
+         "of structure and hold while the close stayed under the line, whatever its slope, because waiting for the "
+         "line put Stage 4 months after the breakdown. It overshot: a dip under a RISING line read as a decline "
+         "(Alphabet, September 2024, line +1.1 to +1.3% over 4 weeks) and so did six months under a FLAT one "
+         "(Alphabet, March-August 2025, the line never below -0.5%). Weinstein's Stage 4 is a decline under a falling "
+         "line. Now the move is confirmed only on a week the line is falling -- the run still counts from the "
+         "breakdown and the stage is still dated from it -- and until then the break is a top (Stage 3), which "
+         "resolves down when the line rolls over or up on a breakout above its high. Second, a breakdown already "
+         "counting when 2 -> 3 confirms keeps counting into 3 -> 4: Alphabet's October 2026 fall below its swing low "
+         "was reset when the slower 2 -> 3 confirmed a week earlier, leaving Stage 3 with the crash low as its floor; it "
+         "now reads Stage 4 from 23 October. With the switch at 0 the machine is 2.13's exactly. G7, G8, G9 and W2 read "
+         "the machine, so the market, sector and stock gates move; the scan reruns."),
         ("2.13", "2026-11-14",
          "Backtest mechanics, no rule changed, from the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. (1) The stop limit MAX_STOP_PCT is re-tested against the price paid (signal_meta max_risk_pct): an order that waited for a slot, or gapped, and would now carry a stop further than that below the fill is skipped. On the 2.12 optimise runs 23 US and 13 Indian trades had such a stop. An order that waits for a slot still may: Weinstein's answer to a missed breakout is to buy the pullback toward it, which is what a later fill near the plan is, and the re-test now refuses the chased ones. (2) No crumb fills (`--min-fill 0.5`); the 2.12 runs had none, so this only guards. signal_version pinned to 2.12: the scan is unchanged. Results move."),
         ("2.12", "2026-11-11",
@@ -821,11 +845,14 @@ class StageAnalysisStrategy(Strategy):
         "1→4": "A base fails.\n\n"
                "- **Starts:** a close below the base's low -- the lowest weekly low since the decline before it, so "
                "the bottom it formed on. A falling line alone does not start it: only a new low breaks a base.\n"
-               "- **Holds:** the close below the line and the line not rising.",
+               "- **Holds:** the close below the line and the line not rising.\n"
+               "- **Confirmed:** on a week the line is falling (STAGE4_NEEDS_FALLING_LINE).",
         "2→4": "A fast break skips the top.\n\n"
                "- **Starts:** a close below the last confirmed weekly swing low (the lowest low of {SWING_WEEKS} weeks "
                "either side, known {SWING_WEEKS} weeks after it), or a falling line.\n"
-               "- **Holds:** the close below the line.",
+               "- **Holds:** the close below the line.\n"
+               "- **Confirmed:** on a week the line is falling (STAGE4_NEEDS_FALLING_LINE): under a rising or flat line "
+               "the break is a top (2→3), and it keeps counting there.",
         "2→3": "An advance stalls.\n\n"
                "- **Needs:** the line rose during this Stage 2 (rising {CONFIRM_WEEKS} weeks in a row at some point).\n"
                "- **Holds:** the line not rising, or the close below it, each week.",
@@ -837,7 +864,9 @@ class StageAnalysisStrategy(Strategy):
         "3→4": "A top breaks down.\n\n"
                "- **Starts:** a close below the top's low (this Stage 3's lowest weekly low before that week), or a "
                "falling line.\n"
-               "- **Holds:** the close below the line.\n\n"
+               "- **Holds:** the close below the line.\n"
+               "- **Confirmed:** on a week the line is falling (STAGE4_NEEDS_FALLING_LINE) -- Weinstein's Stage 4 is a "
+               "decline under a falling line; the stage is still dated from the breakdown week.\n\n"
                "A top never turns into a base: it resolves up (3→2) or down (3→4).",
         "4→1": "A decline ends in a base.\n\n"
                "- **Starts:** a close above the line.\n"
@@ -979,6 +1008,9 @@ class StageAnalysisStrategy(Strategy):
                                        "percent over the slope window; flat between."),
         ("Confirmation", "CONFIRM_WEEKS", "Weeks a transition's condition must hold before the stage "
                                           "changes -- and so the least a stage can last."),
+        ("Stage 4 needs a falling line", "STAGE4_NEEDS_FALLING_LINE", "1: a move into Stage 4 is confirmed only on a "
+         "week the line is falling, still dated from the breakdown; a break under a rising or flat line is a top "
+         "(Stage 3) until it rolls over. 0: 2.13's rule, a close held below any line."),
         ("Base age", "STAGE1_MIN_WEEKS", "Weeks a Stage 1 must last before a close above its high counts as "
                                          "Stage 2 without a rising line."),
         ("Base length", "BASE_MIN_WEEKS", "Shortest base the setup accepts, in weeks."),

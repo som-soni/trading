@@ -2005,7 +2005,7 @@
   },
   "stage_analysis": {
     "family": "stage_analysis",
-    "fingerprint": "9aec212d",
+    "fingerprint": "e73ad14b",
     "params": {
       "BASE_MAX_DEPTH_PCT": 30.0,
       "BASE_MAX_WEEKS": 104,
@@ -2026,6 +2026,7 @@
       "MA_WEEKS": 30,
       "SLOPE_WEEKS": 4,
       "STAGE1_MIN_WEEKS": 6,
+      "STAGE4_NEEDS_FALLING_LINE": 1,
       "STOP_BUFFER_PCT": 0.0,
       "SWING_WEEKS": 2,
       "TREND_EXIT_BELOW_PCT": 0.0,
@@ -2056,7 +2057,7 @@
         "W3"
       ]
     },
-    "version": "2.13"
+    "version": "2.14"
   },
   "stock_reversion": {
     "family": "stock_reversion",
@@ -2294,7 +2295,6 @@
   },
   "undercut_reclaim": {
     "family": "undercut_reclaim",
-    "version": "1.0",
     "fingerprint": "c7094f5e",
     "params": {
       "BASE_BARS": 30,
@@ -2344,7 +2344,8 @@
         "W1",
         "W2"
       ]
-    }
+    },
+    "version": "1.0"
   },
   "value_ranking": {
     "family": "value_ranking",
